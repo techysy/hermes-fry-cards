@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fix
+- 移动端模型名过长导致换行 — footer 和统一面板 header 的模型名截断为 `.../model-name`（如 `mimo/mimo-v2.5` → `.../mimo-v2.5`）
+- 修复测试中 `_build_footer_elements` 返回值索引错误（`result[1]` → `result[0]`）
+
 ## [0.1.0-rc1] - 2026-08-21
 
 ### 新增
@@ -46,3 +50,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### License
 
 - 保留原项目 MIT 协议（作者 Cheerwhy / hermes-lark-streaming contributors）
+
+### Fix
+
+- Truncate long model names on mobile to prevent line wrap (`mimo/mimo-v2.5` → `.../mimo-v2.5`)
+- Fix test index error in `_build_footer_elements` return value (`result[1]` → `result[0]`)

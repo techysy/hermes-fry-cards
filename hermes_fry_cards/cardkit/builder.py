@@ -348,8 +348,8 @@ def _render_footer_field(
         return None, None
 
     if name == "model":
-        v = data.get("model") or None
-        return v, v
+        v = _short_model(data.get("model") or "")
+        return v or None, v or None
 
     if name == "tokens":
         input_t = data.get("input_tokens", 0) or 0
@@ -371,6 +371,16 @@ def _render_footer_field(
         return None, None
 
     return None, None
+
+
+def _short_model(model: str) -> str:
+    """截断模型名，只保留最后一段，避免移动端换行。mimo/mimo-v2.5 → .../mimo-v2.5"""
+    if not model:
+        return model
+    parts = model.split("/")
+    if len(parts) <= 1:
+        return model
+    return f".../{parts[-1]}"
 
 
 def _compact(n: int) -> str:
@@ -524,7 +534,7 @@ def build_complete_card(
             if "elements" in tool_panel:
                 unified_children.extend(tool_panel["elements"])
         # header: 🍟 model · 💭n · 🛠️n · ⌚️ elapsed
-        model_name = (footer_data or {}).get("model") or ""
+        model_name = _short_model((footer_data or {}).get("model") or "")
         # 优先用 tool_elapsed_ms，否则用 footer_data 的 duration，否则用 session 总耗时
         elapsed_ms = tool_elapsed_ms
         if not elapsed_ms and footer_data:

@@ -187,40 +187,40 @@ class TestBuildFooterElements:
     def test_empty_data_renders_default_status(self) -> None:
         # 默认字段包含 "status"，总是会渲染
         result = _build_footer_elements({})
-        assert len(result) >= 2
-        assert "Completed" in result[1]["content"]
+        assert len(result) >= 1
+        assert "Completed" in result[0]["content"]
 
     def test_status_error(self) -> None:
         result = _build_footer_elements({}, is_error=True)
-        assert "red" in result[1]["content"]
+        assert "red" in result[0]["content"]
 
     def test_status_aborted(self) -> None:
         result = _build_footer_elements({}, is_aborted=True)
-        assert "Stopped" in result[1]["content"]
+        assert "Stopped" in result[0]["content"]
 
     def test_elapsed_displayed(self) -> None:
         result = _build_footer_elements({"duration": 12.5}, fields=[["elapsed"]])
-        assert "12.5s" in result[1]["content"]
+        assert "12.5s" in result[0]["content"]
 
     def test_model_displayed(self) -> None:
         result = _build_footer_elements({"model": "claude-3"}, fields=[["model"]])
-        assert "claude-3" in result[1]["content"]
+        assert "claude-3" in result[0]["content"]
 
     def test_context_displayed(self) -> None:
         result = _build_footer_elements(
             {"context_used": 50000, "context_max": 200000},
             fields=[["context"]],
         )
-        assert "50.0K" in result[1]["content"]
-        assert "25%" in result[1]["content"]
+        assert "50.0K" in result[0]["content"]
+        assert "25%" in result[0]["content"]
 
     def test_tokens_displayed(self) -> None:
         result = _build_footer_elements(
             {"input_tokens": 1000, "output_tokens": 500},
             fields=[["tokens"]],
         )
-        assert "↑" in result[1]["content"]
-        assert "↓" in result[1]["content"]
+        assert "↑" in result[0]["content"]
+        assert "↓" in result[0]["content"]
 
     def test_show_label(self) -> None:
         result = _build_footer_elements(
@@ -228,14 +228,14 @@ class TestBuildFooterElements:
             fields=[["elapsed"]],
             show_label=True,
         )
-        assert "Elapsed" in result[1]["content"]
+        assert "Elapsed" in result[0]["content"]
 
     def test_multi_row_fields(self) -> None:
         result = _build_footer_elements(
             {"duration": 5, "model": "gpt"},
             fields=[["elapsed"], ["model"]],
         )
-        assert "\n" in result[1]["content"]
+        assert "\n" in result[0]["content"]
 
     def test_no_matching_fields(self) -> None:
         assert _build_footer_elements({}, fields=[["tokens"]]) == []
