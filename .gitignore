@@ -1,0 +1,16 @@
+# 忽略 __pycache__ 和构建产物
+__pycache__/
+*.pyc
+*.pyo
+.eggs/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+tests/samples/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

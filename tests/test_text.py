@@ -1,0 +1,103 @@
+"""streaming.text 测试 — reasoning 标签解析."""
+
+from __future__ import annotations
+
+import pytest
+
+from hermes_fry_cards.streaming.text import (
+    extract_thinking_content,
+    split_reasoning_text,
+    strip_reasoning_tags,
+)
+
+
+class TestSplitReasoningText:
+    @pytest.mark.parametrize("text", [None, "", "   \n  "], ids=["none", "empty", "whitespace"])
+    def test_empty_input_returns_empty(self, text: str | None) -> None:
+        assert split_reasoning_text(text) == {}
+
+    def test_plain_text_no_tags(self) -> None:
+        assert split_reasoning_text("Hello world") == {"answer_text": "Hello world"}
+
+    def test_reasoning_prefix(self) -> None:
+        result = split_reasoning_text("Reasoning:\nstep 1\nstep 2")
+        assert result.keys() == {"reasoning_text"}
+        assert "step 1" in result["reasoning_text"]
+
+    def test_reasoning_prefix_strips_underscore_lines(self) -> None:
+        result = split_reasoning_text("Reasoning:\n_thinking_\ndone")
+        assert "_thinking_" not in (result.get("reasoning_text") or "")
+
+    def test_reasoning_prefix_too_short_ignored(self) -> None:
+        # "Reasoning:\n" 单独存在不比前缀长，应走普通文本逻辑
+        assert split_reasoning_text("Reasoning:\n") == {"answer_text": "Reasoning:\n"}
+
+    @pytest.mark.parametrize(
+        ("tag", "reasoning", "answer"),
+        [
+            ("thinking", "deep thoughts", "answer here"),
+            ("thought", "reasoning", "the answer"),
+            ("antthinking", "model thoughts", "response"),
+        ],
+    )
+    def test_supported_reasoning_tags(self, tag: str, reasoning: str, answer: str) -> None:
+        text = f"<{tag}>{reasoning}</{tag}>{answer}"
+        result = split_reasoning_text(text)
+        assert result["reasoning_text"] == reasoning
+        assert answer in result["answer_text"]
+
+    def test_tags_with_whitespace(self) -> None:
+        text = "< thinking >content< /thinking >rest"
+        result = split_reasoning_text(text)
+        assert result["reasoning_text"] == "content"
+
+    def test_unclosed_tag(self) -> None:
+        text = "<thinking>ongoing reasoning"
+        result = split_reasoning_text(text)
+        assert result["reasoning_text"] == "ongoing reasoning"
+        # reasoning_text 和 answer_text 都包含内容
+        assert result["answer_text"] is not None
+
+
+class TestExtractThinkingContent:
+    def test_empty_string(self) -> None:
+        assert extract_thinking_content("") == ""
+
+    def test_no_tags(self) -> None:
+        assert extract_thinking_content("plain text") == ""
+
+    def test_single_pair(self) -> None:
+        assert extract_thinking_content("<thinking>hello</thinking>") == "hello"
+
+    def test_multiple_pairs(self) -> None:
+        text = "<thinking>part1</thinking>ignored<thinking>part2</thinking>"
+        assert extract_thinking_content(text) == "part1part2"
+
+    def test_unclosed_tag_extracts_till_end(self) -> None:
+        assert extract_thinking_content("<thinking>rest of text") == "rest of text"
+
+    def test_case_insensitive(self) -> None:
+        assert extract_thinking_content("<THOUGHT>content</THOUGHT>") == "content"
+
+
+class TestStripReasoningTags:
+    def test_removes_tag_markers(self) -> None:
+        # 标签被移除，但标签间内容保留
+        result = strip_reasoning_tags("<thinking>content</thinking>")
+        assert "<thinking>" not in result
+        assert "</thinking>" not in result
+
+    def test_mixed_text_keeps_surrounding(self) -> None:
+        text = "before<thinking>inner</thinking>after"
+        result = strip_reasoning_tags(text)
+        assert "before" in result
+        assert "after" in result
+        # 标签标记被移除
+        assert "<thinking>" not in result
+
+    def test_no_tags_unchanged(self) -> None:
+        assert strip_reasoning_tags("no tags here") == "no tags here"
+
+    def test_reasoning_prefix_clears_all(self) -> None:
+        result = strip_reasoning_tags("Reasoning:\nsome content")
+        assert result.strip() == ""

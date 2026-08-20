@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-fry-cards"
+version = "0.12.0"
+description = "🍟 薯条卡片 — hermes-lark-streaming 二次开发（Feishu/Lark CardKit v2.0 实时流式消息卡片）"
+readme = "README.md"
+requires-python = ">=3.11"
+keywords = ["Hermes", "Feishu", "Lark", "streaming-card", "potato"]
+dependencies = [
+  "lark-oapi>=1.4.0",
+  "PyYAML>=6.0",
+]
+
+[project.scripts]
+hermes-fry-cards = "hermes_fry_cards.__main__:main"
+
+[project.entry-points."hermes_agent.plugins"]
+hermes-fry-cards = "hermes_fry_cards"
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.0",
+  "pytest-asyncio>=0.21",
+  "ruff>=0.8",
+  "mypy>=1.11",
+  "types-PyYAML",
+]
+
+[tool.setuptools.packages.find]
+include = ["hermes_fry_cards*"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+exclude = ["tests/samples"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["RUF002", "RUF003", "RUF006"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "lark_oapi.*"
+ignore_missing_imports = true
