@@ -142,6 +142,15 @@ $HERMES_PYTHON -m pip uninstall hermes-fry-cards
 
 ---
 
+## 🔗 相关项目
+
+| 项目 | 说明 |
+|------|------|
+| [aiduPOP](https://github.com/monkey2jack/aiduPOP) | 爱嘟泡波卡 — Hermes 飞书流式卡片插件 |
+| [lark-hls-v2](https://github.com/BcubBo/lark-hls-v2) | 飞书 CardKit v2.0 流式卡片插件 for Hermes Agent |
+
+---
+
 ## 📜 归属说明
 
 灵感来自 [hermes-lark-streaming](https://github.com/Cheerwhy/hermes-lark-streaming)（作者 Cheerwhy），原项目使用 MIT 协议。本项目为独立开发版本，已进行架构重写和功能重构。
