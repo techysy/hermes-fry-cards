@@ -605,9 +605,9 @@ def build_complete_card(
                     if mode == "text":
                         context_part = f" · {_context_text(ctx_used, ctx_max)}"
                     elif mode == "bar":
-                        context_part = f" · {_context_progress_bar(ctx_used, ctx_max)}"
+                        context_part = f" · [{_context_progress_bar(ctx_used, ctx_max)}]"
                     elif mode == "block":
-                        context_part = f" · {_context_progress_block(ctx_used, ctx_max)}"
+                        context_part = f" · [{_context_progress_block(ctx_used, ctx_max)}]"
                     elif mode == "block_text":
                         context_part = f" · {_context_progress_with_text(ctx_used, ctx_max, filled='▪', empty='▫')}"
                     else:  # text_bar
