@@ -9,24 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.0-rc3] - 2026-08-21
 
-### 上下文进度条
+### 新增
 
-- **上下文显示** — 统一面板 header 新增上下文窗口使用量，三种显示模式：`text`（纯文本）、`bar`（进度条）、`text_bar`（文本+进度条）
+- **上下文进度条** — 统一面板 header 新增上下文窗口使用量，三种显示模式：
+  - `text`：`55.6k/1.0m (5%)`（纯文本）
+  - `bar`：`██░░░░░░`（进度条）
+  - `text_bar`：`20k/1.0m [██░░░░░░] 21%`（文本+进度条）
 - **独立配置开关** — `show_context`（开关）+ `context_display_mode`（模式），默认开启 text 模式
 - **智能单位** — 小于 1M 用 k，大于等于 1M 用 m（避免 `0.1m/1.0m`）
-- **移除 ⏳ 图标** — 进度条前不再显示 ⏳，更简洁
+- **统一面板图标更新** — 🛠️→🔧（工具）、⌚️→⏱️（耗时）
 
-### Bug 修复
+### 修复
 
-- **完成态 Duplicate ID 修复** — 复用流式阶段 reasoning text_el_id（如 `reasoning_0_text`），避免完成态 update 用固定 `reasoning_text` 冲突，修复卡片卡 loading
-- **fallback 用带索引唯一 ID** — 即使 text_el_id 为空也不回落到固定 `reasoning_text`，彻底杜绝 Duplicate ID
-- **/stop 中断时 footer 显示模型名和耗时** — `on_aborted` 补齐 footer_data
+- **完成态 Duplicate ID 修复** — 复用流式阶段 reasoning `text_el_id`（如 `reasoning_0_text`），避免完成态 update 用固定 `reasoning_text` 冲突，修复卡片卡 loading
+- **fallback 用带索引唯一 ID** — 即使 `text_el_id` 为空也不回落到固定 `reasoning_text`，彻底杜绝 Duplicate ID
+- **/stop 中断时 footer 显示模型名和耗时** — `on_aborted` 补齐 `footer_data`
 
 ### 文档
 
 - README 补充上下文显示配置说明和格式对比
 - README 添加相关项目表格（aiduPOP、lark-hls-v2）
-- CHANGELOG 更新至 rc3
+- 新增 skill 文件（AI Agent 自动配置用）
+- 测试报告：490 通过 / 4 基线失败（无新增回归）
 
 ---
 
