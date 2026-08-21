@@ -131,8 +131,8 @@ def _build_tool_panel(
         expanded=expanded,
         title_el={
             "tag": "plain_text",
-            "content": f"🛠️ {' · '.join(en_parts)}",
-            "i18n_content": _i18n(f"🛠️ {' · '.join(en_parts)}", f"🛠️ {' · '.join(zh_parts)}"),
+            "content": f"🔧 {' · '.join(en_parts)}",
+            "i18n_content": _i18n(f"🔧 {' · '.join(en_parts)}", f"🔧 {' · '.join(zh_parts)}"),
             "text_color": "grey",
             "text_size": "notation",
         },
@@ -580,7 +580,7 @@ def build_complete_card(
             tool_panel = _build_tool_panel(tool_steps_total, tool_elapsed_ms, expanded=panel_expanded, element_id=None)
             if "elements" in tool_panel:
                 unified_children.extend(tool_panel["elements"])
-        # header: 🍟 model · 💭n · 🛠️n · ⏳ context · ⌚️ elapsed
+        # header: 🍟 model · 💭n · 🔧n · ⏳ context · ⏱️ elapsed
         model_name = (footer_data or {}).get("model") or ""
         # 优先用 tool_elapsed_ms，否则用 footer_data 的 duration，否则用 session 总耗时
         elapsed_ms = tool_elapsed_ms
@@ -589,7 +589,7 @@ def build_complete_card(
             if isinstance(duration, (int, float)) and duration > 0:
                 elapsed_ms = duration * 1000
         elapsed_str = _format_elapsed(elapsed_ms) if elapsed_ms else ""
-        elapsed_part = f" · ⌚️ {elapsed_str}" if elapsed_str else ""
+        elapsed_part = f" · ⏱️ {elapsed_str}" if elapsed_str else ""
         # 上下文信息：支持进度条 / 纯文本，通过配置独立控制
         context_part = ""
         if footer_data:
@@ -606,7 +606,7 @@ def build_complete_card(
                         context_part = f" · {_context_progress_bar(ctx_used, ctx_max)}"
                     else:  # text_bar
                         context_part = f" · {_context_progress_with_text(ctx_used, ctx_max)}"
-        header_text = f"🍟 {model_name} · 💭{len(reasoning_rounds)} · 🛠️{len(tool_steps_total)}{context_part}{elapsed_part}"
+        header_text = f"🍟 {model_name} · 💭{len(reasoning_rounds)} · 🔧{len(tool_steps_total)}{context_part}{elapsed_part}"
         unified_panel = {
             "tag": "collapsible_panel",
             "expanded": panel_expanded,
