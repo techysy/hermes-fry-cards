@@ -108,14 +108,14 @@ class Config:
         """上下文显示模式.
 
         优先级：display.platforms.feishu.context_display_mode → display.context_display_mode，
-        默认 text_bar.
+        默认 text.
         - text: 纯文本 55.6k/1.0m (5%)
         - bar: 纯进度条 ██░░░░░░░░
         - text_bar: 文本+进度条 20k/1.0m [██░░░░░░] 21%
         """
         display = self._reload().get("display")
         if not isinstance(display, dict):
-            return "text_bar"
+            return "text"
         platforms = display.get("platforms")
         if isinstance(platforms, dict):
             feishu = platforms.get("feishu")
@@ -126,7 +126,7 @@ class Config:
         mode = display.get("context_display_mode")
         if mode in ("text", "bar", "text_bar"):
             return mode
-        return "text_bar"
+        return "text"
 
     @property
     def feishu_app_id(self) -> str:

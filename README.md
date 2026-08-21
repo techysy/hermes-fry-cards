@@ -93,7 +93,7 @@ display:
 | `show_tool_use` | 展示工具调用面板 | `true` |
 | `show_reasoning` | 展示推理过程 | `false` |
 | `show_context` | 统一面板 header 显示上下文窗口 | `false` |
-| `context_display_mode` | 上下文显示格式：`text` / `bar` / `text_bar` | `text_bar` |
+| `context_display_mode` | 上下文显示格式：`text` / `bar` / `text_bar` | `text` |
 
 ---
 
