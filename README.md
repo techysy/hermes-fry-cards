@@ -100,6 +100,7 @@ display:
   platforms:
     feishu:
       show_tool_use: true
+      show_reasoning: true   # 展示推理过程（默认 false，需手动开启）
 ```
 
 | 配置项 | 说明 | 默认值 |
@@ -113,6 +114,7 @@ display:
 | `panel_expanded` | 完成态面板保持展开 | `false` |
 | `width_mode` | 卡片宽度模式 (`default` / `compact` / `fill`) | `default` |
 | `show_tool_use` | 展示工具调用面板 | `true` |
+| `show_reasoning` | 展示推理过程（false 时推理内容被丢弃，卡片可能不更新） | `false` |
 
 ---
 

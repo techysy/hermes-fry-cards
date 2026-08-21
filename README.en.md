@@ -104,6 +104,7 @@ display:
   platforms:
     feishu:
       show_tool_use: true
+      show_reasoning: true   # Show reasoning process (default: false, enable manually)
 ```
 
 | Option | Description | Default |
@@ -117,6 +118,7 @@ display:
 | `panel_expanded` | Keep completion panels expanded | `false` |
 | `width_mode` | Card width mode (`default` / `compact` / `fill`) | `default` |
 | `show_tool_use` | Show tool-use panels | `true` |
+| `show_reasoning` | Show reasoning process (false drops reasoning, card may not update) | `false` |
 
 ---
 
