@@ -9,7 +9,8 @@
 
 [English](README.en.md) · [安装指南](INSTALL.md)
 
-![cover](assets/cover.jpg)
+<img width="672" height="313" alt="image" src="https://github.com/user-attachments/assets/6c525590-579d-4319-91df-281d10b90f7f" />
+
 
 ---
 
