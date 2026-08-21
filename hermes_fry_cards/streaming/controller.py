@@ -577,8 +577,13 @@ class StreamingController:
         """
         assert self._client is not None
         try:
+            # 拆卡后重建需要 show_tool_use=True 以包含 tool_panel 元素，
+            # 否则后续 flush 会因找不到 element_id 而报 300313。
+            need_tool_panel = session.tool_panel_created or any(
+                s.type == SegmentType.TOOL for s in (session.segment_state.segments[session.split_index:] if session.segment_state else [])
+            )
             card = build_streaming_card_v2(
-                show_tool_use=False,
+                show_tool_use=need_tool_panel,
                 show_reasoning=False,
                 show_streaming_element=False,
                 header_enabled=self._cfg.header_enabled,
@@ -635,6 +640,7 @@ class StreamingController:
         session.set_card(card_id=new_card_id, card_msg_id=new_msg_id)
         session.element_count = 1  # loading element
         session.sequence = 1  # 新卡从 1 重新计数
+        session.tool_panel_created = False  # 新卡需要重建 tool_panel
         session.split_disabled = False
         session.split_index = split_idx
         for seg in segments[split_idx:]:
