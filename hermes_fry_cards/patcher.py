@@ -723,6 +723,11 @@ class Patcher:
                 return False
         return True
 
+    def marker_status(self) -> dict[str, bool]:
+        """返回每个 marker 的安装状态（已安装 / 缺失），供 status 展示."""
+        content = self.run_path.read_text(encoding="utf-8")
+        return {begin: begin in content for begin, _end in self.MARKERS}
+
     def verify_target(self) -> None:
         content = self.run_path.read_text(encoding="utf-8")
         tree = ast.parse(content)

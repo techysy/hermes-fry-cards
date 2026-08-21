@@ -341,7 +341,9 @@ class FeishuClient:
     def _download_image(url: str, timeout: int = 15) -> bytes | None:
         """同步下载图片（在线程池中运行）."""
         try:
-            req = Request(url, headers={"User-Agent": "hermes-fry-cards/1.0"})
+            from . import __version__
+
+            req = Request(url, headers={"User-Agent": f"hermes-fry-cards/{__version__}"})
             with urlopen(req, timeout=timeout) as resp:
                 if resp.status != 200:
                     return None

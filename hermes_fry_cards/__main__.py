@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -9,6 +10,8 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .patcher import CronPatcher, Patcher
+
+_logger = logging.getLogger("hermes_fry_cards")
 
 
 def main() -> int:
@@ -64,7 +67,8 @@ def _get_cron_patcher() -> CronPatcher | None:
 
     try:
         return CronPatcher()
-    except PatcherError:
+    except PatcherError as e:
+        _logger.debug("cron patcher unavailable: %s", e)
         return None
 
 
@@ -164,11 +168,7 @@ def _cmd_status() -> int:
     print(f"Target:  {patcher.run_path}")
 
     if patched:
-        from .patcher import Patcher as _PatcherCls
-
-        content = patcher.run_path.read_text(encoding="utf-8")
-        for begin, _end in _PatcherCls.MARKERS:
-            found = begin in content
+        for begin, found in patcher.marker_status().items():
             label = begin.replace("# HERMES_LARK_", "").replace("_BEGIN", "").lower()
             print(f"  {label}: {'installed' if found else 'missing'}")
 

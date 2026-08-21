@@ -611,7 +611,8 @@ class StreamCardController(StreamingController):
 
     def _completion_session(self, message_id: str) -> CardSession | None:
         session = self._sessions.get(message_id)
-        if session is not None and (not session.state.is_terminal or session.state == SessionState.FAILED):
+        # 允许 FAILED session 重新获取以便完成收尾，排除已 COMPLETED/ABORTED 的
+        if session is not None and session.state != SessionState.COMPLETED and session.state != SessionState.ABORTED:
             return session
 
         redirected_id = self._interrupt_map.pop(message_id, None)

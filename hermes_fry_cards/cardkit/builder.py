@@ -546,7 +546,8 @@ def build_complete_card(
             if isinstance(duration, (int, float)) and duration > 0:
                 elapsed_ms = duration * 1000
         elapsed_str = _format_elapsed(elapsed_ms) if elapsed_ms else ""
-        header_text = f"🍟 {model_name} · 💭{len(reasoning_rounds)} · 🛠️{len(tool_steps_total)} · ⌚️ {elapsed_str}"
+        elapsed_part = f" · ⌚️ {elapsed_str}" if elapsed_str else ""
+        header_text = f"🍟 {model_name} · 💭{len(reasoning_rounds)} · 🛠️{len(tool_steps_total)}{elapsed_part}"
         unified_panel = {
             "tag": "collapsible_panel",
             "expanded": panel_expanded,

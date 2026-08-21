@@ -15,7 +15,7 @@ from ..cardkit.i18n import _T, _i18n
 from .segments import Segment, SegmentType
 from .tooluse import ToolDisplayStep
 
-ELEMENT_THRESHOLD = 180  # 飞书硬上限 200，预留 20 给 footer + 波动
+ELEMENT_THRESHOLD = 180  # 飞书硬上限 200，预留 20（18 给波动 + 2 footer 预留）
 FOOTER_RESERVE = 2  # footer 元素预留（hr + markdown）
 
 
