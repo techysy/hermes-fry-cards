@@ -388,14 +388,35 @@ def _format_elapsed(ms: float) -> str:
 
 
 def _context_progress_bar(used: int, total: int, width: int = 8) -> str:
-    """生成上下文进度条，格式: 1.0m/1.0m [██░░░░░░] 15%"""
+    """生成上下文进度条，格式: ██░░░░░░░░"""
+    if total <= 0:
+        return ""
+    pct = min(used / total * 100, 100)
+    filled = round(pct / 100 * width)
+    empty = width - filled
+    return "█" * filled + "░" * empty
+
+
+def _context_text(used: int, total: int) -> str:
+    """生成上下文纯文本，格式: 55.6k/1.0m (5%)"""
+    if total <= 0:
+        return ""
+    pct = min(used / total * 100, 100)
+    if total >= 1_000_000:
+        return f"{used / 1_000_000:.1f}m/{total / 1_000_000:.1f}m ({pct:.0f}%)"
+    if total >= 1_000:
+        return f"{used / 1_000:.1f}k/{total / 1_000:.1f}k ({pct:.0f}%)"
+    return f"{used}/{total} ({pct:.0f}%)"
+
+
+def _context_progress_with_text(used: int, total: int, width: int = 8) -> str:
+    """生成文本+进度条，格式: 20k/1.0m [██░░░░░░] 21%"""
     if total <= 0:
         return ""
     pct = min(used / total * 100, 100)
     filled = round(pct / 100 * width)
     empty = width - filled
     bar = "█" * filled + "░" * empty
-    # 两端用统一单位，避免 1048k/1.0m 这种不一致
     if total >= 1_000_000:
         return f"{used / 1_000_000:.1f}m/{total / 1_000_000:.1f}m [{bar}] {pct:.0f}%"
     if total >= 1_000:
@@ -558,12 +579,13 @@ def build_complete_card(
                 from ..config import Config
                 cfg = Config()
                 if cfg.show_context:
-                    if cfg.context_progress_bar:
-                        bar = _context_progress_bar(ctx_used, ctx_max)
-                        context_part = f" · ⏳ {bar}"
-                    else:
-                        pct = ctx_used / ctx_max * 100
-                        context_part = f" · ⏳ {ctx_used // 1000}K/{ctx_max // 1000}K ({pct:.0f}%)"
+                    mode = cfg.context_display_mode
+                    if mode == "text":
+                        context_part = f" · ⏳ {_context_text(ctx_used, ctx_max)}"
+                    elif mode == "bar":
+                        context_part = f" · ⏳ {_context_progress_bar(ctx_used, ctx_max)}"
+                    else:  # text_bar
+                        context_part = f" · ⏳ {_context_progress_with_text(ctx_used, ctx_max)}"
         header_text = f"🍟 {model_name} · 💭{len(reasoning_rounds)} · 🛠️{len(tool_steps_total)}{context_part}{elapsed_part}"
         unified_panel = {
             "tag": "collapsible_panel",

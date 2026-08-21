@@ -104,21 +104,29 @@ class Config:
         return bool(display.get("show_context", False))
 
     @property
-    def context_progress_bar(self) -> bool:
-        """上下文显示是否使用进度条格式.
+    def context_display_mode(self) -> str:
+        """上下文显示模式.
 
-        优先级：display.platforms.feishu.context_progress_bar → display.context_progress_bar，
-        默认 True.
+        优先级：display.platforms.feishu.context_display_mode → display.context_display_mode，
+        默认 text_bar.
+        - text: 纯文本 55.6k/1.0m (5%)
+        - bar: 纯进度条 ██░░░░░░░░
+        - text_bar: 文本+进度条 20k/1.0m [██░░░░░░] 21%
         """
         display = self._reload().get("display")
         if not isinstance(display, dict):
-            return True
+            return "text_bar"
         platforms = display.get("platforms")
         if isinstance(platforms, dict):
             feishu = platforms.get("feishu")
-            if isinstance(feishu, dict) and "context_progress_bar" in feishu:
-                return bool(feishu["context_progress_bar"])
-        return bool(display.get("context_progress_bar", True))
+            if isinstance(feishu, dict) and "context_display_mode" in feishu:
+                mode = feishu["context_display_mode"]
+                if mode in ("text", "bar", "text_bar"):
+                    return mode
+        mode = display.get("context_display_mode")
+        if mode in ("text", "bar", "text_bar"):
+            return mode
+        return "text_bar"
 
     @property
     def feishu_app_id(self) -> str:
