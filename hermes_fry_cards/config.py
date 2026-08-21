@@ -87,6 +87,40 @@ class Config:
         return bool(display.get("show_tool_use", True))
 
     @property
+    def show_context(self) -> bool:
+        """是否在统一面板 header 中显示上下文窗口信息.
+
+        优先级：display.platforms.feishu.show_context → display.show_context，
+        默认 True.
+        """
+        display = self._reload().get("display")
+        if not isinstance(display, dict):
+            return True
+        platforms = display.get("platforms")
+        if isinstance(platforms, dict):
+            feishu = platforms.get("feishu")
+            if isinstance(feishu, dict) and "show_context" in feishu:
+                return bool(feishu["show_context"])
+        return bool(display.get("show_context", True))
+
+    @property
+    def context_progress_bar(self) -> bool:
+        """上下文显示是否使用进度条格式.
+
+        优先级：display.platforms.feishu.context_progress_bar → display.context_progress_bar，
+        默认 True.
+        """
+        display = self._reload().get("display")
+        if not isinstance(display, dict):
+            return True
+        platforms = display.get("platforms")
+        if isinstance(platforms, dict):
+            feishu = platforms.get("feishu")
+            if isinstance(feishu, dict) and "context_progress_bar" in feishu:
+                return bool(feishu["context_progress_bar"])
+        return bool(display.get("context_progress_bar", True))
+
+    @property
     def feishu_app_id(self) -> str:
         return str(self._platform_cfg().get("app_id", ""))
 

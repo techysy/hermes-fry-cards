@@ -348,8 +348,8 @@ def _render_footer_field(
         return None, None
 
     if name == "model":
-        v = _short_model(data.get("model") or "")
-        return v or None, v or None
+        v = data.get("model") or None
+        return v, v
 
     if name == "tokens":
         input_t = data.get("input_tokens", 0) or 0
@@ -373,11 +373,6 @@ def _render_footer_field(
     return None, None
 
 
-def _short_model(model: str) -> str:
-    """返回完整模型名（不截断）。"""
-    return model
-
-
 def _compact(n: int) -> str:
     if n >= 1_000_000:
         m = n / 1_000_000
@@ -390,6 +385,24 @@ def _compact(n: int) -> str:
 def _format_elapsed(ms: float) -> str:
     seconds = ms / 1000
     return f"{seconds:.1f}s" if seconds < 60 else f"{int(seconds // 60)}m {int(seconds % 60)}s"
+
+
+def _context_progress_bar(used: int, total: int, width: int = 8) -> str:
+    """生成上下文进度条，格式: 152.6K/1.0M [██░░░░░░] 15%"""
+    if total <= 0:
+        return ""
+    pct = min(used / total * 100, 100)
+    filled = round(pct / 100 * width)
+    empty = width - filled
+    bar = "█" * filled + "░" * empty
+    return f"{_compact(used)}/{_compact(total)} [{bar}] {pct:.0f}%"
+    if total <= 0:
+        return ""
+    pct = min(used / total * 100, 100)
+    filled = round(pct / 100 * width)
+    empty = width - filled
+    bar = "█" * filled + "░" * empty
+    return f"{_compact(used)}/{_compact(total)} [{bar}] {pct:.0f}%"
 
 
 def build_streaming_tool_use_pending_panel() -> dict[str, Any]:
@@ -490,11 +503,7 @@ def build_complete_card(
     for seg in segments:
         if seg.type == SegmentType.REASONING:
             if seg.text:
-                reasoning_rounds.append({
-                    "text": seg.text,
-                    "elapsed_ms": seg.elapsed_ms,
-                    "text_el_id": seg.text_el_id,
-                })
+                reasoning_rounds.append({"text": seg.text, "elapsed_ms": seg.elapsed_ms})
         elif seg.type == SegmentType.TOOL:
             if not show_tool_use:
                 continue
@@ -521,24 +530,19 @@ def build_complete_card(
             border_color = "green"
         # 构建统一面板内容：先推理轮次，再工具步骤
         unified_children: list[dict] = []
-        for i, rnd in enumerate(reasoning_rounds):
+        for rnd in reasoning_rounds:
             if rnd["text"].strip():
-                # 复用流式阶段的 text_el_id，避免与现有元素重名（Duplicate ID）
-                text_el_id = rnd.get("text_el_id") or (
-                    f"reasoning_text_{i}" if len(reasoning_rounds) > 1 else REASONING_TEXT_ELEMENT_ID
-                )
                 unified_children.append(_build_reasoning_panel(
                     text=rnd["text"],
                     elapsed_ms=rnd["elapsed_ms"],
                     expanded=panel_expanded,
-                    text_element_id=text_el_id,
                 ))
         if tool_steps_total:
             tool_panel = _build_tool_panel(tool_steps_total, tool_elapsed_ms, expanded=panel_expanded, element_id=None)
             if "elements" in tool_panel:
                 unified_children.extend(tool_panel["elements"])
         # header: 🍟 model · 💭n · 🛠️n · ⏳ context · ⌚️ elapsed
-        model_name = _short_model((footer_data or {}).get("model") or "")
+        model_name = (footer_data or {}).get("model") or ""
         # 优先用 tool_elapsed_ms，否则用 footer_data 的 duration，否则用 session 总耗时
         elapsed_ms = tool_elapsed_ms
         if not elapsed_ms and footer_data:
@@ -547,13 +551,21 @@ def build_complete_card(
                 elapsed_ms = duration * 1000
         elapsed_str = _format_elapsed(elapsed_ms) if elapsed_ms else ""
         elapsed_part = f" · ⌚️ {elapsed_str}" if elapsed_str else ""
-        # 上下文信息：显示已用/总上下文窗口
+        # 上下文信息：支持进度条 / 纯文本，通过配置独立控制
         context_part = ""
         if footer_data:
             ctx_used = footer_data.get("context_used", 0) or 0
             ctx_max = footer_data.get("context_max", 0) or 0
             if ctx_used > 0 and ctx_max > 0:
-                context_part = f" · ⏳ {ctx_used // 1000}K/{ctx_max // 1000}K"
+                from ..config import Config
+                cfg = Config()
+                if cfg.show_context:
+                    if cfg.context_progress_bar:
+                        bar = _context_progress_bar(ctx_used, ctx_max)
+                        context_part = f" · ⏳ {bar}"
+                    else:
+                        pct = ctx_used / ctx_max * 100
+                        context_part = f" · ⏳ {ctx_used // 1000}K/{ctx_max // 1000}K ({pct:.0f}%)"
         header_text = f"🍟 {model_name} · 💭{len(reasoning_rounds)} · 🛠️{len(tool_steps_total)}{context_part}{elapsed_part}"
         unified_panel = {
             "tag": "collapsible_panel",
