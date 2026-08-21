@@ -320,6 +320,13 @@ class StreamCardController(StreamingController):
         session.flush.mark_completed()
         _logger.info("on_aborted: msg=%s state=ABORTED", message_id[:12])
 
+        # 确保 abort 时 footer 有时间 + 模型显示
+        if not session.footer.get("duration") and hasattr(session, "created_at"):
+            import time as _t
+            session.footer["duration"] = _t.time() - session.created_at
+        if not session.footer.get("model"):
+            session.footer["model"] = ""
+
         self._complete_session(session)
 
     async def on_session_aborted(self, *, session_key: str) -> bool:
