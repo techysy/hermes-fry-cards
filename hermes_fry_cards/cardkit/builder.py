@@ -581,11 +581,11 @@ def build_complete_card(
                 if cfg.show_context:
                     mode = cfg.context_display_mode
                     if mode == "text":
-                        context_part = f" · ⏳ {_context_text(ctx_used, ctx_max)}"
+                        context_part = f" · {_context_text(ctx_used, ctx_max)}"
                     elif mode == "bar":
-                        context_part = f" · ⏳ {_context_progress_bar(ctx_used, ctx_max)}"
+                        context_part = f" · {_context_progress_bar(ctx_used, ctx_max)}"
                     else:  # text_bar
-                        context_part = f" · ⏳ {_context_progress_with_text(ctx_used, ctx_max)}"
+                        context_part = f" · {_context_progress_with_text(ctx_used, ctx_max)}"
         header_text = f"🍟 {model_name} · 💭{len(reasoning_rounds)} · 🛠️{len(tool_steps_total)}{context_part}{elapsed_part}"
         unified_panel = {
             "tag": "collapsible_panel",
