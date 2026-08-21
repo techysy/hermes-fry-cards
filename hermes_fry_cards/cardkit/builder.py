@@ -374,13 +374,8 @@ def _render_footer_field(
 
 
 def _short_model(model: str) -> str:
-    """截断模型名，只保留最后一段，避免移动端换行。mimo/mimo-v2.5 → .../mimo-v2.5"""
-    if not model:
-        return model
-    parts = model.split("/")
-    if len(parts) <= 1:
-        return model
-    return f".../{parts[-1]}"
+    """返回完整模型名（不截断）。"""
+    return model
 
 
 def _compact(n: int) -> str:
