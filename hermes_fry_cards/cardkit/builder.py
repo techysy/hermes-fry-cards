@@ -564,13 +564,17 @@ def build_complete_card(
             border_color = "green"
         # 构建统一面板内容：先推理轮次，再工具步骤
         unified_children: list[dict] = []
-        for rnd in reasoning_rounds:
+        for i, rnd in enumerate(reasoning_rounds):
             if rnd["text"].strip():
+                # 复用流式阶段 text_el_id，避免与已完成卡片上现有元素重名（Duplicate ID）。
+                # 流式阶段 text_el_id 形如 reasoning_{c}_text，非空；若为空则用带索引后缀的唯一 ID，
+                # 绝不回落到固定 REASONING_TEXT_ELEMENT_ID，防止单轮 reasoning 在 merge 更新下重复。
+                text_el_id = rnd.get("text_el_id") or f"reasoning_text_{i}"
                 unified_children.append(_build_reasoning_panel(
                     text=rnd["text"],
                     elapsed_ms=rnd["elapsed_ms"],
                     expanded=panel_expanded,
-                    text_element_id=rnd.get("text_el_id") or None,  # 复用流式阶段 ID，避免完成态 Duplicate ID
+                    text_element_id=text_el_id,
                 ))
         if tool_steps_total:
             tool_panel = _build_tool_panel(tool_steps_total, tool_elapsed_ms, expanded=panel_expanded, element_id=None)
