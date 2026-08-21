@@ -1,8 +1,8 @@
-## 🍟 hermes-fry-cards v0.1.0-rc1
+## 🍟 hermes-fry-cards v0.1.0-rc2
 
 > 灵感来自 [hermes-lark-streaming](https://github.com/Cheerwhy/hermes-lark-streaming)，独立开发版本。
 
-### 主要功能
+### ✨ 主要功能
 
 - **流式卡片** — 打字机效果实时输出，按事件顺序动态渲染思考 / 工具 / 回答
 - **工具调用合并** — 多个工具调用更新同一 pending 面板，保持卡片紧凑
@@ -14,7 +14,20 @@
 - **Cron 推送** — 定时任务结果以卡片推送
 - **中英双语** — 根据飞书客户端语言自动切换
 
-### 安装
+### 🔧 本次修复（基于 dsh 代码审查）
+
+- 版本号统一为 `0.1.0-rc2`
+- footer 显示完整模型名，不再截断供应商
+- 修复 `reasoning_text` Duplicate ID 导致完成态卡片无法收尾（统一面板复用流式元素 ID）
+- 修复 `CardKit batch update failed: not find elementID: tool_panel`
+- 统一面板 header 空耗时不再产生尾部空格
+- 简化 `_completion_session` 冗余条件，明确 FAILED 收尾逻辑
+- `status` 命令复用 `marker_status()`，避免重复读文件
+- cron patcher 失败输出日志
+- `feishu.py` User-Agent 动态读取版本号
+- 阈值注释修正（余量 18 波动 + 2 footer）
+
+### 🚀 安装
 
 ```bash
 curl https://raw.githubusercontent.com/techysy/hermes-fry-cards/main/INSTALL.md
@@ -44,12 +57,6 @@ HERMES_PYTHON=~/.hermes/hermes-agent/venv/bin/python3
 $HERMES_PYTHON -m hermes_fry_cards uninstall
 $HERMES_PYTHON -m pip uninstall hermes-fry-cards
 ```
-
-### 后续计划
-
-- 完善测试覆盖
-- 支持更多自定义样式
-- 优化性能
 
 ---
 
