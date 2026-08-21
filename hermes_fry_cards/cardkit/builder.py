@@ -388,21 +388,19 @@ def _format_elapsed(ms: float) -> str:
 
 
 def _context_progress_bar(used: int, total: int, width: int = 8) -> str:
-    """生成上下文进度条，格式: 152.6K/1.0M [██░░░░░░] 15%"""
+    """生成上下文进度条，格式: 1.0m/1.0m [██░░░░░░] 15%"""
     if total <= 0:
         return ""
     pct = min(used / total * 100, 100)
     filled = round(pct / 100 * width)
     empty = width - filled
     bar = "█" * filled + "░" * empty
-    return f"{_compact(used)}/{_compact(total)} [{bar}] {pct:.0f}%"
-    if total <= 0:
-        return ""
-    pct = min(used / total * 100, 100)
-    filled = round(pct / 100 * width)
-    empty = width - filled
-    bar = "█" * filled + "░" * empty
-    return f"{_compact(used)}/{_compact(total)} [{bar}] {pct:.0f}%"
+    # 两端用统一单位，避免 1048k/1.0m 这种不一致
+    if total >= 1_000_000:
+        return f"{used / 1_000_000:.1f}m/{total / 1_000_000:.1f}m [{bar}] {pct:.0f}%"
+    if total >= 1_000:
+        return f"{used / 1_000:.1f}k/{total / 1_000:.1f}k [{bar}] {pct:.0f}%"
+    return f"{used}/{total} [{bar}] {pct:.0f}%"
 
 
 def build_streaming_tool_use_pending_panel() -> dict[str, Any]:
