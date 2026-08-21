@@ -247,6 +247,11 @@ class StreamingController:
                             steps=all_steps[seg.tool_offset:seg.tool_end_offset if seg.tool_end_offset else len(all_steps)],
                         ))
                         updated_tool_segs.append(seg)
+                        # 初始化工具面板总估算（首次创建，与 dirty 分支统一用全部步骤）
+                        estimate = estimate_tool_elements(0, len(all_steps), all_steps)
+                        session.tool_panel_estimate = estimate
+                        new_el_estimates[TOOL_PANEL_ELEMENT_ID] = estimate
+                        new_el_total += estimate
                     else:
                         # 面板已存在 → 跳过（后续 dirty 分支会更新）
                         seg.created = True
@@ -306,6 +311,8 @@ class StreamingController:
                     updated_tool_segs = []
                     new_el_total = 0
                     continue
+                # 合并面板模式下，工具面板是同一个元素，元素估算按增量累计，
+                # 避免每次把「全部工具步骤」重复计入 element_count 导致虚高拆卡。
                 estimate = estimate_tool_elements(start, end, all_steps)
                 # 找到共享面板的 element_id（第一个 tool segment 的 el_id）
                 shared_el_id = tool_panel_element_id or seg.el_id
@@ -313,8 +320,16 @@ class StreamingController:
                     build_tool_update_action(element_id=shared_el_id, steps=all_steps[start:end])
                 )
                 updated_tool_segs.append(seg)
-                new_el_estimates[shared_el_id] = estimate
-                new_el_total += estimate - seg.element_estimate
+                # 工具面板元素增量 = 当前总估算 - 上次记录的总估算（非当前段差值）
+                if shared_el_id not in new_el_estimates:
+                    delta = estimate - session.tool_panel_estimate
+                    session.tool_panel_estimate = estimate
+                    new_el_estimates[shared_el_id] = estimate
+                    new_el_total += delta
+                else:
+                    # 同一 flush 内多个 dirty 工具段共享面板：仅首次累加，后续不重复
+                    seg.created = True
+                    seg.dirty = False
 
         if actions and not await self._do_batch_update(
             session, segments, actions, new_el_ids, new_el_estimates, updated_tool_segs,
@@ -397,6 +412,7 @@ class StreamingController:
             seg.el_id: pre_flush_tool_steps[seg.tool_offset:tool_segment_end(seg, pre_flush_tool_steps)]
             for seg in updated_tool_segs
         }
+        pre_flush_tool_panel_estimate = session.tool_panel_estimate
         try:
             await self._client.cardkit_batch_update(
                 session.card_id,
@@ -419,13 +435,19 @@ class StreamingController:
                     if seg.type in (SegmentType.REASONING, SegmentType.ANSWER) and seg.text:
                         seg.dirty = True
             current_tool_steps = session.tool_use.build_display_steps()
+            # 合并面板：工具面板是共享元素，element_count 按面板总估算的增量统一累加一次，
+            # 避免多个工具段各自差值导致重复计数（element_count 虚高 → 过度拆卡）。
+            if TOOL_PANEL_ELEMENT_ID in new_el_estimates:
+                new_panel_estimate = new_el_estimates[TOOL_PANEL_ELEMENT_ID]
+                session.element_count += new_panel_estimate - pre_flush_tool_panel_estimate
+                session.tool_panel_estimate = new_panel_estimate
             for seg in updated_tool_segs:
                 offset_ok = pre_flush_tool_offsets.get(seg.el_id, -1) == seg.tool_end_offset
                 current_tool_slice = current_tool_steps[
                     seg.tool_offset:tool_segment_end(seg, current_tool_steps)
                 ]
                 tool_slice_ok = pre_flush_tool_slices.get(seg.el_id) == current_tool_slice
-                if seg.el_id in new_el_estimates:
+                if seg.el_id in new_el_estimates and seg.el_id != TOOL_PANEL_ELEMENT_ID:
                     estimate = new_el_estimates[seg.el_id]
                     session.element_count += estimate - seg.element_estimate
                     seg.element_estimate = estimate
@@ -548,6 +570,7 @@ class StreamingController:
         seal_card = build_complete_card(
             segments=seal_segments,
             all_tool_steps=all_steps,
+            footer_data=session.footer,
             footer_fields=[],
             footer_show_label=False,
             footer_enabled=False,
@@ -641,6 +664,7 @@ class StreamingController:
         session.element_count = 1  # loading element
         session.sequence = 1  # 新卡从 1 重新计数
         session.tool_panel_created = False  # 新卡需要重建 tool_panel
+        session.tool_panel_estimate = 0  # 新卡工具面板从 0 重新估算
         session.split_disabled = False
         session.split_index = split_idx
         for seg in segments[split_idx:]:
@@ -708,6 +732,8 @@ class StreamingController:
             session.split_index = 0
             session.element_count = 1  # loading element（与拆卡一致）
             session.tool_use = ToolUseTracker()
+            session.tool_panel_created = False
+            session.tool_panel_estimate = 0
 
             _logger.info(
                 "clarify_split: sealed old + new card msg=%s card=%s",

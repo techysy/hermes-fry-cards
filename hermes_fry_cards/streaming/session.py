@@ -65,6 +65,7 @@ class CardSession:
         "split_index",
         "state",
         "tool_panel_created",
+        "tool_panel_estimate",
         "tool_use",
     )
 
@@ -83,6 +84,7 @@ class CardSession:
         self.card_msg_id: str | None = None
         self.card_id: str | None = None
         self.tool_use = ToolUseTracker()
+        self.tool_panel_estimate: int = 0  # 合并面板模式下工具面板当前的总元素估算
         self.flush = FlushController(throttle_ms=CARDKIT_MS, loop=loop)
         self.footer: dict[str, Any] = {}
         self.sequence = 1
