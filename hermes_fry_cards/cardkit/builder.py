@@ -537,7 +537,7 @@ def build_complete_card(
             tool_panel = _build_tool_panel(tool_steps_total, tool_elapsed_ms, expanded=panel_expanded, element_id=None)
             if "elements" in tool_panel:
                 unified_children.extend(tool_panel["elements"])
-        # header: 🍟 model · 💭n · 🛠️n · ⌚️ elapsed
+        # header: 🍟 model · 💭n · 🛠️n · ⏳ context · ⌚️ elapsed
         model_name = _short_model((footer_data or {}).get("model") or "")
         # 优先用 tool_elapsed_ms，否则用 footer_data 的 duration，否则用 session 总耗时
         elapsed_ms = tool_elapsed_ms
@@ -547,7 +547,14 @@ def build_complete_card(
                 elapsed_ms = duration * 1000
         elapsed_str = _format_elapsed(elapsed_ms) if elapsed_ms else ""
         elapsed_part = f" · ⌚️ {elapsed_str}" if elapsed_str else ""
-        header_text = f"🍟 {model_name} · 💭{len(reasoning_rounds)} · 🛠️{len(tool_steps_total)}{elapsed_part}"
+        # 上下文信息：显示已用/总上下文窗口
+        context_part = ""
+        if footer_data:
+            ctx_used = footer_data.get("context_used", 0) or 0
+            ctx_max = footer_data.get("context_max", 0) or 0
+            if ctx_used > 0 and ctx_max > 0:
+                context_part = f" · ⏳ {ctx_used // 1000}K/{ctx_max // 1000}K"
+        header_text = f"🍟 {model_name} · 💭{len(reasoning_rounds)} · 🛠️{len(tool_steps_total)}{context_part}{elapsed_part}"
         unified_panel = {
             "tag": "collapsible_panel",
             "expanded": panel_expanded,
