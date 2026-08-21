@@ -533,7 +533,11 @@ def build_complete_card(
     for seg in segments:
         if seg.type == SegmentType.REASONING:
             if seg.text:
-                reasoning_rounds.append({"text": seg.text, "elapsed_ms": seg.elapsed_ms})
+                reasoning_rounds.append({
+                    "text": seg.text,
+                    "elapsed_ms": seg.elapsed_ms,
+                    "text_el_id": seg.text_el_id,  # 复用流式阶段的 text element id，避免完成态 Duplicate ID
+                })
         elif seg.type == SegmentType.TOOL:
             if not show_tool_use:
                 continue
@@ -566,6 +570,7 @@ def build_complete_card(
                     text=rnd["text"],
                     elapsed_ms=rnd["elapsed_ms"],
                     expanded=panel_expanded,
+                    text_element_id=rnd.get("text_el_id") or None,  # 复用流式阶段 ID，避免完成态 Duplicate ID
                 ))
         if tool_steps_total:
             tool_panel = _build_tool_panel(tool_steps_total, tool_elapsed_ms, expanded=panel_expanded, element_id=None)
