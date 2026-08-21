@@ -114,7 +114,7 @@ class StreamingController:
 
             reply_to_message_id = session.anchor_id or session.message_id
             card = build_streaming_card_v2(
-                show_tool_use=False,
+                show_tool_use=self._cfg.show_tool_use,
                 show_reasoning=False,
                 show_streaming_element=False,
                 header_enabled=self._cfg.header_enabled,
