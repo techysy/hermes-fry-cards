@@ -403,14 +403,20 @@ def _context_text(used: int, total: int) -> str:
         return ""
     pct = min(used / total * 100, 100)
     if total >= 1_000_000:
-        return f"{used / 1_000_000:.1f}m/{total / 1_000_000:.1f}m ({pct:.0f}%)"
+        # total 用 m，used 根据大小用 k 或 m
+        total_str = f"{total / 1_000_000:.1f}m"
+        if used < 1_000_000:
+            used_str = f"{used / 1_000:.1f}k"
+        else:
+            used_str = f"{used / 1_000_000:.1f}m"
+        return f"{used_str}/{total_str} ({pct:.0f}%)"
     if total >= 1_000:
         return f"{used / 1_000:.1f}k/{total / 1_000:.1f}k ({pct:.0f}%)"
     return f"{used}/{total} ({pct:.0f}%)"
 
 
 def _context_progress_with_text(used: int, total: int, width: int = 8) -> str:
-    """生成文本+进度条，格式: 20k/1.0m [██░░░░░░] 21%"""
+    """生成文本+进度条，格式: 55.6k/1.0m [██░░░░░░] 5%"""
     if total <= 0:
         return ""
     pct = min(used / total * 100, 100)
@@ -418,7 +424,12 @@ def _context_progress_with_text(used: int, total: int, width: int = 8) -> str:
     empty = width - filled
     bar = "█" * filled + "░" * empty
     if total >= 1_000_000:
-        return f"{used / 1_000_000:.1f}m/{total / 1_000_000:.1f}m [{bar}] {pct:.0f}%"
+        total_str = f"{total / 1_000_000:.1f}m"
+        if used < 1_000_000:
+            used_str = f"{used / 1_000:.1f}k"
+        else:
+            used_str = f"{used / 1_000_000:.1f}m"
+        return f"{used_str}/{total_str} [{bar}] {pct:.0f}%"
     if total >= 1_000:
         return f"{used / 1_000:.1f}k/{total / 1_000:.1f}k [{bar}] {pct:.0f}%"
     return f"{used}/{total} [{bar}] {pct:.0f}%"
