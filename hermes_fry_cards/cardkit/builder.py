@@ -522,12 +522,13 @@ def build_complete_card(
             border_color = "green"
         # 构建统一面板内容：先推理轮次，再工具步骤
         unified_children: list[dict] = []
-        for rnd in reasoning_rounds:
+        for i, rnd in enumerate(reasoning_rounds):
             if rnd["text"].strip():
                 unified_children.append(_build_reasoning_panel(
                     text=rnd["text"],
                     elapsed_ms=rnd["elapsed_ms"],
                     expanded=panel_expanded,
+                    text_element_id=f"reasoning_text_{i}" if len(reasoning_rounds) > 1 else REASONING_TEXT_ELEMENT_ID,
                 ))
         if tool_steps_total:
             tool_panel = _build_tool_panel(tool_steps_total, tool_elapsed_ms, expanded=panel_expanded, element_id=None)
