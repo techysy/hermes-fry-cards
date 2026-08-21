@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.0-rc4] - 2026-08-21
+
+### 新增
+
+- **进度条新增 block/block_text 样式** — 使用 ▪▫ 字符，更精致的进度显示
+  - `block`：`▪▪▪▫▫▫▫▫▫▫`
+  - `block_text`：`20k/1.0m [▪▪▪▫▫▫▫▫▫▫] 21%`
+
+---
+
 ## [0.1.0-rc3] - 2026-08-21
 
 ### 新增
