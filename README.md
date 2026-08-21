@@ -70,7 +70,18 @@ display:
     feishu:
       show_tool_use: true
       show_reasoning: true   # 展示推理过程
+      show_context: true     # 统一面板 header 显示上下文窗口
+      context_progress_bar: true  # true=进度条, false=纯文本
 ```
+
+### 上下文显示格式
+
+开启 `show_context` 后，统一面板 header 会显示上下文窗口使用量：
+
+| `context_progress_bar` | 显示效果 |
+|------------------------|----------|
+| `true`（默认） | `⏳ 0.2m/1.0m [█░░░░░░░] 15%` |
+| `false` | `⏳ 152k/1000k (15%)` |
 
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
@@ -80,6 +91,8 @@ display:
 | `width_mode` | 卡片宽度 (`default` / `compact` / `fill`) | `default` |
 | `show_tool_use` | 展示工具调用面板 | `true` |
 | `show_reasoning` | 展示推理过程 | `false` |
+| `show_context` | 统一面板 header 显示上下文窗口 | `false` |
+| `context_progress_bar` | 上下文用进度条（true）或纯文本（false） | `true` |
 
 ---
 
