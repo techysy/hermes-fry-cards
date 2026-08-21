@@ -91,17 +91,17 @@ class Config:
         """是否在统一面板 header 中显示上下文窗口信息.
 
         优先级：display.platforms.feishu.show_context → display.show_context，
-        默认 false.
+        默认 true.
         """
         display = self._reload().get("display")
         if not isinstance(display, dict):
-            return False
+            return True
         platforms = display.get("platforms")
         if isinstance(platforms, dict):
             feishu = platforms.get("feishu")
             if isinstance(feishu, dict) and "show_context" in feishu:
                 return bool(feishu["show_context"])
-        return bool(display.get("show_context", False))
+        return bool(display.get("show_context", True))
 
     @property
     def context_display_mode(self) -> str:
