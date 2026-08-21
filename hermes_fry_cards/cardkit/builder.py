@@ -495,7 +495,11 @@ def build_complete_card(
     for seg in segments:
         if seg.type == SegmentType.REASONING:
             if seg.text:
-                reasoning_rounds.append({"text": seg.text, "elapsed_ms": seg.elapsed_ms})
+                reasoning_rounds.append({
+                    "text": seg.text,
+                    "elapsed_ms": seg.elapsed_ms,
+                    "text_el_id": seg.text_el_id,
+                })
         elif seg.type == SegmentType.TOOL:
             if not show_tool_use:
                 continue
@@ -524,11 +528,15 @@ def build_complete_card(
         unified_children: list[dict] = []
         for i, rnd in enumerate(reasoning_rounds):
             if rnd["text"].strip():
+                # 复用流式阶段的 text_el_id，避免与现有元素重名（Duplicate ID）
+                text_el_id = rnd.get("text_el_id") or (
+                    f"reasoning_text_{i}" if len(reasoning_rounds) > 1 else REASONING_TEXT_ELEMENT_ID
+                )
                 unified_children.append(_build_reasoning_panel(
                     text=rnd["text"],
                     elapsed_ms=rnd["elapsed_ms"],
                     expanded=panel_expanded,
-                    text_element_id=f"reasoning_text_{i}" if len(reasoning_rounds) > 1 else REASONING_TEXT_ELEMENT_ID,
+                    text_element_id=text_el_id,
                 ))
         if tool_steps_total:
             tool_panel = _build_tool_panel(tool_steps_total, tool_elapsed_ms, expanded=panel_expanded, element_id=None)
