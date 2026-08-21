@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fix
 - 移动端模型名过长导致换行 — footer 和统一面板 header 的模型名截断为 `.../model-name`（如 `mimo/mimo-v2.5` → `.../mimo-v2.5`）
 - 修复测试中 `_build_footer_elements` 返回值索引错误（`result[1]` → `result[0]`）
+- 拆卡后 `tool_panel_created` 未重置，导致新卡缺少 `tool_panel` 元素引发 300313 错误
 
 ## [0.1.0-rc1] - 2026-08-21
 
@@ -55,3 +56,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Truncate long model names on mobile to prevent line wrap (`mimo/mimo-v2.5` → `.../mimo-v2.5`)
 - Fix test index error in `_build_footer_elements` return value (`result[1]` → `result[0]`)
+- Reset `tool_panel_created` after card split to prevent missing `tool_panel` element (300313 error)
