@@ -9,8 +9,7 @@
 
 [English](README.en.md) · [安装指南](INSTALL.md)
 
-<img width="672" height="313" alt="image" src="https://github.com/user-attachments/assets/6c525590-579d-4319-91df-281d10b90f7f" />
-
+![cover](assets/cover.jpg)
 
 ---
 
@@ -144,10 +143,10 @@ $HERMES_PYTHON -m pip uninstall hermes-fry-cards
 
 ## 🔗 相关项目
 
-| 项目 | 说明 |
-|------|------|
-| [aiduPOP](https://github.com/monkey2jack/aiduPOP) | 爱嘟泡波卡 — Hermes 飞书流式卡片插件 |
-| [lark-hls-v2](https://github.com/BcubBo/lark-hls-v2) | 飞书 CardKit v2.0 流式卡片插件 for Hermes Agent |
+| 项目 | 说明 | 特性 |
+|------|------|------|
+| [aiduPOP](https://github.com/monkey2jack/aiduPOP) | 爱嘟泡波卡 — Hermes 飞书流式卡片插件 | 🫧 泡波样式 · 透明治愈 · 灵动 UI |
+| [lark-hls-v2](https://github.com/BcubBo/lark-hls-v2) | 飞书 CardKit v2.0 流式卡片插件 for Hermes Agent | 🎭 动态台词 · Fisher-Yates 洗牌 · 场景检测 |
 
 ---
 
