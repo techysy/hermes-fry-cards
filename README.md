@@ -3,6 +3,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Hermes](https://img.shields.io/badge/Hermes-%E2%89%A50.14.0-2463eb)](https://github.com/NousResearch/hermes-agent)
 [![Python](https://img.shields.io/badge/Python-%E2%89%A53.11-blue)](https://www.python.org/)
+[![当前版本](https://img.shields.io/badge/Release-v0.1.0--rc2-2463eb?logo=github&logoColor=white)](https://github.com/techysy/hermes-fry-cards/releases)
+[![上游版本](https://img.shields.io/badge/Upstream-v0.12.0-1E88E5?logo=hermes&logoColor=white&label=hermes-lark-streaming)](https://github.com/Cheerwhy/hermes-lark-streaming)
 
 [Hermes](https://github.com/NousResearch/hermes-agent) Gateway 飞书流式卡片插件 — 基于 CardKit v2.0 的进程内流式消息卡片。
 
