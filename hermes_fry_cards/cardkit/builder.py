@@ -387,14 +387,18 @@ def _format_elapsed(ms: float) -> str:
     return f"{seconds:.1f}s" if seconds < 60 else f"{int(seconds // 60)}m {int(seconds % 60)}s"
 
 
-def _context_progress_bar(used: int, total: int, width: int = 8) -> str:
-    """生成上下文进度条，格式: ██░░░░░░░░"""
+def _context_progress_bar(used: int, total: int, width: int = 8, filled: str = "█", empty: str = "░") -> str:
+    """生成上下文进度条，格式: ██░░░░░░"""
     if total <= 0:
         return ""
     pct = min(used / total * 100, 100)
-    filled = round(pct / 100 * width)
-    empty = width - filled
-    return "█" * filled + "░" * empty
+    n = round(pct / 100 * width)
+    return filled * n + empty * (width - n)
+
+
+def _context_progress_block(used: int, total: int, width: int = 10) -> str:
+    """生成▪▫ 样式进度条，格式: ▪▪▪▫▫▫▫▫▫▫"""
+    return _context_progress_bar(used, total, width, filled="▪", empty="▫")
 
 
 def _context_text(used: int, total: int) -> str:
@@ -415,14 +419,12 @@ def _context_text(used: int, total: int) -> str:
     return f"{used}/{total} ({pct:.0f}%)"
 
 
-def _context_progress_with_text(used: int, total: int, width: int = 8) -> str:
+def _context_progress_with_text(used: int, total: int, width: int = 8, filled: str = "█", empty: str = "░") -> str:
     """生成文本+进度条，格式: 55.6k/1.0m [██░░░░░░] 5%"""
     if total <= 0:
         return ""
     pct = min(used / total * 100, 100)
-    filled = round(pct / 100 * width)
-    empty = width - filled
-    bar = "█" * filled + "░" * empty
+    bar = _context_progress_bar(used, total, width, filled, empty)
     if total >= 1_000_000:
         total_str = f"{total / 1_000_000:.1f}m"
         if used < 1_000_000:
@@ -604,6 +606,10 @@ def build_complete_card(
                         context_part = f" · {_context_text(ctx_used, ctx_max)}"
                     elif mode == "bar":
                         context_part = f" · {_context_progress_bar(ctx_used, ctx_max)}"
+                    elif mode == "block":
+                        context_part = f" · {_context_progress_block(ctx_used, ctx_max)}"
+                    elif mode == "block_text":
+                        context_part = f" · {_context_progress_with_text(ctx_used, ctx_max, filled='▪', empty='▫')}"
                     else:  # text_bar
                         context_part = f" · {_context_progress_with_text(ctx_used, ctx_max)}"
         header_text = f"🍟 {model_name} · 💭{len(reasoning_rounds)} · 🔧{len(tool_steps_total)}{context_part}{elapsed_part}"
