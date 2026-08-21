@@ -180,7 +180,24 @@ $HERMES_PYTHON -m pip uninstall hermes-fry-cards
 
 ---
 
-## ⚠️ 注意事项
+## 故障排查
+
+| 现象 | 原因 | 解决方案 |
+|------|------|----------|
+| `/retry` 后卡片没出现，回复是纯文本 | `retry_event.message_id` 缺失导致 `on_message_started` 未创建 session | 正常现象，retry 走的是重新发送消息流程，流式卡片会重新创建 |
+| CardKit `300313` 报错 | 卡片元素接近飞书 200 上限 | 等待自动拆分为多张卡片；若持续报错尝试缩短对话 |
+| 卡片卡住不更新 | 消息被撤回/删除触发了 `UnavailableGuard` | 正常行为，撤回后自动终止更新 |
+| 图片不显示 | 图片上传失败或 markdown 格式错误 | 检查图片 URL 是否可访问；确认飞书 app 有图片上传权限 |
+| Footer 不显示 | `footer.enabled` 默认开启但可能被配置覆盖 | 检查 `streaming.footer.enabled: true` |
+| 推理/工具面板不展开 | `panel_expanded` 默认 `false`（折叠） | 设为 `true` 保持展开 |
+| Hook 丢失（Hermes 升级后无卡片） | Hermes 升级覆盖了已 patch 的文件 | 重新运行 `verify` + `install`，然后 `gateway restart` |
+| `verify` 报告 `Incompatible:` | Hermes 版本不兼容 | 升级到 `>= 0.14.0` |
+| 流式卡片变纯文本回复 | CardKit 创建失败，自动 fallback | 检查飞书凭据是否正确；查看 gateway 日志 |
+| `status` 显示 `warning: running under ...` | CLI 使用的 Python 不是 Hermes 的 venv | 用 `$HERMES_PYTHON` 重新执行 |
+
+---
+
+## 注意事项
 
 - `install` 会修改 `~/.hermes/hermes-agent/gateway/run.py` 和 `cron/scheduler.py`，自动创建 `.hermes_lark.bak` 备份
 - Hermes 更新后需重新运行 `verify` + `install`
