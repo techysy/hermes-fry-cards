@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 新增
 
+- **限制 reasoning 面板数量** — 兼容「不支持分段思考」的模型（如 deepseek-v4-flash）
+  - 新增配置 `display.platforms.feishu.max_reasoning_panels`（默认 3）
+  - 超过上限后，后续 reasoning 片段合并进最后一个面板，不再新建独立面板
+  - 修复卡片元素溢出（`300305 element exceeds the limit`）
 - **进度条新增 block/block_text 样式** — 使用 ▪▫ 字符，更精致的进度显示
   - `block`：`▪▪▪▫▫▫▫▫▫▫`
   - `block_text`：`20k/1.0m [▪▪▪▫▫▫▫▫▫▫] 21%`

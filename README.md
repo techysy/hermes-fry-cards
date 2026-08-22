@@ -71,7 +71,8 @@ display:
       show_tool_use: true
       show_reasoning: true   # 展示推理过程
       show_context: true     # 统一面板 header 显示上下文窗口
-      context_display_mode: text_bar  # text / bar / text_bar
+      context_display_mode: text_bar  # text / bar / text_bar / block / block_text
+      max_reasoning_panels: 3  # 最多保留的独立推理面板数（超出后合并，防元素溢出）
 ```
 
 ### 上下文显示格式
@@ -95,7 +96,8 @@ display:
 | `show_tool_use` | 展示工具调用面板 | `true` |
 | `show_reasoning` | 展示推理过程 | `false` |
 | `show_context` | 统一面板 header 显示上下文窗口 | `false` |
-| `context_display_mode` | 上下文显示格式：`text` / `bar` / `text_bar` | `text` |
+| `context_display_mode` | 上下文显示格式：`text` / `bar` / `text_bar` / `block` / `block_text` | `text` |
+| `max_reasoning_panels` | 最多保留的独立推理面板数（超出后合并，防元素溢出） | `3` |
 
 ---
 
