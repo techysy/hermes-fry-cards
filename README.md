@@ -171,10 +171,30 @@ $HERMES_PYTHON -m pip uninstall hermes-fry-cards
 
 ## 🔄 热更新 & 网关重启说明
 
-本插件通过 AST 注入 hook 到 Hermes 的 `gateway/run.py` 和 `cron/scheduler.py`，**修改插件代码或配置后必须重启网关才能生效**（运行中的进程不会热加载新代码）。
+本插件通过 AST 注入 hook 到 Hermes 的 `gateway/run.py` 和 `cron/scheduler.py`。**部分配置支持热更新（无需重启），但插件代码改动和部分结构类配置需要重启网关才能生效**。
 
-- ❌ **不支持热更新** — 改代码 / 改配置后需要重启
-- ✅ **可以无限重启** — 重启不会损坏任何东西，可放心反复执行
+### ✅ 支持热更新（改 config.yaml 后下一条消息即生效）
+
+以下 `display` 显示 / 样式类配置项，每次渲染都会从磁盘重读，**无需重启**：
+
+| 配置项 | 说明 |
+|--------|------|
+| `show_reasoning` | 展示推理过程（`/reasoning` 命令即运行时切换此配置） |
+| `show_tool_use` | 展示工具调用面板 |
+| `show_context` | 统一面板 header 显示上下文窗口 |
+| `context_display_mode` | 上下文显示格式：`text` / `bar` / `text_bar` |
+| `max_reasoning_panels` | 最多独立推理面板数（防元素溢出） |
+| `unified_panel_min_duration` | 统一面板最小展示耗时（秒） |
+| `truncate_model_name` | 截断模型名 |
+
+### ⚠️ 需要重启网关（`hermes gateway restart`）
+
+以下改动必须重启，运行中的进程不会热加载：
+
+- **插件代码修改**（`git pull` 更新、改源码）
+- `streaming.enabled` 开关
+- `streaming.header` / `footer` / `body` / `width_mode` 等 streaming 结构类配置
+- 飞书凭据 `app_id` / `app_secret`
 
 ```bash
 hermes gateway restart
@@ -183,6 +203,8 @@ hermes gateway restart
 > ⚠️ 注意：`hermes gateway restart` 需要**在 gateway 进程之外的独立 shell** 中执行。
 > 若从 gateway 进程内部（如通过 AI 对话让 agent 执行）触发，SIGTERM 会传播到子进程，
 > 重启命令本身会被杀掉。请在本地终端手动运行。
+
+> ✅ 重启不会损坏任何东西，可放心反复执行（**可以无限重启**）。
 
 重启后的效果验证：`hermes_fry_cards status` 显示所有 hook `installed`，飞书渠道连接正常即可。
 
