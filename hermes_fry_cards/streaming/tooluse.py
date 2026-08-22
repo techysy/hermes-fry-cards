@@ -215,6 +215,15 @@ def _build_display_block(
             return None
         if sanitizer == "command":
             normalized = redact_inline_secrets(normalized)
+        # 远程图片 URL 在 CardKit 中是非法 image key，包进代码围栏避免 200570
+        if "![" in normalized and "http" in normalized:
+            from .image import strip_remote_images
+
+            stripped = strip_remote_images(normalized)
+            if stripped != normalized:
+                normalized = stripped.strip()
+                if not normalized:
+                    return None
         if normalized.startswith("{") or normalized.startswith("["):
             try:
                 parsed = json.loads(normalized)

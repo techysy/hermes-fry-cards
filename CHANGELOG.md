@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.0-rc6] - 2026-08-22
+
+### 修复
+
+- **卡片元素超限（300305）强制拆卡恢复** — 补全 rc5 遗漏的独立错误码路径
+  - 新增 `CARDKIT_ELEMENT_LIMIT_TOTAL = 300305` 识别，`_handle_flush_error` 告警
+  - 当卡片实际元素总数超过飞书硬上限时，自动封印旧卡、创建新卡，并把未创建的
+    segment 迁移到新卡继续流式，避免消息永久卡在「处理中」
+- **远程图片 URL 过滤** — CardKit 拒绝远程 URL 作为 image key（`200570 invalid image keys`），
+  工具输出等无法走异步上传路径的文本先 strip 远程图片引用（保留飞书 `img_*` key），
+  并包进代码围栏避免渲染失败
+
+---
+
 ## [0.1.0-rc5] - 2026-08-21
 
 ### 新增

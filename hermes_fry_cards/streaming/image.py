@@ -13,7 +13,22 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger("hermes_fry_cards")
 
-_IMG_PATTERN = re.compile(r"!\[.*?\]\((https?://[^\s)]+)\)")
+_IMG_PATTERN = re.compile(r"!\[.*?\]\((https?[^\s)]+)\)")
+
+
+def strip_remote_images(text: str) -> str:
+    """移除文本中所有远程图片引用（http/https），保留飞书 img_key 引用.
+
+    CardKit 拒绝远程 URL 作为 image key（code 200570 invalid image keys），
+    工具输出等无法走异步上传路径的文本需要先 strip 再渲染.
+    """
+    if "![" not in text:
+        return text
+
+    def _keep_img_key(m: re.Match) -> str:
+        return str(m.group(1)).startswith("img_") and str(m.group(0)) or ""
+
+    return _IMG_PATTERN.sub(_keep_img_key, text)
 
 
 class ImageResolver:

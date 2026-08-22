@@ -84,6 +84,7 @@ class FeishuAPIError(RuntimeError):
 CARDKIT_RATE_LIMITED = 230020  # 频控
 CARDKIT_CONTENT_FAILED = 230099  # 卡片内容创建失败（通用码，需检查子错误）
 CARDKIT_ELEMENT_LIMIT = 11310  # 子码: 卡片元素数量超限
+CARDKIT_ELEMENT_LIMIT_TOTAL = 300305  # 独立码: 卡片元素总数超限（总元素数 > 硬上限）
 CARDKIT_STREAMING_CLOSED = 300309  # 卡片流式模式已关闭
 MSG_NOT_FOUND = 1000023  # 消息不存在/已删除
 

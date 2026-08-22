@@ -15,6 +15,7 @@ from ..cardkit.markdown import (
 from ..feishu import (
     CARDKIT_CONTENT_FAILED,
     CARDKIT_ELEMENT_LIMIT,
+    CARDKIT_ELEMENT_LIMIT_TOTAL,
     CARDKIT_RATE_LIMITED,
     CARDKIT_STREAMING_CLOSED,
     FeishuAPIError,
@@ -489,8 +490,73 @@ class StreamingController:
                         )
                         break
             self._handle_flush_error(e)
+            # 卡片元素总数超限（300305）：element_count 追踪失真导致卡片实际元素数
+            # 超过飞书硬上限，当前卡已无法写入任何新元素。强制拆卡到新卡继续流式。
+            if e.code == CARDKIT_ELEMENT_LIMIT_TOTAL and not session.split_disabled:
+                try:
+                    await self._force_split_on_element_limit(session)
+                except Exception:
+                    _logger.warning(
+                        "CardKit force-split on element limit failed, msg=%s",
+                        session.message_id[:12],
+                        exc_info=True,
+                    )
             return False
         return True
+
+    async def _force_split_on_element_limit(self, session: CardSession) -> None:
+        """卡片元素总数已达飞书硬上限（300305）时强制拆卡。
+
+        当 element_count 追踪失真（低于卡片实际元素数）导致卡片真实元素数
+        超过飞书硬上限时，流式卡片已无法写入任何新元素。此方法封印旧卡、
+        创建新卡，并把尚未创建的 segment 迁移到新卡，让后续 flush 在新卡上
+        继续流式输出。
+        """
+        assert self._client is not None
+        if session.split_disabled or not session.has_card:
+            return
+        segment_state = session.segment_state
+        if segment_state is None:
+            return
+        segments = segment_state.segments
+        seal_start_idx = session.split_index
+        seal_segments = [s for s in segments[seal_start_idx:] if s.created]
+
+        new_card = await self._create_streaming_card(session)
+        if new_card is None:
+            session.split_disabled = True  # 降级：继续写当前卡
+            _logger.warning(
+                "CardKit force-split: create new card failed, disabling split, msg=%s",
+                session.message_id[:12],
+            )
+            return
+
+        old_card_id = session.card_id
+        assert old_card_id is not None
+        await self._seal_current_card(
+            session, seal_segments, card_id=old_card_id,
+        )
+
+        new_card_id, new_msg_id = new_card
+        session.set_card(card_id=new_card_id, card_msg_id=new_msg_id)
+        session.element_count = 1  # loading element
+        session.sequence = 1  # 新卡从 1 重新计数
+        session.tool_panel_created = False
+        session.tool_panel_estimate = 0
+        session.split_disabled = False
+        # 未创建 segment 迁移到新卡，标记 dirty 以便下一轮 flush 重新 add。
+        # 已创建 segment 保留在封印后的旧卡上，无需重置。
+        for seg in segments[seal_start_idx:]:
+            if not seg.created:
+                seg.created = False
+                seg.dirty = True
+        _logger.info(
+            "CardKit force-split on element limit: msg=%s old_card=%s sealed=%d new_card=%s",
+            session.message_id[:12],
+            old_card_id[:12],
+            len(seal_segments),
+            new_card_id[:12],
+        )
 
     async def _maybe_rollover_tool_segment(
         self,
@@ -747,6 +813,9 @@ class StreamingController:
         if e.code == CARDKIT_RATE_LIMITED:
             return
         if e.code == CARDKIT_STREAMING_CLOSED:
+            return
+        if e.code == CARDKIT_ELEMENT_LIMIT_TOTAL:
+            _logger.warning("CardKit card total element limit exceeded (code=300305)")
             return
         if e.code == CARDKIT_CONTENT_FAILED:
             sub_code = e.extract_sub_code()
