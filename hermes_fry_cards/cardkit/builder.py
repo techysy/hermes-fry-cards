@@ -436,6 +436,14 @@ def _context_text(used: int, total: int) -> str:
     return f"{used}/{total} ({pct:.0f}%)"
 
 
+def _context_pct(used: int, total: int) -> str:
+    """生成上下文使用百分比，格式: 35%"""
+    if total <= 0:
+        return ""
+    pct = min(used / total * 100, 100)
+    return f"{pct:.0f}%"
+
+
 def _context_progress_with_text(used: int, total: int, width: int = 8, filled: str = "█", empty: str = "░") -> str:
     """生成文本+进度条，格式: 55.6k/1.0m [██░░░░░░] 5%"""
     if total <= 0:
@@ -626,9 +634,9 @@ def build_complete_card(
                     if mode == "text":
                         context_part = f" · {_context_text(ctx_used, ctx_max)}"
                     elif mode == "bar":
-                        context_part = f" · [{_context_progress_bar(ctx_used, ctx_max)}]"
+                        context_part = f" · [{_context_progress_bar(ctx_used, ctx_max)}] {_context_pct(ctx_used, ctx_max)}"
                     elif mode == "block":
-                        context_part = f" · [{_context_progress_block(ctx_used, ctx_max)}]"
+                        context_part = f" · [{_context_progress_block(ctx_used, ctx_max)}] {_context_pct(ctx_used, ctx_max)}"
                     elif mode == "block_text":
                         context_part = f" · {_context_progress_with_text(ctx_used, ctx_max, filled='▪', empty='▫')}"
                     else:  # text_bar
