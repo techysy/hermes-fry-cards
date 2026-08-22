@@ -55,11 +55,15 @@ class SegmentState:
     __slots__ = (
         "_counter",
         "segments",
+        "max_reasoning_panels",
     )
 
-    def __init__(self) -> None:
+    def __init__(self, max_reasoning_panels: int = 3) -> None:
         self._counter = 0
         self.segments: list[Segment] = []
+        # 限制独立 reasoning 面板数量，超出后合并进最后一个 reasoning 面板，
+        # 避免「不支持分段思考」的模型频繁切换 thinking/tool 时产生海量面板导致卡片元素溢出。
+        self.max_reasoning_panels = max_reasoning_panels
 
     def _new_reasoning(self, text: str) -> Segment:
         c = self._counter
@@ -104,8 +108,18 @@ class SegmentState:
         if self.segments and self.segments[-1].type == SegmentType.REASONING:
             self.segments[-1].text += text
             self.segments[-1].dirty = True
-        else:
-            self._new_reasoning(text)
+            return
+
+        # 达到 reasoning 面板上限：不新建面板，把文本合并进最后一个 reasoning 面板，
+        # 避免 thinking/tool 频繁交替时产生海量独立面板导致元素溢出。
+        reasoning_count = sum(1 for s in self.segments if s.type == SegmentType.REASONING)
+        if reasoning_count >= self.max_reasoning_panels:
+            for seg in reversed(self.segments):
+                if seg.type == SegmentType.REASONING:
+                    seg.text += text
+                    seg.dirty = True
+                    return
+        self._new_reasoning(text)
 
     def on_answer_delta(self, text: str) -> None:
         """处理 answer 增量，同类型追加否则新建 segment."""

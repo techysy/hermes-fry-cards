@@ -104,6 +104,33 @@ class Config:
         return bool(display.get("show_context", True))
 
     @property
+    def max_reasoning_panels(self) -> int:
+        """流式卡片最多保留的独立 reasoning 面板数.
+
+        超过后后续 reasoning 片段合并进最后一个 reasoning 面板，避免
+        「不支持分段思考」的模型频繁切换 thinking/tool 时产生海量面板
+        导致卡片元素溢出（飞书硬上限 200）。
+
+        优先级：display.platforms.feishu.max_reasoning_panels → display.max_reasoning_panels，
+        默认 3.
+        """
+        display = self._reload().get("display")
+        if not isinstance(display, dict):
+            return 3
+        platforms = display.get("platforms")
+        if isinstance(platforms, dict):
+            feishu = platforms.get("feishu")
+            if isinstance(feishu, dict) and "max_reasoning_panels" in feishu:
+                try:
+                    return max(1, int(feishu["max_reasoning_panels"]))
+                except (TypeError, ValueError):
+                    pass
+        try:
+            return max(1, int(display.get("max_reasoning_panels", 3)))
+        except (TypeError, ValueError):
+            return 3
+
+    @property
     def context_display_mode(self) -> str:
         """上下文显示模式.
 

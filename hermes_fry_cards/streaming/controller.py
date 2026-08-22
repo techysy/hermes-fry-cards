@@ -106,7 +106,7 @@ class StreamingController:
             return
         session.state = SessionState.CREATING
         if session.segment_state is None:
-            session.segment_state = SegmentState()
+            session.segment_state = SegmentState(max_reasoning_panels=self._cfg.max_reasoning_panels)
 
         try:
             await self._ensure_init()
@@ -728,7 +728,7 @@ class StreamingController:
             )
 
             # 重置内容，新卡承载 clarify 后的输出
-            session.segment_state = SegmentState()
+            session.segment_state = SegmentState(max_reasoning_panels=self._cfg.max_reasoning_panels)
             session.split_index = 0
             session.element_count = 1  # loading element（与拆卡一致）
             session.tool_use = ToolUseTracker()
