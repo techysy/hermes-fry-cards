@@ -131,6 +131,33 @@ class Config:
             return 3
 
     @property
+    def unified_panel_min_duration(self) -> float:
+        """统一面板最小展示耗时阈值（秒）.
+
+        回复耗时 ≤ 该阈值，或没有工具调用时，不展示统一面板
+        （模型名/推理数/工具数/上下文 header + 推理折叠面板），
+        避免短回复的冗余头部。
+
+        优先级：display.platforms.feishu.unified_panel_min_duration → display.unified_panel_min_duration，
+        默认 5.
+        """
+        display = self._reload().get("display")
+        if not isinstance(display, dict):
+            return 5.0
+        platforms = display.get("platforms")
+        if isinstance(platforms, dict):
+            feishu = platforms.get("feishu")
+            if isinstance(feishu, dict) and "unified_panel_min_duration" in feishu:
+                try:
+                    return max(0.0, float(feishu["unified_panel_min_duration"]))
+                except (TypeError, ValueError):
+                    pass
+        try:
+            return max(0.0, float(display.get("unified_panel_min_duration", 5)))
+        except (TypeError, ValueError):
+            return 5.0
+
+    @property
     def truncate_model_name(self) -> bool:
         """是否截断模型名（or/lc/LongCat-2.0 → ⇲LongCat-2.0）.
 
@@ -168,10 +195,10 @@ class Config:
             feishu = platforms.get("feishu")
             if isinstance(feishu, dict) and "context_display_mode" in feishu:
                 mode = feishu["context_display_mode"]
-                if mode in _VALID_MODES:
+                if mode in ("text", "bar", "block", "block_text", "text_bar"):
                     return mode
         mode = display.get("context_display_mode")
-        if mode in _VALID_MODES:
+        if mode in ("text", "bar", "block", "block_text", "text_bar"):
             return mode
         return "text"
 

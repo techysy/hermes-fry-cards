@@ -421,6 +421,7 @@ class TestBuildSegmentCompleteCard:
         card = build_complete_card(
             segments=[_seg("reasoning", "think"), _seg("answer", "reply")],
             all_tool_steps=[],
+            footer_data={"duration": 8.0},  # 思考较久（>5s），应展示统一面板
         )
         contents = [str(e) for e in card["body"]["elements"]]
         r_idx = next(i for i, c in enumerate(contents) if "think" in c)

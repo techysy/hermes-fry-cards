@@ -581,7 +581,24 @@ def build_complete_card(
                 elements.append({"tag": "markdown", "content": chunk, "text_size": body_text_size})
 
     # 推理+工具合并成底部一个统一面板（在答案之后、footer 之前）
-    if (reasoning_rounds or tool_steps_total) and show_tool_use:
+    # 短回复或无工具调用时不展示统一面板（避免冗余 header）
+    _panel_duration_ms = 0
+    if footer_data:
+        _d = footer_data.get("duration")
+        if isinstance(_d, (int, float)) and _d > 0:
+            _panel_duration_ms = _d * 1000
+    _min_duration_ms = 0
+    try:
+        from ..config import Config
+        _min_duration_ms = float(Config().unified_panel_min_duration) * 1000
+    except Exception:
+        _min_duration_ms = 5000
+    _show_unified_panel = (
+        (reasoning_rounds or tool_steps_total)
+        and show_tool_use
+        and (tool_steps_total or _panel_duration_ms >= _min_duration_ms)
+    )
+    if _show_unified_panel:
         # 状态边框颜色：完成=绿色, 中断=黄色, 异常=红色
         if is_error:
             border_color = "red"
