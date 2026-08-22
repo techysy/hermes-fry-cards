@@ -131,6 +131,23 @@ class Config:
             return 3
 
     @property
+    def truncate_model_name(self) -> bool:
+        """是否截断模型名（or/lc/LongCat-2.0 → ⇲LongCat-2.0）.
+
+        优先级：display.platforms.feishu.truncate_model_name → display.truncate_model_name，
+        默认 False.
+        """
+        display = self._reload().get("display")
+        if not isinstance(display, dict):
+            return False
+        platforms = display.get("platforms")
+        if isinstance(platforms, dict):
+            feishu = platforms.get("feishu")
+            if isinstance(feishu, dict) and "truncate_model_name" in feishu:
+                return bool(feishu["truncate_model_name"])
+        return bool(display.get("truncate_model_name", False))
+
+    @property
     def context_display_mode(self) -> str:
         """上下文显示模式.
 

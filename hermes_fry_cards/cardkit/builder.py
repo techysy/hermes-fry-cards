@@ -23,6 +23,19 @@ _LOADING_ELEMENT_ID = "loading_icon"
 _LOADING_IMG_KEY = "img_v3_02vb_496bec09-4b43-4773-ad6b-0cdd103cd2bg"
 
 
+def _truncate_model(name: str) -> str:
+    """截断模型名：or/lc/LongCat-2.0 → ⇲LongCat-2.0（保留最后一段）.
+
+    如果开启 truncate_model_name 才调用；未开启时原样返回。
+    """
+    if not name:
+        return name
+    parts = name.split("/")
+    if len(parts) > 1:
+        return f"⇲{parts[-1]}"
+    return name
+
+
 def _collapsible_panel(
     *,
     expanded: bool,
@@ -349,6 +362,10 @@ def _render_footer_field(
 
     if name == "model":
         v = data.get("model") or None
+        if v:
+            from ..config import Config
+            if Config().truncate_model_name:
+                v = _truncate_model(v)
         return v, v
 
     if name == "tokens":
@@ -584,6 +601,10 @@ def build_complete_card(
                 unified_children.extend(tool_panel["elements"])
         # header: 🍟 model · 💭n · 🔧n · ⏳ context · ⏱️ elapsed
         model_name = (footer_data or {}).get("model") or ""
+        if model_name:
+            from ..config import Config
+            if Config().truncate_model_name:
+                model_name = _truncate_model(model_name)
         # 优先用 tool_elapsed_ms，否则用 footer_data 的 duration，否则用 session 总耗时
         elapsed_ms = tool_elapsed_ms
         if not elapsed_ms and footer_data:
