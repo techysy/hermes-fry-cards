@@ -28,13 +28,13 @@ class TestEnabled:
         assert cfg.enabled is False
 
     @pytest.mark.parametrize("raw", [{"streaming": {}}, {}], ids=["missing-key", "missing-section"])
-    def test_enabled_defaults_false_when_missing(self, raw: dict[str, Any]) -> None:
+    def test_enabled_defaults_true_when_missing(self, raw: dict[str, Any]) -> None:
         cfg = _make_config(raw)
-        assert cfg.enabled is False
+        assert cfg.enabled is True
 
     def test_streaming_section_not_dict(self) -> None:
         cfg = _make_config({"streaming": "invalid"})
-        assert cfg.enabled is False
+        assert cfg.enabled is True
 
 
 class TestFooterFields:
@@ -53,15 +53,15 @@ class TestFooterFields:
     )
     def test_empty_footer_configuration_returns_default(self, raw: dict[str, Any]) -> None:
         cfg = _make_config(raw)
-        assert cfg.footer_fields == [["status", "elapsed", "context", "model"]]
+        assert cfg.footer_fields == [["status", "elapsed", "model", "context"]]
 
     def test_footer_not_dict_returns_default(self) -> None:
         cfg = _make_config({"streaming": {"footer": "invalid"}})
-        assert cfg.footer_fields == [["status", "elapsed", "context", "model"]]
+        assert cfg.footer_fields == [["status", "elapsed", "model", "context"]]
 
     def test_fields_non_list_returns_default(self) -> None:
         cfg = _make_config({"streaming": {"footer": {"fields": "status"}}})
-        assert cfg.footer_fields == [["status", "elapsed", "context", "model"]]
+        assert cfg.footer_fields == [["status", "elapsed", "model", "context"]]
 
 
 class TestHeaderEnabled:
@@ -78,13 +78,13 @@ class TestHeaderEnabled:
         [{"streaming": {"header": {}}}, {"streaming": {}}],
         ids=["missing-key", "missing-section"],
     )
-    def test_header_enabled_defaults_false_when_missing(self, raw: dict[str, Any]) -> None:
+    def test_header_enabled_defaults_true_when_missing(self, raw: dict[str, Any]) -> None:
         cfg = _make_config(raw)
-        assert cfg.header_enabled is False
+        assert cfg.header_enabled is True
 
-    def test_header_not_dict_defaults_false(self) -> None:
+    def test_header_not_dict_defaults_true(self) -> None:
         cfg = _make_config({"streaming": {"header": "invalid"}})
-        assert cfg.header_enabled is False
+        assert cfg.header_enabled is True
 
 
 class TestFooterEnabled:
@@ -101,13 +101,13 @@ class TestFooterEnabled:
         [{"streaming": {"footer": {}}}, {"streaming": {}}],
         ids=["missing-key", "missing-section"],
     )
-    def test_footer_enabled_defaults_true_when_missing(self, raw: dict[str, Any]) -> None:
+    def test_footer_enabled_defaults_false_when_missing(self, raw: dict[str, Any]) -> None:
         cfg = _make_config(raw)
-        assert cfg.footer_enabled is True
+        assert cfg.footer_enabled is False
 
-    def test_footer_not_dict_defaults_true(self) -> None:
+    def test_footer_not_dict_defaults_false(self) -> None:
         cfg = _make_config({"streaming": {"footer": "invalid"}})
-        assert cfg.footer_enabled is True
+        assert cfg.footer_enabled is False
 
 
 class TestFooterShowLabel:

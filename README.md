@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Hermes](https://img.shields.io/badge/Hermes-%E2%89%A50.14.0-2463eb)](https://github.com/NousResearch/hermes-agent)
 [![Python](https://img.shields.io/badge/Python-%E2%89%A53.11-blue)](https://www.python.org/)
-[![当前版本](https://img.shields.io/badge/Release-v0.1.0--rc6-2463eb?logo=github&logoColor=white)](https://github.com/techysy/hermes-fry-cards/releases)
+[![当前版本](https://img.shields.io/badge/Release-v0.1.0--rc7-2463eb?logo=github&logoColor=white)](https://github.com/techysy/hermes-fry-cards/releases)
 
 > 🍟 Hermes Gateway 飞书流式卡片插件 — CardKit v2.0 实时流式消息
 
@@ -60,18 +60,19 @@ hermes gateway restart
 ```yaml
 streaming:
   enabled: true
-  header_enabled: true
-  footer:
+  header:
     enabled: true
+  footer:
+    enabled: false
     fields:
       - [status, elapsed, model, context]
 display:
   platforms:
     feishu:
       show_tool_use: true        # 展示工具调用面板
-      show_reasoning: true       # 展示推理过程
+      show_reasoning: false      # 展示推理过程
       show_context: true         # 统一面板 header 显示上下文窗口
-      context_display_mode: bar  # text / bar / text_bar
+      context_display_mode: text # text / bar / text_bar
       max_reasoning_panels: 3    # 最多保留的独立推理面板数（超出后合并，防元素溢出）
       unified_panel_min_duration: 5  # 统一面板最小展示耗时（秒）
       truncate_model_name: true  # 截断模型名（or/lc/LongCat-2.0 → ⇲LongCat-2.0）
@@ -93,8 +94,8 @@ display:
 
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
-| `header.enabled` | 顶部状态栏 | `false` |
-| `footer.enabled` | 底部元数据栏 | `true` |
+| `header.enabled` | 顶部状态栏 | `true` |
+| `footer.enabled` | 底部元数据栏 | `false` |
 | `panel_expanded` | 完成态面板保持展开 | `false` |
 | `width_mode` | 卡片宽度 (`default` / `compact` / `fill`) | `default` |
 | `show_tool_use` | 展示工具调用面板 | `true` |
@@ -103,7 +104,7 @@ display:
 | `context_display_mode` | 上下文显示格式：`text` / `bar` / `text_bar` | `text` |
 | `max_reasoning_panels` | 最多保留的独立推理面板数（超出后合并，防元素溢出） | `3` |
 | `unified_panel_min_duration` | 统一面板最小展示耗时（秒）；无工具调用或耗时 ≤ 此值不显示统一面板 | `5` |
-| `truncate_model_name` | 截断模型名（`or/lc/LongCat-2.0` → `⇲LongCat-2.0`） | `false` |
+| `truncate_model_name` | 截断模型名（`or/lc/LongCat-2.0` → `⇲LongCat-2.0`） | `true` |
 
 ### 样式效果示例
 
@@ -111,8 +112,8 @@ display:
 
 | 配置组合 | header 效果 |
 |---------|------------|
-| 默认（`truncate_model_name: false`, `show_context: true` 纯文本） | `🍟 or/lc/LongCat-2.0 · 💭2 · 🔧3 · 152.6k/1.0m (15%) · ⏱️ 45.2s` |
-| `truncate_model_name: true` | `🍟 ⇲LongCat-2.0 · 💭2 · 🔧3 · 152.6k/1.0m (15%) · ⏱️ 45.2s` |
+| `truncate_model_name: false`, `show_context: true` 纯文本 | `🍟 or/lc/LongCat-2.0 · 💭2 · 🔧3 · 152.6k/1.0m (15%) · ⏱️ 45.2s` |
+| 默认（`truncate_model_name: true`） | `🍟 ⇲LongCat-2.0 · 💭2 · 🔧3 · 152.6k/1.0m (15%) · ⏱️ 45.2s` |
 | `context_display_mode: bar` | `🍟 ⇲LongCat-2.0 · 💭2 · 🔧3 · [███▓▒░░░] 15% · ⏱️ 45.2s` |
 | `context_display_mode: text_bar` | `🍟 ⇲LongCat-2.0 · 💭2 · 🔧3 · 152.6k/1.0m [███▓▒░░░] 15% · ⏱️ 45.2s` |
 | `show_context: false` | `🍟 ⇲LongCat-2.0 · 💭2 · 🔧3 · ⏱️ 45.2s` |

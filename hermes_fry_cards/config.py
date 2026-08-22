@@ -45,7 +45,7 @@ class Config:
     def enabled(self) -> bool:
         """是否启用流式卡片."""
         sec = self._streaming_sec()
-        return bool(sec.get("enabled", False))
+        return bool(sec.get("enabled", True))
 
     @property
     def panel_expanded(self) -> bool:
@@ -162,17 +162,17 @@ class Config:
         """是否截断模型名（or/lc/LongCat-2.0 → ⇲LongCat-2.0）.
 
         优先级：display.platforms.feishu.truncate_model_name → display.truncate_model_name，
-        默认 False.
+        默认 True.
         """
         display = self._reload().get("display")
         if not isinstance(display, dict):
-            return False
+            return True
         platforms = display.get("platforms")
         if isinstance(platforms, dict):
             feishu = platforms.get("feishu")
             if isinstance(feishu, dict) and "truncate_model_name" in feishu:
                 return bool(feishu["truncate_model_name"])
-        return bool(display.get("truncate_model_name", False))
+        return bool(display.get("truncate_model_name", True))
 
     @property
     def context_display_mode(self) -> str:
@@ -225,8 +225,8 @@ class Config:
         sec = self._streaming_sec()
         header = sec.get("header", {})
         if not isinstance(header, dict):
-            return False
-        return bool(header.get("enabled", False))
+            return True
+        return bool(header.get("enabled", True))
 
     @property
     def footer_enabled(self) -> bool:
@@ -234,8 +234,8 @@ class Config:
         sec = self._streaming_sec()
         footer = sec.get("footer", {})
         if not isinstance(footer, dict):
-            return True
-        return bool(footer.get("enabled", True))
+            return False
+        return bool(footer.get("enabled", False))
 
     @property
     def body_text_size(self) -> str:
@@ -289,7 +289,7 @@ class Config:
 
     @staticmethod
     def _default_footer_fields() -> list[list[str]]:
-        return [["status", "elapsed", "context", "model"]]
+        return [["status", "elapsed", "model", "context"]]
 
     @property
     def env_app_id(self) -> str:

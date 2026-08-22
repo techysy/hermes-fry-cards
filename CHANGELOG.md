@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.0-rc7] - 2026-08-22
+
+### 变更
+
+- **默认值对齐当前推荐配置** — 新装用户开箱即用即为此套样式
+  - `streaming.enabled` 默认 `true`（启用流式卡片）
+  - `streaming.header.enabled` 默认 `true`（显示顶部状态栏）
+  - `streaming.footer.enabled` 默认 `false`（隐藏底部元数据栏）
+  - `footer.fields` 默认顺序 `status → elapsed → model → context`
+  - `truncate_model_name` 默认 `true`（截断模型名）
+- README 配置示例 / 默认值表同步更新
+
+---
+
 ## [0.1.0-rc6] - 2026-08-22
 
 ### 修复
