@@ -404,18 +404,43 @@ def _format_elapsed(ms: float) -> str:
     return f"{seconds:.1f}s" if seconds < 60 else f"{int(seconds // 60)}m {int(seconds % 60)}s"
 
 
-def _context_progress_bar(used: int, total: int, width: int = 8, filled: str = "█", empty: str = "░") -> str:
-    """生成上下文进度条，格式: ██░░░░░░"""
+_CONTEXT_BAR_STEPS = ("█", "▓", "▒", "░")  # 实 → 半实 → 半空 → 空，渐变阴影
+
+
+def _context_progress_bar(used: int, total: int, width: int = 8) -> str:
+    """生成渐变阴影进度条，格式: ███▓▒░░░（实心到空的密度渐变）"""
     if total <= 0:
         return ""
     pct = min(used / total * 100, 100)
-    n = round(pct / 100 * width)
-    return filled * n + empty * (width - n)
+    n = pct / 100 * width  # 浮点进度位置（0..width）
+    cells: list[str] = []
+    for i in range(width):
+        pos = i + 0.5  # 每格中心
+        if pos <= n:
+            # 完全填满的格子：除了最靠近边界的一格，其余都是实心
+            if n - pos >= 0.5:
+                cells.append("█")
+            elif n - pos >= 0.25:
+                cells.append("▓")
+            else:
+                cells.append("▒")
+        elif pos - 1 <= n:
+            # 边界格：按剩余进度选密度
+            frac = n - (pos - 1)  # 0..1
+            if frac > 0.66:
+                cells.append("▓")
+            elif frac > 0.33:
+                cells.append("▒")
+            else:
+                cells.append("░")
+        else:
+            cells.append("░")
+    return "".join(cells)
 
 
 def _context_progress_block(used: int, total: int, width: int = 10) -> str:
-    """生成▪▫ 样式进度条，格式: ▪▪▪▫▫▫▫▫▫▫"""
-    return _context_progress_bar(used, total, width, filled="▪", empty="▫")
+    """[已废弃] block 样式在桌面端/移动端显示不一致，不再使用."""
+    return _context_progress_bar(used, total, width)
 
 
 def _context_text(used: int, total: int) -> str:
@@ -444,12 +469,12 @@ def _context_pct(used: int, total: int) -> str:
     return f"{pct:.0f}%"
 
 
-def _context_progress_with_text(used: int, total: int, width: int = 8, filled: str = "█", empty: str = "░") -> str:
-    """生成文本+进度条，格式: 55.6k/1.0m [██░░░░░░] 5%"""
+def _context_progress_with_text(used: int, total: int, width: int = 8) -> str:
+    """生成文本+渐变进度条，格式: 55.6k/1.0m [███▓▒░░░] 5%"""
     if total <= 0:
         return ""
     pct = min(used / total * 100, 100)
-    bar = _context_progress_bar(used, total, width, filled, empty)
+    bar = _context_progress_bar(used, total, width)
     if total >= 1_000_000:
         total_str = f"{total / 1_000_000:.1f}m"
         if used < 1_000_000:
@@ -653,9 +678,11 @@ def build_complete_card(
                     elif mode == "bar":
                         context_part = f" · [{_context_progress_bar(ctx_used, ctx_max)}] {_context_pct(ctx_used, ctx_max)}"
                     elif mode == "block":
-                        context_part = f" · [{_context_progress_block(ctx_used, ctx_max)}] {_context_pct(ctx_used, ctx_max)}"
+                        # [已废弃] block 样式桌面/移动端显示不一致，回落到 bar
+                        context_part = f" · [{_context_progress_bar(ctx_used, ctx_max)}] {_context_pct(ctx_used, ctx_max)}"
                     elif mode == "block_text":
-                        context_part = f" · {_context_progress_with_text(ctx_used, ctx_max, filled='▪', empty='▫')}"
+                        # [已废弃] block_text 同步回落为 text_bar（渐变样式）
+                        context_part = f" · {_context_progress_with_text(ctx_used, ctx_max)}"
                     else:  # text_bar
                         context_part = f" · {_context_progress_with_text(ctx_used, ctx_max)}"
         header_text = f"🍟 {model_name} · 💭{len(reasoning_rounds)} · 🔧{len(tool_steps_total)}{context_part}{elapsed_part}"
