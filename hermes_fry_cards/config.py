@@ -154,9 +154,12 @@ class Config:
         优先级：display.platforms.feishu.context_display_mode → display.context_display_mode，
         默认 text.
         - text: 纯文本 55.6k/1.0m (5%)
-        - bar: 纯进度条 ██░░░░░░░░
+        - bar: 纯进度条 ██░░░░░░
         - text_bar: 文本+进度条 20k/1.0m [██░░░░░░] 21%
+        - block: 纯进度条 ▪▪▪▫▫▫▫▫▫▫
+        - block_text: 文本+进度条 20k/1.0m [▪▪▪▫▫▫▫▫▫▫] 21%
         """
+        _VALID_MODES = ("text", "bar", "text_bar", "block", "block_text")
         display = self._reload().get("display")
         if not isinstance(display, dict):
             return "text"
@@ -165,10 +168,10 @@ class Config:
             feishu = platforms.get("feishu")
             if isinstance(feishu, dict) and "context_display_mode" in feishu:
                 mode = feishu["context_display_mode"]
-                if mode in ("text", "bar", "text_bar"):
+                if mode in _VALID_MODES:
                     return mode
         mode = display.get("context_display_mode")
-        if mode in ("text", "bar", "text_bar"):
+        if mode in _VALID_MODES:
             return mode
         return "text"
 
