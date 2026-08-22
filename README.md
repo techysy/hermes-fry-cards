@@ -68,11 +68,13 @@ streaming:
 display:
   platforms:
     feishu:
-      show_tool_use: true
-      show_reasoning: true   # 展示推理过程
-      show_context: true     # 统一面板 header 显示上下文窗口
-      context_display_mode: text_bar  # text / bar / text_bar / block / block_text
-      max_reasoning_panels: 3  # 最多保留的独立推理面板数（超出后合并，防元素溢出）
+      show_tool_use: true        # 展示工具调用面板
+      show_reasoning: true       # 展示推理过程
+      show_context: true         # 统一面板 header 显示上下文窗口
+      context_display_mode: bar  # text / bar / text_bar
+      max_reasoning_panels: 3    # 最多保留的独立推理面板数（超出后合并，防元素溢出）
+      unified_panel_min_duration: 5  # 统一面板最小展示耗时（秒）
+      truncate_model_name: true  # 截断模型名（or/lc/LongCat-2.0 → ⇲LongCat-2.0）
 ```
 
 ### 上下文显示格式
@@ -82,10 +84,12 @@ display:
 | `context_display_mode` | 显示效果 |
 |------------------------|----------|
 | `text`（默认） | `55.6k/1.0m (5%)` |
-| `bar` | `██░░░░░░` |
-| `text_bar` | `20k/1.0m [██░░░░░░] 21%` |
-| `block` | `▪▪▪▫▫▫▫▫▫▫` |
-| `block_text` | `20k/1.0m [▪▪▪▫▫▫▫▫▫▫] 21%` |
+| `bar` | `[███▓▒░░░] 35%`（渐变阴影） |
+| `text_bar` | `20k/1.0m [███▓▒░░░] 21%` |
+
+> `block` / `block_text` 样式在桌面端/移动端显示不一致，已废弃，自动回落到 `bar` / `text_bar`。
+
+### 配置项一览
 
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
@@ -95,9 +99,11 @@ display:
 | `width_mode` | 卡片宽度 (`default` / `compact` / `fill`) | `default` |
 | `show_tool_use` | 展示工具调用面板 | `true` |
 | `show_reasoning` | 展示推理过程 | `false` |
-| `show_context` | 统一面板 header 显示上下文窗口 | `false` |
-| `context_display_mode` | 上下文显示格式：`text` / `bar` / `text_bar` / `block` / `block_text` | `text` |
+| `show_context` | 统一面板 header 显示上下文窗口 | `true` |
+| `context_display_mode` | 上下文显示格式：`text` / `bar` / `text_bar` | `text` |
 | `max_reasoning_panels` | 最多保留的独立推理面板数（超出后合并，防元素溢出） | `3` |
+| `unified_panel_min_duration` | 统一面板最小展示耗时（秒）；无工具调用或耗时 ≤ 此值不显示统一面板 | `5` |
+| `truncate_model_name` | 截断模型名（`or/lc/LongCat-2.0` → `⇲LongCat-2.0`） | `false` |
 
 ---
 
