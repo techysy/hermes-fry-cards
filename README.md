@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Hermes](https://img.shields.io/badge/Hermes-%E2%89%A50.14.0-2463eb)](https://github.com/NousResearch/hermes-agent)
 [![Python](https://img.shields.io/badge/Python-%E2%89%A53.11-blue)](https://www.python.org/)
-[![当前版本](https://img.shields.io/badge/Release-v0.1.0--rc3-2463eb?logo=github&logoColor=white)](https://github.com/techysy/hermes-fry-cards/releases)
+[![当前版本](https://img.shields.io/badge/Release-v0.1.0--rc6-2463eb?logo=github&logoColor=white)](https://github.com/techysy/hermes-fry-cards/releases)
 
 > 🍟 Hermes Gateway 飞书流式卡片插件 — CardKit v2.0 实时流式消息
 
@@ -166,6 +166,25 @@ $HERMES_PYTHON -m pip uninstall hermes-fry-cards
   → 图片 URL 异步解析替换
   → 终态卡片（token/耗时/上下文）
 ```
+
+---
+
+## 🔄 热更新 & 网关重启说明
+
+本插件通过 AST 注入 hook 到 Hermes 的 `gateway/run.py` 和 `cron/scheduler.py`，**修改插件代码或配置后必须重启网关才能生效**（运行中的进程不会热加载新代码）。
+
+- ❌ **不支持热更新** — 改代码 / 改配置后需要重启
+- ✅ **可以无限重启** — 重启不会损坏任何东西，可放心反复执行
+
+```bash
+hermes gateway restart
+```
+
+> ⚠️ 注意：`hermes gateway restart` 需要**在 gateway 进程之外的独立 shell** 中执行。
+> 若从 gateway 进程内部（如通过 AI 对话让 agent 执行）触发，SIGTERM 会传播到子进程，
+> 重启命令本身会被杀掉。请在本地终端手动运行。
+
+重启后的效果验证：`hermes_fry_cards status` 显示所有 hook `installed`，飞书渠道连接正常即可。
 
 ---
 
