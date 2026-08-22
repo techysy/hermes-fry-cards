@@ -21,8 +21,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 无工具且耗时 < 阈值（或纯答案）→ 不显示统一面板
 - **bar 进度条改为渐变阴影** — 使用 `█▓▒░` 密度渐变（`[███▓▒░░░] 35%`）
 - **废弃 block/block_text 样式** — 桌面端/移动端显示不一致，自动回落到 `bar`/`text_bar`
+
+---
+
+## [0.1.0-rc4] - 2026-08-21
+
+### 新增
+
+- **进度条新增 block/block_text 样式** — 使用 ▪▫ 字符
+  - `block`：`[▪▪▪▫▫▫▫▫▫▫]`
+  - `block_text`：`20k/1.0m [▪▪▪▫▫▫▫▫▫▫] 21%`
 - **模型名截断开关** — 新增配置 `display.platforms.feishu.truncate_model_name`（默认 false）
   - `or/lc/LongCat-2.0` → `⇲LongCat-2.0`
+
+### 修复
+
+- **context_display_mode 白名单补充 block/block_text** — 修复 block 模式配置不生效回落 text
 
 ---
 
