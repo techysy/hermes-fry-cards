@@ -105,6 +105,21 @@ display:
 | `unified_panel_min_duration` | 统一面板最小展示耗时（秒）；无工具调用或耗时 ≤ 此值不显示统一面板 | `5` |
 | `truncate_model_name` | 截断模型名（`or/lc/LongCat-2.0` → `⇲LongCat-2.0`） | `false` |
 
+### 样式效果示例
+
+统一面板 header 的完整形态（完成态卡片底部折叠面板标题）：
+
+| 配置组合 | header 效果 |
+|---------|------------|
+| 默认（`truncate_model_name: false`, `show_context: true` 纯文本） | `🍟 or/lc/LongCat-2.0 · 💭2 · 🔧3 · 152.6k/1.0m (15%) · ⏱️ 45.2s` |
+| `truncate_model_name: true` | `🍟 ⇲LongCat-2.0 · 💭2 · 🔧3 · 152.6k/1.0m (15%) · ⏱️ 45.2s` |
+| `context_display_mode: bar` | `🍟 ⇲LongCat-2.0 · 💭2 · 🔧3 · [███▓▒░░░] 15% · ⏱️ 45.2s` |
+| `context_display_mode: text_bar` | `🍟 ⇲LongCat-2.0 · 💭2 · 🔧3 · 152.6k/1.0m [███▓▒░░░] 15% · ⏱️ 45.2s` |
+| `show_context: false` | `🍟 ⇲LongCat-2.0 · 💭2 · 🔧3 · ⏱️ 45.2s` |
+
+> header 各部分含义：`🍟` 模型名 · `💭n` 推理轮次 · `🔧n` 工具调用数 · 上下文窗口 · `⏱️` 耗时。
+> 无工具调用或回复 ≤ `unified_panel_min_duration` 秒时，整个统一面板（含 header）不显示。
+
 ---
 
 ## 🖥️ CLI 命令
