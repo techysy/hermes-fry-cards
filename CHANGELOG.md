@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### 内部稳定性优化（对照 OPTIMIZATION_PLAN P0/P1，无配置项与行为面变化）
+
+- **统一 session 注册与清理** — 新增 `_register_session` / `_dispose_session` 单一入口，
+  `_cleanup` / `_cleanup_session` 改为兼容委托；清理幂等（重复执行不报错），
+  interrupt 后旧 session 清理只删仍指向自己的索引、不误删新 session 映射；
+  同 message_id 旧 session 已终态时允许重建（原先永久拒新直到进程重启）
+- **FlushController 竞态修复**
+  - `_do_flush` 收尾加完成态快照：`mark_completed()` 与重刷请求交叉时，
+    不再可能对已完成卡片发起多余的 CardKit API 调用
+  - 立即 flush 路径先取消遗留 pending timer，消除「timer 触发 + 立即路径」双刷同一份数据
+  - timer 触发由 `call_soon(create_task)` 改为直接 `create_task`，收窄完成标记竞态窗口
+- **失败分类与结构化日志**
+  - `mark_failed(reason=...)` 记录首次失败原因，幂等保留不被后续覆盖
+  - 建卡失败区分 API 错误（含飞书错误码）与未知错误；完成重试耗尽记录 `card_complete_failed`
+  - `on_completed_wait` 三个 fallback 分支统一为 `_yield_to_gateway(reason=...)` 单一决策点
+  - 日志事件标准化：session_created / card_created / card_reply_failed /
+    fallback_to_text / stale_pruned / session_disposed / cleanup_idempotent
+- 新增 9 个回归测试：cleanup 幂等、session_key 接管保护、A→B→C redirect 链路、
+  终态重建、reflush 完成抑制、遗留 timer 双刷消除、timeout/FAILED fallback 决策
+
+---
+
 ## [0.1.0-rc7] - 2026-08-22
 
 ### 变更

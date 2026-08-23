@@ -173,6 +173,105 @@ def test_consume_text_fallback_clears_anchor_alias() -> None:
     assert ctrl._text_fallback_aliases == {}
 
 
+# ── P0-1 session 生命周期统一：注册/清理幂等/redirect 链路回归 ──
+
+
+def test_dispose_session_is_idempotent() -> None:
+    """cleanup 可重复执行：第二次为空操作且不报错."""
+    ctrl = StreamCardController()
+    _enable(ctrl)
+
+    with patch.object(ctrl, "_fire_and_forget", side_effect=lambda coro, loop: coro.close()):
+        ctrl.on_message_started(message_id="msg", chat_id="chat", anchor_id="quoted", session_key="key")
+
+    session = ctrl._sessions["msg"]
+    ctrl._dispose_session(session)
+
+    assert "msg" not in ctrl._sessions
+    assert "quoted" not in ctrl._sessions
+    assert "key" not in ctrl._session_keys
+
+    ctrl._dispose_session(session)  # 幂等：不抛 KeyError
+
+
+def test_dispose_session_spares_successor_on_same_key() -> None:
+    """interrupt 后 session_key 被新 session 接管，旧 session 清理不得误删新映射."""
+    ctrl = StreamCardController()
+    _enable(ctrl)
+    loop = asyncio.new_event_loop()
+    try:
+        old_session = CardSession("old", "chat", loop)
+        new_session = CardSession("new", "chat", loop)
+        ctrl._register_session(old_session, session_key="key")
+        ctrl._register_session(new_session, session_key="key")  # interrupt 接管
+        ctrl._interrupt_map["old"] = "new"
+
+        ctrl._dispose_session(old_session)
+
+        assert ctrl._sessions["new"] is new_session
+        assert ctrl._session_keys["key"] is new_session
+        assert "old" not in ctrl._sessions
+        # 重定向保留：旧消息迟到的完成回调仍需经 old→new 找到新卡
+        assert ctrl._interrupt_map.get("old") == "new"
+
+        # 新 session 清理后，指向它的重定向随之移除，不留悬挂映射
+        ctrl._dispose_session(new_session)
+        assert ctrl._interrupt_map == {}
+    finally:
+        loop.close()
+
+
+def test_interrupt_redirect_cleanup_chain() -> None:
+    """A→B→C 嵌套中断：清理 B 时移除指向 B 的旧映射，保留 B→C 给 C 的完成路径消费."""
+    ctrl = StreamCardController()
+    _enable(ctrl)
+    loop = asyncio.new_event_loop()
+    try:
+        s_a = CardSession("aaa", "chat", loop)
+        s_b = CardSession("bbb", "chat", loop)
+        s_c = CardSession("ccc", "chat", loop)
+        ctrl._register_session(s_a)
+        ctrl._register_session(s_b)
+        ctrl._register_session(s_c)
+        ctrl._interrupt_map["aaa"] = "bbb"
+        ctrl._interrupt_map["bbb"] = "ccc"
+
+        ctrl._dispose_session(s_b)
+
+        assert "bbb" not in ctrl._sessions
+        assert "aaa" not in ctrl._interrupt_map          # a→b 已随 b 清理
+        assert ctrl._interrupt_map == {"bbb": "ccc"}     # b→c 留给 msg=bbb 的完成回调重定向
+    finally:
+        loop.close()
+
+
+def test_on_message_started_replaces_terminal_session() -> None:
+    """同 message_id 旧 session 已终态时允许重建，不再永久拒新."""
+    ctrl = StreamCardController()
+    _enable(ctrl)
+
+    with patch.object(ctrl, "_fire_and_forget", side_effect=lambda coro, loop: coro.close()):
+        ctrl.on_message_started(message_id="msg", chat_id="chat")
+        stale = ctrl._sessions["msg"]
+        stale.state = SessionState.FAILED
+
+        ctrl.on_message_started(message_id="msg", chat_id="chat")
+
+    current = ctrl._sessions["msg"]
+    assert current is not stale
+    assert current.state == SessionState.IDLE
+
+
+def test_mark_failed_keeps_first_reason() -> None:
+    """mark_failed 幂等：无参重复调用保留首次原因."""
+    session = _make_session("msg_mf")
+    session.mark_failed(reason="first_cause")
+    session.mark_failed()
+    session.mark_failed(reason="second_cause")
+
+    assert session.state == SessionState.FAILED
+
+
 def test_on_interrupted_uses_new_message_id_and_anchor_alias() -> None:
     ctrl = StreamCardController()
     _enable(ctrl)
@@ -324,11 +423,17 @@ async def test_on_interrupted_waits_for_old_card_creation_before_cleanup() -> No
 def test_prune_stale_sessions_ignores_none_key_and_prunes_valid_key() -> None:
     ctrl = StreamCardController()
     stale_session = SimpleNamespace(
+        message_id=None,
+        anchor_id=None,
+        session_key=None,
         created_at=time.time() - ctrl._session_ttl - 1,
         flush=_DummyFlush(),
         image_resolver=None,
     )
     valid_stale_session = SimpleNamespace(
+        message_id="msg",
+        anchor_id=None,
+        session_key=None,
         created_at=time.time() - ctrl._session_ttl - 1,
         flush=_DummyFlush(),
         image_resolver=None,
@@ -727,6 +832,46 @@ class TestAwaitedCompletion:
 
         assert session.state == SessionState.FAILED
         assert "msg_timeout" not in ctrl._sessions
+        # 无卡 → 标记文本回退，网关可撤销 already_sent 走纯文本
+        assert ctrl.consume_text_fallback("msg_timeout") is True
+
+    @pytest.mark.asyncio
+    async def test_failed_session_without_card_yields_with_reason(self) -> None:
+        """统一 fallback 决策：FAILED 且无卡 → 标记回退 + 清理."""
+        ctrl = _setup_ctrl()
+        session = CardSession("msg_failed", "chat", asyncio.get_running_loop())
+        session.mark_failed(reason="cardkit_create_api_error")
+        ctrl._sessions["msg_failed"] = session
+
+        assert await ctrl.on_completed_wait(message_id="msg_failed", answer="ok") is False
+
+        assert "msg_failed" not in ctrl._sessions
+        assert ctrl.consume_text_fallback("msg_failed") is True
+
+    @pytest.mark.asyncio
+    async def test_failed_session_with_card_keeps_card_no_text_fallback(self) -> None:
+        """有卡时即使 FAILED 也不标记文本回退（卡片已在聊天中）."""
+        ctrl = _setup_ctrl()
+        session = CardSession("msg_failcard", "chat", asyncio.get_running_loop())
+        session.state = SessionState.STREAMING
+        session.card_id = "card_fc"
+        session.card_msg_id = "card_msg_fc"
+        ctrl._sessions["msg_failcard"] = session
+
+        # 模拟建卡完成后才转 FAILED 的时序：create_task 立即完成
+        async def finish_create() -> None:
+            session.card_id = "card_fc"
+            session.card_msg_id = "card_msg_fc"
+
+        session.create_task = asyncio.create_task(finish_create())
+
+        # 建卡等待通过后 state 已是 FAILED → yield
+        session.state = SessionState.STREAMING
+        session.mark_failed(reason="guard_terminated")
+        assert await ctrl.on_completed_wait(message_id="msg_failcard", answer="ok") is False
+
+        assert "msg_failcard" not in ctrl._sessions
+        assert ctrl._text_fallback_needed == set()
 
     @pytest.mark.asyncio
     async def test_finalization_failure_yields_to_gateway(self) -> None:

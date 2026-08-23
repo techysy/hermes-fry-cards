@@ -9,6 +9,7 @@ import pytest
 
 from hermes_fry_cards.streaming.flush import (
     BATCH_AFTER_GAP_MS,
+    CARDKIT_MS,
     LONG_GAP_MS,
     FlushController,
 )
@@ -269,6 +270,63 @@ class TestReflush:
         await asyncio.sleep(0.02)
         # reflush 应自动触发
         assert count >= 2
+
+    @pytest.mark.asyncio
+    async def test_mark_completed_during_flush_suppresses_reflush(self) -> None:
+        """flush 收尾竞态：mark_completed 与 reflush 窗口交叉时不得重刷已完成的卡."""
+        ctrl = _make_async()
+        ctrl.set_card_message_ready(True)
+        flush_event = asyncio.Event()
+        count = 0
+
+        async def slow_flush() -> None:
+            nonlocal count
+            count += 1
+            if count == 1:
+                await flush_event.wait()
+
+        task = asyncio.create_task(ctrl._do_flush(slow_flush))
+        await asyncio.sleep(0.02)
+
+        # flush 进行期间：新数据到达（reflush 请求）+ 完成标记几乎同时
+        asyncio.create_task(ctrl._do_flush(slow_flush))
+        await asyncio.sleep(0.01)
+        ctrl.mark_completed()
+
+        flush_event.set()
+        await task
+        await asyncio.sleep(0.05)
+
+        # 已完成 → 重刷请求被正确抑制，不会对已完成卡片再发起 API 调用
+        assert count == 1
+        assert ctrl._completed
+        assert not ctrl._flush_in_progress
+
+    @pytest.mark.asyncio
+    async def test_immediate_path_cancels_stale_pending_timer(self) -> None:
+        """立即 flush 路径应取消遗留的待触发 timer，避免同一份数据刷新两次."""
+        ctrl = _make_async(throttle_ms=CARDKIT_MS)
+        ctrl.set_card_message_ready(True)
+        count = 0
+
+        async def do_flush() -> None:
+            nonlocal count
+            count += 1
+
+        # 长时间空闲 → 走 BATCH_AFTER_GAP_MS 延迟 timer
+        ctrl._last_update_time = time.monotonic() - LONG_GAP_MS - 1.0
+        ctrl.schedule_update(do_flush)
+        assert ctrl._pending_timer is not None
+
+        # 模拟时间戳被刷新到节流窗口之外（但仍小于长间隔）→ 下次走立即路径
+        await asyncio.sleep(0.02)
+        ctrl._last_update_time = time.monotonic() - CARDKIT_MS * 2
+        ctrl.schedule_update(do_flush)
+
+        # 立即路径必须清掉遗留 timer，只留一个 flush 在跑
+        await asyncio.sleep(CARDKIT_MS * 4)
+        assert ctrl._pending_timer is None
+        assert count == 1
 
 
 class TestSetCardMessageReady:

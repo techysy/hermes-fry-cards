@@ -142,6 +142,22 @@ class StreamCardController(StreamingController):
                 _logger.debug("fire_and_forget failed", exc_info=True)
                 return None
 
+    def _register_session(
+        self,
+        session: CardSession,
+        *,
+        anchor_id: str | None = None,
+        session_key: str | None = None,
+    ) -> None:
+        """统一 session 注册入口：维护 _sessions（message_id + anchor 别名）与 _session_keys."""
+        self._sessions[session.message_id] = session
+        if anchor_id and anchor_id != session.message_id:
+            session.anchor_id = anchor_id
+            self._sessions[anchor_id] = session
+        if session_key:
+            session.session_key = session_key
+            self._session_keys[session_key] = session
+
     def on_message_started(
         self,
         *,
@@ -156,7 +172,8 @@ class StreamCardController(StreamingController):
         if not message_id:
             _logger.warning("on_message_started: missing message_id, chat=%s", chat_id[:12])
             return
-        if message_id in self._sessions:
+        existing = self._sessions.get(message_id)
+        if existing is not None and not existing.state.is_terminal:
             return
 
         self._prune_stale_sessions()
@@ -166,14 +183,14 @@ class StreamCardController(StreamingController):
             _logger.warning("no event loop available, skipping: msg=%s", message_id[:12])
             return
         session = CardSession(message_id, chat_id, loop)
-        session.session_key = session_key
-        self._sessions[message_id] = session
-        if session_key:
-            self._session_keys[session_key] = session
-        if anchor_id and anchor_id != message_id:
-            session.anchor_id = anchor_id
-            self._sessions[anchor_id] = session
-        _logger.info("session created: msg=%s chat=%s anchor=%s", message_id[:12], chat_id[:12], (anchor_id or "")[:12])
+        self._register_session(session, anchor_id=anchor_id, session_key=session_key)
+        _logger.info(
+            "session_created: msg=%s chat=%s anchor=%s key=%s",
+            message_id[:12],
+            chat_id[:12],
+            (anchor_id or "")[:12],
+            (session_key or "")[:12],
+        )
 
         session.create_task = self._fire_and_forget(self._do_create_card(session), loop)
 
@@ -369,8 +386,9 @@ class StreamCardController(StreamingController):
             old_session.state = SessionState.ABORTED
             old_session.flush.mark_completed()
             _logger.info(
-                "on_interrupted: abort old msg=%s",
+                "interrupt_abort_old: msg=%s -> msg=%s",
                 old_message_id[:12],
+                new_message_id[:12],
             )
             self._complete_session(old_session)
 
@@ -380,18 +398,13 @@ class StreamCardController(StreamingController):
             if loop is not None:
                 reply_anchor_id = anchor_id if anchor_id and anchor_id != new_message_id else None
                 session = CardSession(new_message_id, chat_id, loop)
-                session.anchor_id = reply_anchor_id
-                session.session_key = session_key
-                self._sessions[new_message_id] = session
-                if session_key:
-                    self._session_keys[session_key] = session
-                if reply_anchor_id:
-                    self._sessions[reply_anchor_id] = session
+                self._register_session(session, anchor_id=reply_anchor_id, session_key=session_key)
                 _logger.info(
-                    "on_interrupted: create new msg=%s chat=%s anchor=%s",
+                    "session_created: msg=%s chat=%s anchor=%s key=%s (interrupt redirect)",
                     new_message_id[:12],
                     chat_id[:12],
-                    (reply_anchor_id or new_message_id)[:12],
+                    (reply_anchor_id or "")[:12],
+                    (session_key or "")[:12],
                 )
                 session.create_task = self._fire_and_forget(self._do_create_card(session), loop)
 
@@ -431,6 +444,19 @@ class StreamCardController(StreamingController):
         session.clarify_pending_split = True
         session.state = SessionState.STREAMING  # 让 tool.completed 能更新卡片
 
+    def _yield_to_gateway(self, session: CardSession, *, reason: str) -> None:
+        """统一 fallback 决策：卡片无法收尾时标记文本回退（无卡时）+ 清理，交还网关默认回复."""
+        if not session.has_card:
+            self._mark_text_fallback_needed(session)
+        _logger.info(
+            "fallback_to_text: msg=%s state=%s has_card=%s reason=%s",
+            session.message_id[:12],
+            session.state,
+            session.has_card,
+            reason,
+        )
+        self._cleanup_session(session)
+
     async def on_completed_wait(
         self,
         *,
@@ -451,27 +477,15 @@ class StreamCardController(StreamingController):
         message_id = session.message_id
 
         if not await self._wait_for_card_creation(session):
-            if session.has_card:
-                _logger.info("on_completed_wait: msg=%s card creation not ready but card exists", message_id[:12])
-            else:
-                _logger.info("on_completed_wait: msg=%s card creation not ready, yielding to gateway", message_id[:12])
-                self._mark_text_fallback_needed(session)
-            self._cleanup_session(session)
+            self._yield_to_gateway(session, reason="card_creation_not_ready")
             return False
 
         if session.state == SessionState.FAILED:
-            if session.has_card:
-                _logger.info("on_completed_wait: msg=%s state=FAILED but card exists", message_id[:12])
-            else:
-                _logger.info("on_completed_wait: msg=%s state=FAILED, yielding to gateway", message_id[:12])
-                self._mark_text_fallback_needed(session)
-            self._cleanup_session(session)
+            self._yield_to_gateway(session, reason="session_failed")
             return False
 
         if not session.has_card:
-            _logger.info("on_completed_wait: msg=%s has no card, yielding to gateway", message_id[:12])
-            self._mark_text_fallback_needed(session)
-            self._cleanup_session(session)
+            self._yield_to_gateway(session, reason="no_card")
             return False
 
         _logger.info(
@@ -490,7 +504,7 @@ class StreamCardController(StreamingController):
             context=context,
         )
         if is_error:
-            session.mark_failed()
+            session.mark_failed(reason="agent_returned_error")
 
         return await self._complete_session_wait(session)
 
@@ -583,38 +597,47 @@ class StreamCardController(StreamingController):
             except Exception:
                 _logger.debug("background review sender failed", exc_info=True)
 
-    def _cleanup(self, message_id: str) -> None:
-        session = self._sessions.pop(message_id, None)
-        if session is None:
-            return
-        anchor = getattr(session, "anchor_id", None)
-        if anchor and self._sessions.get(anchor) is session:
-            del self._sessions[anchor]
-        session_key = getattr(session, "session_key", None)
-        if session_key and self._session_keys.get(session_key) is session:
-            del self._session_keys[session_key]
-        stale_keys = [k for k, v in self._interrupt_map.items() if v == message_id]
-        for k in stale_keys:
-            del self._interrupt_map[k]
-        session.flush.mark_completed()
-        if session.image_resolver:
-            session.image_resolver.cancel_pending()
-
-    def _cleanup_session(self, session: CardSession) -> None:
-        if self._sessions.get(session.message_id) is session:
-            self._sessions.pop(session.message_id, None)
-        anchor = session.anchor_id
-        if anchor and self._sessions.get(anchor) is session:
-            del self._sessions[anchor]
+    def _dispose_session(self, session: CardSession) -> None:
+        """统一 session 清理入口（幂等）：只清理仍指向该 session 的索引."""
+        removed_any = False
+        keys = [session.message_id]
+        if session.anchor_id:
+            keys.append(session.anchor_id)
+        for key in keys:
+            if self._sessions.get(key) is session:
+                del self._sessions[key]
+                removed_any = True
         session_key = session.session_key
         if session_key and self._session_keys.get(session_key) is session:
             del self._session_keys[session_key]
+            removed_any = True
         stale_keys = [key for key, value in self._interrupt_map.items() if value == session.message_id]
         for key in stale_keys:
             del self._interrupt_map[key]
+            removed_any = True
         session.flush.mark_completed()
         if session.image_resolver:
             session.image_resolver.cancel_pending()
+        if removed_any:
+            _logger.info(
+                "session_disposed: msg=%s anchor=%s key=%s",
+                session.message_id[:12],
+                (session.anchor_id or "")[:12],
+                (session.session_key or "")[:12],
+            )
+        else:
+            _logger.debug("cleanup_idempotent: msg=%s already disposed", session.message_id[:12])
+
+    def _cleanup(self, message_id: str) -> None:
+        """兼容入口：按 message_id 解析 session 后走统一清理."""
+        session = self._sessions.get(message_id)
+        if session is None:
+            _logger.debug("cleanup: no session registered for msg=%s", message_id[:12])
+            return
+        self._dispose_session(session)
+
+    def _cleanup_session(self, session: CardSession) -> None:
+        self._dispose_session(session)
 
     def _completion_session(self, message_id: str) -> CardSession | None:
         session = self._sessions.get(message_id)
@@ -651,10 +674,10 @@ class StreamCardController(StreamingController):
                 _CARD_CREATION_WAIT_SEC,
             )
             task.cancel()
-            session.mark_failed()
+            session.mark_failed(reason="card_creation_timeout")
             return False
         except asyncio.CancelledError:
-            session.mark_failed()
+            session.mark_failed(reason="card_creation_cancelled")
             return False
         except Exception:
             _logger.debug("card creation task failed", exc_info=True)
@@ -711,7 +734,7 @@ class StreamCardController(StreamingController):
         now = time.time()
         stale = [mid for mid, s in self._sessions.items() if mid is not None and now - s.created_at > self._session_ttl]
         for mid in stale:
-            _logger.warning("pruning stale session: msg=%s", mid[:12])
+            _logger.warning("stale_pruned: msg=%s ttl=%.0fs", mid[:12], self._session_ttl)
             self._cleanup(mid)
 
     @staticmethod
@@ -721,7 +744,7 @@ class StreamCardController(StreamingController):
         except asyncio.CancelledError:
             return
         except Exception:
-            _logger.warning("background task failed", exc_info=True)
+            _logger.warning("background task failed: task=%s", getattr(fut, "get_name", lambda: "?")(), exc_info=True)
 
 
 _controllers: dict[str, StreamCardController] = {}
