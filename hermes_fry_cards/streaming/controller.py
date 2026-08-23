@@ -158,18 +158,29 @@ class StreamingController:
             if session.segment_state and session.segment_state.has_dirty:
                 self._schedule_flush(session)
             _logger.info(
-                "CardKit card created: msg=%s card_id=%s",
+                "card_created: msg=%s card=%s reply_to=%s",
                 session.message_id[:12],
                 (session.card_id or "")[:12],
+                reply_to_message_id[:12],
             )
-        except FeishuAPIError:
-            _logger.info("CardKit create failed, yielding to gateway", exc_info=True)
+        except FeishuAPIError as e:
+            _logger.warning(
+                "card_reply_failed: msg=%s stage=create/reply code=%s err=%s",
+                session.message_id[:12],
+                e.code,
+                e,
+                exc_info=True,
+            )
             if hasattr(self, "_mark_text_fallback_needed"):
                 self._mark_text_fallback_needed(session)
-            session.mark_failed()
-        except Exception:
-            _logger.exception("_do_create_card failed")
-            session.mark_failed()
+            session.mark_failed(reason="cardkit_create_api_error")
+        except Exception as e:
+            _logger.exception(
+                "card_reply_failed: msg=%s stage=create unexpected_error=%s",
+                session.message_id[:12],
+                e,
+            )
+            session.mark_failed(reason="card_create_unexpected_error")
 
     async def _do_flush(self, session: CardSession) -> None:
         """幂等 flush：按 segment 顺序处理结构性变更，超阈值时拆卡."""
@@ -921,11 +932,12 @@ class StreamingController:
                 continue
 
         _logger.error(
-            "CardKit complete failed after 3 attempts: card_id=%s seq=%d",
+            "card_complete_failed: msg=%s card=%s after 3 attempts seq=%d",
+            session.message_id[:12],
             session.card_id,
             session.sequence,
         )
-        session.mark_failed()
+        session.mark_failed(reason="complete_failed_after_retries")
         return False
 
     async def _do_cron_deliver(
