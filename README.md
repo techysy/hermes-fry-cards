@@ -7,7 +7,7 @@
 
 > 🍟 Hermes Gateway 飞书流式卡片插件 — CardKit v2.0 实时流式消息
 
-[English](README.en.md) · [安装指南](INSTALL.md) · [文档目录](docs/README.md) · [优化方案](OPTIMIZATION_PLAN.md)
+- [English](README.en.md) · [安装指南](INSTALL.md) · [文档目录](docs/README.md) · [优化方案](docs/OPTIMIZATION_PLAN.md)
 
 ![A compact chat card on a pale gray background with a circular profile image on the left. The top status line reads 回复 余师评：晚上好 with a green checkmark and the label 已完成 beside it. Below, the assistant message says 晚上好！已切换到 nvidia/moonshotai/kimi-k3，有什么需要我处理的？ A footer row shows the model name, reasoning count, tool count, context usage, and elapsed time. The overall mood is calm and polished, with soft green accents and a minimal messaging interface.](assets/collapse.png)            
 
@@ -192,9 +192,9 @@ $HERMES_PYTHON -m pip uninstall hermes-fry-cards
 
 ---
 
-## � 文档与报告入口
+## 📄 文档与报告入口
 
-- [优化方案](OPTIMIZATION_PLAN.md) — 稳定性与维护性优化方案
+- [优化方案](docs/OPTIMIZATION_PLAN.md) — 稳定性与维护性优化方案
 - [文档目录](docs/README.md) — 项目文档入口
 - [测试报告目录](tests/reports/README.md) — 报告存放规范与入口
 
@@ -202,7 +202,7 @@ $HERMES_PYTHON -m pip uninstall hermes-fry-cards
 
 ---
 
-## �🔄 热更新 & 网关重启说明
+## 🔄 热更新 & 网关重启说明
 
 本插件通过 AST 注入 hook 到 Hermes 的 `gateway/run.py` 和 `cron/scheduler.py`。**部分配置支持热更新（无需重启），但插件代码改动和部分结构类配置需要重启网关才能生效**。
 
@@ -260,7 +260,7 @@ hermes gateway restart
 | 项目 | 说明 | 特性 | Stars |
 |------|------|------|-------|
 | [🍟 hermes-fry-cards](https://github.com/techysy/hermes-fry-cards) | 薯条卡片 — Hermes 飞书流式卡片插件 | 🎯 工具调用合并 · 统一面板 · 状态色框 | ⭐2 |
-| [🫧 aiduPOP](https://github.com/monkey2jack/aiduPOP) | 爱嘟泡波卡 — Hermes 飞书流式卡片插件 | 🫧 泡波样式 · 透明治愈 · 灵动 UI | ⭐8 |
+| [🫧 aiduPOP](https://github.com/monkey2jack/aiduPOP) | 爱嘟泡波卡 — Hermes 飞书流式卡片插件 | 🫧 泡波样式 · 透明治愈 · 灵动 UI | ⭐10 |
 | [🎌 lark-hls-v2](https://github.com/BcubBo/lark-hls-v2) | 飞书 CardKit v2.0 流式卡片插件 for Hermes Agent | 🎌 二次元画风 · 动态台词 · 场景检测 · Fisher-Yates 洗牌 | ⭐7 |
 
 ---
