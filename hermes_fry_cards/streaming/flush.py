@@ -54,20 +54,22 @@ class FlushController:
         now = time.monotonic()
         elapsed = now - self._last_update_time
 
-        if elapsed >= self._throttle_ms:
-            # 超出节流窗口
-            if elapsed > LONG_GAP_MS:
-                # 长时间空闲 → 延迟一小批让内容更完整
-                if self._pending_timer is None:
-                    self._schedule(delay=BATCH_AFTER_GAP_MS, do_flush=do_flush)
-            else:
-                # 立即 flush
-                self._do_flush_task(do_flush)
-        else:
+        if elapsed < self._throttle_ms:
             # 仍在节流窗口内 → 延迟到窗口边界
             if self._pending_timer is None:
                 delay = self._throttle_ms - elapsed
                 self._schedule(delay=delay, do_flush=do_flush)
+            return
+
+        if elapsed > LONG_GAP_MS:
+            # 长时间空闲 → 延迟一小批让内容更完整；已有待触发 timer 则交给它
+            if self._pending_timer is None:
+                self._schedule(delay=BATCH_AFTER_GAP_MS, do_flush=do_flush)
+            return
+
+        # 立即 flush：先取消遗留的 pending timer，避免同一份数据被刷新两次
+        self._cancel_timer()
+        self._do_flush_task(do_flush)
 
     async def flush_now(self, do_flush: Callable[[], Awaitable[None]]) -> None:
         """立即执行一次 flush，等待完成."""
@@ -112,7 +114,9 @@ class FlushController:
 
     def _do_flush_task(self, do_flush: Callable[[], Awaitable[None]]) -> None:
         self._pending_timer = None
-        self._loop.call_soon(asyncio.create_task, self._do_flush(do_flush))
+        # 直接 create_task，消除 call_soon 间接调用在 timer 触发与任务执行之间的窗口：
+        # mark_completed() 在该窗口内到达时，_do_flush 开头的 _completed 检查已来不及。
+        self._loop.create_task(self._do_flush(do_flush))
 
     async def _do_flush(self, do_flush: Callable[[], Awaitable[None]]) -> None:
         if self._completed or self._flush_in_progress:
@@ -121,6 +125,9 @@ class FlushController:
 
         self._flush_in_progress = True
         self._needs_reflush = False
+        # 在清零前快照完成态：若 mark_completed() 恰在本行之后、_needs_reflush=False
+        # 之前被调用，重刷请求不能丢失——它必须被「正确抑制」而不是被静默吞掉。
+        completed_snapshot = self._completed
         try:
             await do_flush()
         except Exception:
@@ -135,10 +142,12 @@ class FlushController:
                 if not r.done():
                     r.set_result(None)
 
-        # 如果 flush 期间又有新数据 → 立即重刷
-        if self._needs_reflush and not self._completed:
+        # 如果 flush 期间又有新数据 → 立即重刷；
+        # completed_snapshot=True 说明 flush 期间/收尾处发生了 mark_completed()，
+        # 此时即使 _needs_reflush 被竞态清零，也按已完成处理（不再重刷）。
+        if self._needs_reflush and not self._completed and not completed_snapshot:
             self._needs_reflush = False
-            self._loop.call_soon(asyncio.create_task, self._do_flush(do_flush))
+            self._loop.create_task(self._do_flush(do_flush))
 
     def _cancel_timer(self) -> None:
         if self._pending_timer is not None:
