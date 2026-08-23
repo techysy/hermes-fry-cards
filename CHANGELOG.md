@@ -7,9 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [0.1.1] - 2026-08-23
 
 ### 内部稳定性优化（对照 OPTIMIZATION_PLAN P0/P1，无配置项与行为面变化）
+
+首个正式版本。rc7 → 0.1.1 全部改动为内部稳定性提升，配置项与卡片样式无任何变化。
 
 - **统一 session 注册与清理** — 新增 `_register_session` / `_dispose_session` 单一入口，
   `_cleanup` / `_cleanup_session` 改为兼容委托；清理幂等（重复执行不报错），
@@ -28,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     fallback_to_text / stale_pruned / session_disposed / cleanup_idempotent
 - 新增 9 个回归测试：cleanup 幂等、session_key 接管保护、A→B→C redirect 链路、
   终态重建、reflush 完成抑制、遗留 timer 双刷消除、timeout/FAILED fallback 决策
+  （499 通过 / 4 个基线遗留失败，无新增失败）
 
 ---
 
