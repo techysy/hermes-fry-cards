@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from collections.abc import Callable
 from concurrent.futures import Future as ConcurrentFuture
@@ -17,6 +18,8 @@ from .unavailable_guard import UnavailableGuard
 
 if TYPE_CHECKING:
     from .image import ImageResolver
+
+_logger = logging.getLogger("hermes_fry_cards")
 
 
 class SessionState(StrEnum):
@@ -116,7 +119,15 @@ class CardSession:
         self.card_id = card_id
         self.card_msg_id = card_msg_id
 
-    def mark_failed(self) -> None:
+    def mark_failed(self, reason: str = "") -> None:
+        if self.state == SessionState.FAILED and not reason:
+            return  # 已标记过且无新信息，保持首次原因
+        if self.state == SessionState.FAILED:
+            _logger.info("session already FAILED, updating reason: msg=%s reason=%s", self.message_id[:12], reason)
+        elif reason:
+            _logger.info("session marked FAILED: msg=%s state=%s reason=%s", self.message_id[:12], self.state, reason)
+        else:
+            _logger.info("session marked FAILED: msg=%s state=%s (no reason given)", self.message_id[:12], self.state)
         self.state = SessionState.FAILED
 
     def active_segments(self) -> list[Segment]:
