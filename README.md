@@ -173,6 +173,23 @@ $HERMES_PYTHON -m pip uninstall hermes-fry-cards
   → 终态卡片（token/耗时/上下文）
 ```
 
+### 🛡️ 稳定性保障（v0.1.1）
+
+- **session 生命周期统一管理**：注册/清理单一入口、幂等可重入；中断接管不误删新会话映射；异常残留的终态会话允许重建，不再需要重启网关恢复
+- **flush 竞态防护**：完成标记与刷新请求交叉时不会误触发多余 CardKit 调用；同一份数据不会被重复刷新
+- **失败原因可追溯**：卡片失败时记录首次失败原因（`mark_failed(reason=...)`），回退网关纯文本是统一决策点
+
+排查问题时可直接按以下标准化日志事件在 `~/.hermes/logs/agent.log` 中检索：
+
+| 事件 | 含义 |
+|------|------|
+| `session_created` | 卡片会话创建 |
+| `card_created` | 占位卡片发送成功 |
+| `card_reply_failed` | 建卡失败（含飞书错误码），将回退纯文本 |
+| `fallback_to_text` | 卡片无法收尾，交还网关默认回复（含原因 reason=...） |
+| `card_complete_failed` | 完成重试 3 次耗尽 |
+| `session_disposed` / `cleanup_idempotent` | 会话清理 / 重复清理被幂等吸收 |
+
 ---
 
 ## � 文档与报告入口
@@ -232,8 +249,9 @@ hermes gateway restart
 |------|------|----------|
 | CardKit `300313` 报错 | 卡片元素接近飞书 200 上限 | 等待自动拆分 |
 | Hook 丢失 | Hermes 升级覆盖了已 patch 的文件 | `verify` + `install` + 重启 |
-| 流式卡片变纯文本 | CardKit 创建失败 | 检查飞书凭据是否正确 |
+| 流式卡片变纯文本 | CardKit 创建失败 | 日志检索 `card_reply_failed` / `fallback_to_text` 看具体原因，检查飞书凭据是否正确 |
 | `status` 显示 `warning` | CLI 使用了错误的 Python 解释器 | 用 `$HERMES_PYTHON` 重新执行 |
+| 卡片一直 loading 不收尾 | 完成更新失败（如元素 Duplicate ID） | 日志检索 `card_complete_failed`，确认版本 ≥ v0.1.1（含竞态修复） |
 
 ---
 
