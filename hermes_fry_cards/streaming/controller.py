@@ -7,7 +7,7 @@ import logging
 from collections.abc import Callable, Coroutine
 from typing import TYPE_CHECKING, Any
 
-from ..cardkit.builder import build_background_card, build_complete_card, build_cron_card, build_streaming_card_v2, TOOL_PANEL_ELEMENT_ID
+from ..cardkit.builder import build_background_card, build_complete_card, build_cron_card, build_streaming_card_v2, LOADING_ELEMENT_ID, TOOL_PANEL_ELEMENT_ID
 from ..cardkit.markdown import (
     _downgrade_tables,
     optimize_markdown_style,
@@ -658,15 +658,34 @@ class StreamingController:
             width_mode=self._cfg.width_mode,
         )
         try:
-            seq = session.sequence if sequence is None else sequence
-            seq += 1
+            seq = (session.sequence if sequence is None else sequence) + 1
             await self._client.cardkit_close_streaming(old_card_id, sequence=seq)
             seq += 1
             await self._client.cardkit_update(old_card_id, seal_card, sequence=seq)
         except Exception:
             _logger.warning(
-                "CardKit seal failed for old card %s, continuing",
+                "CardKit seal failed for old card %s, trying loading-icon cleanup",
                 old_card_id[:12],
+                exc_info=True,
+            )
+            # 全量重建失败（典型: 旧卡元素已超限 300305）时，卡片内容停留在
+            # 流式末态且残留 loading 转圈图标，用户侧表现为消息永远「处理中」。
+            # 降级补救：删除 loading 图标元素，让旧卡至少停止转圈。
+            await self._remove_loading_icon(old_card_id, seq + 1)
+
+    async def _remove_loading_icon(self, card_id: str, sequence: int) -> None:
+        """从卡片删除 loading 转圈图标（seal/complete 失败时的降级补救）。"""
+        assert self._client is not None
+        try:
+            await self._client.cardkit_batch_update(
+                card_id,
+                [{"type": "delete", "element_id": LOADING_ELEMENT_ID}],
+                sequence=sequence,
+            )
+        except Exception:
+            _logger.warning(
+                "CardKit remove loading icon failed for card %s",
+                card_id[:12],
                 exc_info=True,
             )
 
@@ -937,6 +956,21 @@ class StreamingController:
             session.card_id,
             session.sequence,
         )
+        # 3 次全量重建均失败（典型: 卡片元素超限 300305）：降级删除 loading
+        # 转圈图标并关闭流式模式，避免卡片永远停留在「处理中」状态。
+        if session.card_id and self._client is not None:
+            try:
+                session.sequence += 1
+                await self._client.cardkit_close_streaming(
+                    session.card_id, sequence=session.sequence,
+                )
+            except Exception:
+                _logger.warning(
+                    "CardKit fallback close_streaming failed for card %s",
+                    session.card_id[:12],
+                    exc_info=True,
+                )
+            await self._remove_loading_icon(session.card_id, session.sequence + 1)
         session.mark_failed(reason="complete_failed_after_retries")
         return False
 

@@ -19,7 +19,8 @@ STREAMING_ELEMENT_ID = "streaming_content"
 REASONING_ELEMENT_ID = "reasoning_content"
 REASONING_TEXT_ELEMENT_ID = "reasoning_text"
 TOOL_PANEL_ELEMENT_ID = "tool_panel"
-_LOADING_ELEMENT_ID = "loading_icon"
+LOADING_ELEMENT_ID = "loading_icon"
+_LOADING_ELEMENT_ID = LOADING_ELEMENT_ID  # 兼容旧私有引用
 _LOADING_IMG_KEY = "img_v3_02vb_496bec09-4b43-4773-ad6b-0cdd103cd2bg"
 
 
