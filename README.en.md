@@ -9,8 +9,7 @@
 
 [中文文档](README.md) · [Installation Guide](INSTALL.md)
 
-<img width="697" height="217" alt="image" src="https://github.com/user-attachments/assets/236398d3-b8d9-45dd-881c-b78553f65d2c" />
-
+![A compact Feishu card screenshot with a green completed status indicator, a small profile avatar, and a short chat message bubble. The header reads 回复 余师洋: 晚上好 and the status reads 已完成. The text in the message says 晚上好! 已切换到 nvidia/moonshot/kimi-k3, 有什么需要我处理的? The card sits on a light gray background with a clean, minimal interface and a calm, friendly tone.](assets/collapse.png)
 
 ---
 

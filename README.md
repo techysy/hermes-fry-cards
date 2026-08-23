@@ -7,9 +7,9 @@
 
 > 🍟 Hermes Gateway 飞书流式卡片插件 — CardKit v2.0 实时流式消息
 
-[English](README.en.md) · [安装指南](INSTALL.md)
+[English](README.en.md) · [安装指南](INSTALL.md) · [文档目录](docs/README.md) · [优化方案](OPTIMIZATION_PLAN.md)
 
-![cover](assets/cover.jpg)
+![A compact chat card on a pale gray background with a circular profile image on the left. The top status line reads 回复 余师评：晚上好 with a green checkmark and the label 已完成 beside it. Below, the assistant message says 晚上好！已切换到 nvidia/moonshotai/kimi-k3，有什么需要我处理的？ A footer row shows the model name, reasoning count, tool count, context usage, and elapsed time. The overall mood is calm and polished, with soft green accents and a minimal messaging interface.](assets/collapse.png)            
 
 ---
 
@@ -110,16 +110,21 @@ display:
 
 统一面板 header 的完整形态（完成态卡片底部折叠面板标题）：
 
+![A compact chat card on a pale gray background with a circular profile image on the left. The top status line reads 回复 余师评：晚上好 with a green checkmark and the label 已完成 beside it. Below, the assistant message says 晚上好！已切换到 nvidia/moonshotai/kimi-k3，有什么需要我处理的？ A footer row shows the model name, reasoning count, tool count, context usage, and elapsed time. The overall mood is calm and polished, with soft green accents and a minimal messaging interface.](assets/collapse.png)
+
 | 配置组合 | header 效果 |
 |---------|------------|
-| `truncate_model_name: false`, `show_context: true` 纯文本 | `🍟 or/lc/LongCat-2.0 · 💭2 · 🔧3 · 152.6k/1.0m (15%) · ⏱️ 45.2s` |
-| 默认（`truncate_model_name: true`） | `🍟 ⇲LongCat-2.0 · 💭2 · 🔧3 · 152.6k/1.0m (15%) · ⏱️ 45.2s` |
-| `context_display_mode: bar` | `🍟 ⇲LongCat-2.0 · 💭2 · 🔧3 · [███▓▒░░░] 15% · ⏱️ 45.2s` |
-| `context_display_mode: text_bar` | `🍟 ⇲LongCat-2.0 · 💭2 · 🔧3 · 152.6k/1.0m [███▓▒░░░] 15% · ⏱️ 45.2s` |
-| `show_context: false` | `🍟 ⇲LongCat-2.0 · 💭2 · 🔧3 · ⏱️ 45.2s` |
+| `truncate_model_name: false`, `show_context: true` 纯文本 | `🍟 nvidia/moonshotai/kimi-k3 · 💭2 · 🔧3 · 152.6k/1.0m (15%) · ⏱️ 45.2s` |
+| 默认（`truncate_model_name: true`） | `🍟 ⇲kimi-k3 · 💭2 · 🔧3 · 152.6k/1.0m (15%) · ⏱️ 45.2s` |
+| `context_display_mode: bar` | `🍟 ⇲kimi-k3 · 💭2 · 🔧3 · [███▓▒░░░] 15% · ⏱️ 45.2s` |
+| `context_display_mode: text_bar` | `🍟 ⇲kimi-k3 · 💭2 · 🔧3 · 152.6k/1.0m [███▓▒░░░] 15% · ⏱️ 45.2s` |
+| `show_context: false` | `🍟 ⇲kimi-k3 · 💭2 · 🔧3 · ⏱️ 45.2s` |
 
 > header 各部分含义：`🍟` 模型名 · `💭n` 推理轮次 · `🔧n` 工具调用数 · 上下文窗口 · `⏱️` 耗时。
+
 > 无工具调用或回复 ≤ `unified_panel_min_duration` 秒时，整个统一面板（含 header）不显示。
+
+![A minimal chat card on a pale gray background with a circular profile image on the left. The status line reads 回复 余师评：那不是什么 是高清背景图, with a green checkmark and the label 已完成 above the assistant response. The message body is in Chinese and discusses a background image, with a highlighted sentence mentioning LICENCE and repo-audit-fix. The overall tone is calm and professional, with soft green styling and a clean messaging layout.](assets/quick_reply.png)
 
 ---
 
@@ -170,7 +175,17 @@ $HERMES_PYTHON -m pip uninstall hermes-fry-cards
 
 ---
 
-## 🔄 热更新 & 网关重启说明
+## � 文档与报告入口
+
+- [优化方案](OPTIMIZATION_PLAN.md) — 稳定性与维护性优化方案
+- [文档目录](docs/README.md) — 项目文档入口
+- [测试报告目录](tests/reports/README.md) — 报告存放规范与入口
+
+> 说明：测试报告建议统一保存在 `tests/reports/`，并按日期/主题命名，便于后续回归对比和审计。
+
+---
+
+## �🔄 热更新 & 网关重启说明
 
 本插件通过 AST 注入 hook 到 Hermes 的 `gateway/run.py` 和 `cron/scheduler.py`。**部分配置支持热更新（无需重启），但插件代码改动和部分结构类配置需要重启网关才能生效**。
 
@@ -226,7 +241,7 @@ hermes gateway restart
 
 | 项目 | 说明 | 特性 | Stars |
 |------|------|------|-------|
-| [🍟 hermes-fry-cards](https://github.com/techysy/hermes-fry-cards) | 薯条卡片 — Hermes 飞书流式卡片插件 | 🎯 工具调用合并 · 统一面板 · 状态色框 | ⭐1 |
+| [🍟 hermes-fry-cards](https://github.com/techysy/hermes-fry-cards) | 薯条卡片 — Hermes 飞书流式卡片插件 | 🎯 工具调用合并 · 统一面板 · 状态色框 | ⭐2 |
 | [🫧 aiduPOP](https://github.com/monkey2jack/aiduPOP) | 爱嘟泡波卡 — Hermes 飞书流式卡片插件 | 🫧 泡波样式 · 透明治愈 · 灵动 UI | ⭐8 |
 | [🎌 lark-hls-v2](https://github.com/BcubBo/lark-hls-v2) | 飞书 CardKit v2.0 流式卡片插件 for Hermes Agent | 🎌 二次元画风 · 动态台词 · 场景检测 · Fisher-Yates 洗牌 | ⭐7 |
 
