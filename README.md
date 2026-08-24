@@ -31,6 +31,10 @@
 | 🎨 **可定制样式** | header/footer、文字大小、宽度模式、字段布局均可配置 |
 | 🎯 **状态色框** | 顶部 header 根据状态自动着色：流式中蓝色、完成绿色、中断/错误红色 |
 
+## 🏗️ 架构总览
+
+![hermes-fry-cards 架构：Hermes Gateway 事件经 AST hook 注入层进入 StreamCardController，streaming/ 运行时节流编排，cardkit/ 构建卡片 JSON，经飞书 CardKit v2.0 API 交付用户端流式卡片；cron 推送与失败回落路径独立标注](assets/architecture.svg)
+
 ---
 
 ## 🚀 快速安装

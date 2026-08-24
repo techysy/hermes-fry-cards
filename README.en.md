@@ -31,6 +31,10 @@
 | 🎨 **Customizable** | Header/footer, text sizes, width mode, footer fields |
 | 🎯 **Status border** | Header auto-colors by state: blue streaming, green completed, red error |
 
+## 🏗️ Architecture
+
+![hermes-fry-cards architecture: gateway events flow through the AST hook injection layer into StreamCardController, orchestrated by the streaming/ runtime with 100ms flush throttling; cardkit/ builds card JSON delivered via Feishu CardKit v2.0 API to streaming user cards; cron delivery and failure fallback paths are shown separately](assets/architecture.svg)
+
 ---
 
 ## 🚀 Quick Install
