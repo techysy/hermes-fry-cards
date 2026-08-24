@@ -195,6 +195,7 @@ $HERMES_PYTHON -m pip uninstall hermes-fry-cards
 ## 📄 文档与报告入口
 
 - [优化方案](docs/OPTIMIZATION_PLAN.md) — 稳定性与维护性优化方案
+- [卡片设置指南](docs/CONFIGURATION.md) — 全部配置项与常用场景
 - [排障指南](docs/TROUBLESHOOTING.md) — 与 hfc 插件冲突、卡片不显示、hook 未生效等常见问题
 - [文档目录](docs/README.md) — 项目文档入口
 - [测试报告目录](tests/reports/README.md) — 报告存放规范与入口

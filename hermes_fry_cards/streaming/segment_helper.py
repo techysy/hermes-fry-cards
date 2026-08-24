@@ -110,6 +110,7 @@ def build_reasoning_finalized_action(seg: Segment) -> dict[str, Any]:
         "params": {
             "element_id": seg.el_id,
             "partial_element": {
+                "expanded": False,
                 "header": {
                     "title": {
                         "tag": "plain_text",

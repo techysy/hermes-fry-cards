@@ -61,13 +61,13 @@ class Config:
         """
         display = self._reload().get("display")
         if not isinstance(display, dict):
-            return False
+            return True
         platforms = display.get("platforms")
         if isinstance(platforms, dict):
             feishu = platforms.get("feishu")
             if isinstance(feishu, dict) and "show_reasoning" in feishu:
                 return bool(feishu["show_reasoning"])
-        return bool(display.get("show_reasoning", False))
+        return bool(display.get("show_reasoning", True))
 
     @property
     def show_tool_use(self) -> bool:

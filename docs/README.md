@@ -12,6 +12,7 @@
 ## 排障指南
 
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — 与 hfc 插件冲突、卡片不显示、hook 未生效等常见问题
+- [CONFIGURATION.md](CONFIGURATION.md) — 卡片设置指南：streaming/display 全部配置项、优先级、常用场景
 
 ## 测试报告
 

@@ -208,21 +208,21 @@ class TestShowReasoning:
         cfg = self._make_reasoning_config({"display": {"show_reasoning": False}})
         assert cfg.show_reasoning is False
 
-    def test_default_false(self) -> None:
+    def test_default_true(self) -> None:
         cfg = self._make_reasoning_config({})
-        assert cfg.show_reasoning is False
+        assert cfg.show_reasoning is True
 
     def test_display_not_dict(self) -> None:
         cfg = self._make_reasoning_config({"display": "invalid"})
-        assert cfg.show_reasoning is False
+        assert cfg.show_reasoning is True
 
     def test_platforms_not_dict(self) -> None:
         cfg = self._make_reasoning_config({"display": {"platforms": "invalid"}})
-        assert cfg.show_reasoning is False
+        assert cfg.show_reasoning is True
 
     def test_feishu_section_missing_key(self) -> None:
         cfg = self._make_reasoning_config({"display": {"platforms": {"feishu": {"other": True}}}})
-        assert cfg.show_reasoning is False
+        assert cfg.show_reasoning is True
 
     def test_platform_takes_priority_over_global(self) -> None:
         cfg = self._make_reasoning_config({
@@ -235,7 +235,7 @@ class TestShowReasoning:
 
     def test_no_display_section(self) -> None:
         cfg = self._make_reasoning_config({"streaming": {"enabled": True}})
-        assert cfg.show_reasoning is False
+        assert cfg.show_reasoning is True
 
 
 class TestShowToolUse:
