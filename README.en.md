@@ -146,6 +146,7 @@ This project is independently developed based on [Cheerwhy/hermes-lark-streaming
 | **Context progress bar** | Independent `show_context` switch + `context_display_mode` with three modes (`text` / gradient-shaded `bar` / `text_bar`), smart units (k below 1M) | ❌ Footer plain-text percentage only, no toggle |
 | **Reasoning panel cap** | `max_reasoning_panels` (default 3); overflow merges into the last panel — supports models without segmented thinking (e.g. deepseek-v4-flash), prevents 300305 element overflow | ❌ Uncapped, long thinking always overflows |
 | **Model name truncation** | `truncate_model_name`: `nvidia/moonshotai/kimi-k3` → `⇲kimi-k3`, fixes mobile line wrapping | ❌ Full name shown |
+| **Model aliases** | Standalone JSON config at `~/.hermes/model_aliases.json`: `{"longcat": "哈基米", "gemini": "哈基米"}`; keys are case-insensitive substring-matched against the model name — a hit shows the alias (e.g. LongCat → 哈基米), a miss falls back to truncation; re-read on every render, effective immediately | ❌ None |
 
 Behavior default: `show_reasoning` defaults to **true** (upstream defaults to false).
 

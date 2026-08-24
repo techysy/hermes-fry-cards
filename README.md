@@ -109,6 +109,7 @@ display:
 | `max_reasoning_panels` | 最多保留的独立推理面板数（超出后合并，防元素溢出） | `3` |
 | `unified_panel_min_duration` | 统一面板最小展示耗时（秒）；无工具调用或耗时 ≤ 此值不显示统一面板 | `5` |
 | `truncate_model_name` | 截断模型名（`nvidia/moonshotai/kimi-k3` → `⇲kimi-k3`） | `true` |
+| [模型别名](#-与上游-hermes-lark-streaming-的差异) | `~/.hermes/model_aliases.json` 子串匹配，命中优先于截断 | 无 |
 
 ### 样式效果示例
 
@@ -225,6 +226,7 @@ $HERMES_PYTHON -m pip uninstall hermes-fry-cards
 | `max_reasoning_panels` | 最多独立推理面板数（防元素溢出） |
 | `unified_panel_min_duration` | 统一面板最小展示耗时（秒） |
 | `truncate_model_name` | 截断模型名 |
+| 模型别名 | `~/.hermes/model_aliases.json` 每次渲染重读，改文件即生效 |
 
 ### ⚠️ 需要重启网关（`hermes gateway restart`）
 
@@ -283,6 +285,7 @@ hermes gateway restart
 | **上下文进度条** | `show_context` 独立开关 + `context_display_mode` 三种模式（`text` / 渐变阴影 `bar` / `text_bar`），智能单位（<1M 用 k） | ❌ 仅 footer 纯文本百分比，无开关 |
 | **推理面板上限** | `max_reasoning_panels`（默认 3），超出合并进最后一个面板——兼容 deepseek-v4-flash 等不分段思考模型，防 300305 元素溢出 | ❌ 无限制，长思考必溢出 |
 | **模型名截断** | `truncate_model_name`：`nvidia/moonshotai/kimi-k3` → `⇲kimi-k3`，修复移动端换行 | ❌ 全称显示 |
+| **模型别名** | `~/.hermes/model_aliases.json` 独立 JSON 配置：`{"longcat": "哈基米", "gemini": "哈基米"}`，key 对模型名做大小写不敏感子串匹配，命中显示别名（如 LongCat → 哈基米），未命中回落截断逻辑；每次渲染重读，改文件即生效 | ❌ 无 |
 
 行为默认值：`show_reasoning` 默认 **true**（上游默认 false）。
 

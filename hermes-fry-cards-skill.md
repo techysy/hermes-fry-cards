@@ -106,6 +106,7 @@ $HERMES_PYTHON -m hermes_fry_cards uninstall
 | `max_reasoning_panels` | 最多保留独立推理面板数，超出合并防溢出 | `3` |
 | `unified_panel_min_duration` | 无工具或耗时 ≤ 此值不显示统一面板（秒） | `5` |
 | `truncate_model_name` | 截断模型名（`nvidia/moonshotai/kimi-k3` → `⇲kimi-k3`） | `true` |
+| 模型别名 | `~/.hermes/model_aliases.json`：`{"longcat": "哈基米"}` 子串匹配，命中优先于截断；每次渲染重读热更新 | 无 |
 | `panel_expanded` | 完成态面板保持展开 | `false` |
 | `header.enabled` | 顶部状态栏 | `true` |
 | `footer.enabled` | 底部元数据栏 | `false` |

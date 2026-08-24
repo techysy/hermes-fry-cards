@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 新增
+- **模型别名** — 新增 `~/.hermes/model_aliases.json` 独立配置文件：
+  key 对模型名做大小写不敏感子串匹配，命中显示别名（如 `"longcat": "哈基米"`），
+  未命中回落 `truncate_model_name` 截断逻辑；每次渲染重读，改文件即生效无需重启。
+  新增 `_display_model()` 统一模型显示名决策（builder.py 两处调用点收敛）
+
 ### 文档 / Docs
 - **TROUBLESHOOTING.md** — 新增排障指南：hfc 插件冲突（base.py 残留 patch）、卡片不显示、hook 未生效、cron 推送不显示
 - **README.md** — 文档入口新增排障指南链接

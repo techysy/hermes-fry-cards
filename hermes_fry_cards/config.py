@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -159,7 +160,7 @@ class Config:
 
     @property
     def truncate_model_name(self) -> bool:
-        """是否截断模型名（or/lc/LongCat-2.0 → ⇲LongCat-2.0）.
+        """是否截断模型名（nvidia/moonshotai/kimi-k3 → ⇲kimi-k3）.
 
         优先级：display.platforms.feishu.truncate_model_name → display.truncate_model_name，
         默认 True.
@@ -173,6 +174,31 @@ class Config:
             if isinstance(feishu, dict) and "truncate_model_name" in feishu:
                 return bool(feishu["truncate_model_name"])
         return bool(display.get("truncate_model_name", True))
+
+    def _aliases_path(self, home: Path | None = None) -> Path:
+        """模型别名文件路径：~/.hermes/model_aliases.json."""
+        base = home if home is not None else (self._home or hermes_home())
+        return base / "model_aliases.json"
+
+    def model_aliases(self) -> dict[str, str]:
+        """模型别名映射，从 ~/.hermes/model_aliases.json 惰性读取（每次渲染重读，热更新）.
+
+        JSON 格式（key 为模型名子串匹配、大小写不敏感）：
+            {"longcat": "哈基米", "gemini": "哈基米", "kimi-k3": "K3"}
+
+        匹配规则：模型名（小写）包含 key 即命中，取 JSON 中首个命中的条目；
+        未命中返回空字符串，调用方回落截断逻辑。
+        """
+        path = self._aliases_path()
+        if not path.exists():
+            return {}
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        return {str(k).lower(): str(v) for k, v in data.items() if v}
 
     @property
     def context_display_mode(self) -> str:

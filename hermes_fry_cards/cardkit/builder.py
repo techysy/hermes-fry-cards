@@ -37,6 +37,27 @@ def _truncate_model(name: str) -> str:
     return name
 
 
+def _display_model(name: str) -> str:
+    """模型显示名：别名优先（~/.hermes/model_aliases.json 子串匹配），未命中回落截断逻辑.
+
+    别名文件由 Config().model_aliases() 每次重读（热更新）；命中即返回别名，
+    未命中且 truncate_model_name 开启时走 _truncate_model。
+    """
+    if not name:
+        return name
+    from ..config import Config
+
+    cfg = Config()
+    aliases = cfg.model_aliases()
+    lowered = name.lower()
+    for key, alias in aliases.items():
+        if key and key in lowered:
+            return alias
+    if cfg.truncate_model_name:
+        return _truncate_model(name)
+    return name
+
+
 def _collapsible_panel(
     *,
     expanded: bool,
@@ -364,9 +385,7 @@ def _render_footer_field(
     if name == "model":
         v = data.get("model") or None
         if v:
-            from ..config import Config
-            if Config().truncate_model_name:
-                v = _truncate_model(v)
+            v = _display_model(v)
         return v, v
 
     if name == "tokens":
@@ -653,9 +672,7 @@ def build_complete_card(
         # header: 🍟 model · 💭n · 🔧n · ⏳ context · ⏱️ elapsed
         model_name = (footer_data or {}).get("model") or ""
         if model_name:
-            from ..config import Config
-            if Config().truncate_model_name:
-                model_name = _truncate_model(model_name)
+            model_name = _display_model(model_name)
         # 优先用 tool_elapsed_ms，否则用 footer_data 的 duration，否则用 session 总耗时
         elapsed_ms = tool_elapsed_ms
         if not elapsed_ms and footer_data:
