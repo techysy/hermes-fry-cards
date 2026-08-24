@@ -40,7 +40,7 @@ display:
       show_tool_use: true        # 工具面板
       show_reasoning: true       # 推理展示
       show_context: true         # 上下文显示
-      context_display_mode: text_bar  # 上下文格式
+      context_display_mode: text  # 上下文格式（默认 text，推荐信息风用 text_bar）
 ```
 
 ### 3. 文档同步
@@ -100,9 +100,9 @@ $HERMES_PYTHON -m hermes_fry_cards uninstall
 |--------|------|--------|
 | `streaming.enabled` | 启用流式卡片 | `true` |
 | `show_tool_use` | 展示工具调用面板 | `true` |
-| `show_reasoning` | 展示推理过程 | `true` |
+| `show_reasoning` | 展示推理过程 | `true`（2026-08-24 起默认开启，commit ca5a74c） |
 | `show_context` | 统一面板 header 显示上下文窗口 | `true` |
-| `context_display_mode` | `text`/`bar`/`text_bar`（block 已废弃） | `text_bar` |
+| `context_display_mode` | `text`/`bar`/`text_bar`（block 已废弃） | `text`（2026-08-21 起，commit 9c76473） |
 | `max_reasoning_panels` | 最多保留独立推理面板数，超出合并防溢出 | `3` |
 | `unified_panel_min_duration` | 无工具或耗时 ≤ 此值不显示统一面板（秒） | `5` |
 | `truncate_model_name` | 截断模型名（`or/lc/LongCat-2.0` → `⇲LongCat-2.0`） | `true` |
@@ -118,9 +118,9 @@ $HERMES_PYTHON -m hermes_fry_cards uninstall
 
 | `context_display_mode` | 效果 |
 |------------------------|------|
-| `text` | `55.6k/1.0m (5%)` |
+| `text`（默认） | `55.6k/1.0m (5%)` |
 | `bar` | `[███▓▒░░░] 35%`（渐变阴影） |
-| `text_bar`（默认） | `20k/1.0m [███▓▒░░░] 21%` |
+| `text_bar` | `20k/1.0m [███▓▒░░░] 21%` |
 
 > block/block_text 已废弃，桌面端/移动端显示不一致，自动回落 bar/text_bar。
 
