@@ -117,7 +117,7 @@ fields:
 | `show_context` | `true` | 面板 header 显示上下文用量 |
 | `max_reasoning_panels` | `3` | 超出后推理片段合并进最后一个面板（防飞书 200 元素上限） |
 | `unified_panel_min_duration` | `5` | 秒。耗时≤该值或无工具调用 → 不显示统一面板 |
-| `truncate_model_name` | `true` | `or/lc/LongCat-2.0` → `⇲LongCat-2.0` |
+| `truncate_model_name` | `true` | `nvidia/moonshotai/kimi-k3` → `⇲kimi-k3` |
 | `context_display_mode` | `text` | 见下表 |
 
 ### context_display_mode 可选值

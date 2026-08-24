@@ -79,7 +79,7 @@ display:
       context_display_mode: text # text / bar / text_bar
       max_reasoning_panels: 3    # 最多保留的独立推理面板数（超出后合并，防元素溢出）
       unified_panel_min_duration: 5  # 统一面板最小展示耗时（秒）
-      truncate_model_name: true  # 截断模型名（or/lc/LongCat-2.0 → ⇲LongCat-2.0）
+      truncate_model_name: true  # 截断模型名（nvidia/moonshotai/kimi-k3 → ⇲kimi-k3）
 ```
 
 ### 上下文显示格式
@@ -108,7 +108,7 @@ display:
 | `context_display_mode` | 上下文显示格式：`text` / `bar` / `text_bar` | `text` |
 | `max_reasoning_panels` | 最多保留的独立推理面板数（超出后合并，防元素溢出） | `3` |
 | `unified_panel_min_duration` | 统一面板最小展示耗时（秒）；无工具调用或耗时 ≤ 此值不显示统一面板 | `5` |
-| `truncate_model_name` | 截断模型名（`or/lc/LongCat-2.0` → `⇲LongCat-2.0`） | `true` |
+| `truncate_model_name` | 截断模型名（`nvidia/moonshotai/kimi-k3` → `⇲kimi-k3`） | `true` |
 
 ### 样式效果示例
 
@@ -282,7 +282,7 @@ hermes gateway restart
 | **统一面板** | 推理 + 工具调用合并到底部统一面板；`unified_panel_min_duration` 控制无工具且耗时短时自动隐藏 | ❌ 推理面板独立散排，多轮对话卡片冗长 |
 | **上下文进度条** | `show_context` 独立开关 + `context_display_mode` 三种模式（`text` / 渐变阴影 `bar` / `text_bar`），智能单位（<1M 用 k） | ❌ 仅 footer 纯文本百分比，无开关 |
 | **推理面板上限** | `max_reasoning_panels`（默认 3），超出合并进最后一个面板——兼容 deepseek-v4-flash 等不分段思考模型，防 300305 元素溢出 | ❌ 无限制，长思考必溢出 |
-| **模型名截断** | `truncate_model_name`：`or/lc/LongCat-2.0` → `⇲LongCat-2.0`，修复移动端换行 | ❌ 全称显示 |
+| **模型名截断** | `truncate_model_name`：`nvidia/moonshotai/kimi-k3` → `⇲kimi-k3`，修复移动端换行 | ❌ 全称显示 |
 
 行为默认值：`show_reasoning` 默认 **true**（上游默认 false）。
 

@@ -145,7 +145,7 @@ This project is independently developed based on [Cheerwhy/hermes-lark-streaming
 | **Unified panel** | Merges reasoning + tool calls into a single bottom panel; `unified_panel_min_duration` auto-hides it when there are no tool calls and the reply is quick | ❌ Reasoning panels stack separately, verbose for multi-round chats |
 | **Context progress bar** | Independent `show_context` switch + `context_display_mode` with three modes (`text` / gradient-shaded `bar` / `text_bar`), smart units (k below 1M) | ❌ Footer plain-text percentage only, no toggle |
 | **Reasoning panel cap** | `max_reasoning_panels` (default 3); overflow merges into the last panel — supports models without segmented thinking (e.g. deepseek-v4-flash), prevents 300305 element overflow | ❌ Uncapped, long thinking always overflows |
-| **Model name truncation** | `truncate_model_name`: `or/lc/LongCat-2.0` → `⇲LongCat-2.0`, fixes mobile line wrapping | ❌ Full name shown |
+| **Model name truncation** | `truncate_model_name`: `nvidia/moonshotai/kimi-k3` → `⇲kimi-k3`, fixes mobile line wrapping | ❌ Full name shown |
 
 Behavior default: `show_reasoning` defaults to **true** (upstream defaults to false).
 
