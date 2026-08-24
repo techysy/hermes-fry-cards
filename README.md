@@ -271,7 +271,38 @@ hermes gateway restart
 
 ---
 
-## 📜 归属说明
+## 🔄 与上游 hermes-lark-streaming 的差异
+
+本项目基于 [Cheerwhy/hermes-lark-streaming](https://github.com/Cheerwhy/hermes-lark-streaming) v0.12.0 独立开发。核心流式引擎沿用上游 AST hook 注入架构，在此之上做了三层增强：
+
+### ✨ 新增功能
+
+| 功能 | 说明 | 上游状态 |
+|------|------|----------|
+| **统一面板** | 推理 + 工具调用合并到底部统一面板；`unified_panel_min_duration` 控制无工具且耗时短时自动隐藏 | ❌ 推理面板独立散排，多轮对话卡片冗长 |
+| **上下文进度条** | `show_context` 独立开关 + `context_display_mode` 三种模式（`text` / 渐变阴影 `bar` / `text_bar`），智能单位（<1M 用 k） | ❌ 仅 footer 纯文本百分比，无开关 |
+| **推理面板上限** | `max_reasoning_panels`（默认 3），超出合并进最后一个面板——兼容 deepseek-v4-flash 等不分段思考模型，防 300305 元素溢出 | ❌ 无限制，长思考必溢出 |
+| **模型名截断** | `truncate_model_name`：`or/lc/LongCat-2.0` → `⇲LongCat-2.0`，修复移动端换行 | ❌ 全称显示 |
+
+行为默认值：`show_reasoning` 默认 **true**（上游默认 false）。
+
+### 🔧 关键修复（上游存在的坑）
+
+- **300305 元素超限强制拆卡恢复** — 卡片实际元素总数超飞书硬上限时，自动封印旧卡、未创建 segment 迁移新卡续流，不再永久卡「处理中」
+- **远程图片 URL 过滤** — 规避 CardKit 拒绝远程 URL（`200570 invalid image keys`），无法上传的引用先 strip 并包代码围栏
+- **完成态 Duplicate ID 修复体系** — reasoning `text_el_id` 全链路复用 + 带索引唯一 ID 兜底；上游完成态用固定 `reasoning_text` 会与流式阶段元素冲突，导致卡片卡 loading
+- **seal/complete 失败清理 loading 图标** — 收尾失败不再残留「处理中」状态
+
+### 🏛️ 内部稳定性重构（v0.1.1）
+
+- session 生命周期统一入口（注册/清理幂等）、interrupt 后不误删新会话映射、终态会话可重建
+- FlushController 竞态防护：完成态快照防误重刷、遗留 timer 取消防双刷
+- `mark_failed(reason=...)` 失败原因可追溯 + 结构化日志事件 + `_yield_to_gateway` 单一回落决策点
+- 测试规模 15 个文件、新增 9 个稳定性回归测试；配套 CONFIGURATION / TROUBLESHOOTING 文档
+
+---
+
+## 📄 归属说明
 
 灵感来自 [hermes-lark-streaming](https://github.com/Cheerwhy/hermes-lark-streaming)（作者 Cheerwhy），原项目使用 MIT 协议。本项目为独立开发版本，已进行架构重写和功能重构。
 

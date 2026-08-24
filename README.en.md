@@ -134,7 +134,38 @@ User sends message
 
 ---
 
-## 📜 Attribution
+## 🔄 Differences from upstream hermes-lark-streaming
+
+This project is independently developed based on [Cheerwhy/hermes-lark-streaming](https://github.com/Cheerwhy/hermes-lark-streaming) v0.12.0. The core streaming engine keeps the upstream AST hook injection architecture, enhanced in three layers:
+
+### ✨ New features
+
+| Feature | Description | Upstream |
+|---------|-------------|----------|
+| **Unified panel** | Merges reasoning + tool calls into a single bottom panel; `unified_panel_min_duration` auto-hides it when there are no tool calls and the reply is quick | ❌ Reasoning panels stack separately, verbose for multi-round chats |
+| **Context progress bar** | Independent `show_context` switch + `context_display_mode` with three modes (`text` / gradient-shaded `bar` / `text_bar`), smart units (k below 1M) | ❌ Footer plain-text percentage only, no toggle |
+| **Reasoning panel cap** | `max_reasoning_panels` (default 3); overflow merges into the last panel — supports models without segmented thinking (e.g. deepseek-v4-flash), prevents 300305 element overflow | ❌ Uncapped, long thinking always overflows |
+| **Model name truncation** | `truncate_model_name`: `or/lc/LongCat-2.0` → `⇲LongCat-2.0`, fixes mobile line wrapping | ❌ Full name shown |
+
+Behavior default: `show_reasoning` defaults to **true** (upstream defaults to false).
+
+### 🔧 Key fixes (upstream pitfalls)
+
+- **300305 element-limit forced split recovery** — when total card elements exceed Feishu's hard limit, automatically seals the old card and migrates un-created segments to a new one to continue streaming; no longer stuck at "processing" forever
+- **Remote image URL filtering** — works around CardKit rejecting remote URLs (`200570 invalid image keys`) by stripping un-uploadable references into code fences
+- **Duplicate ID fix system for completion cards** — reasoning `text_el_id` reused end-to-end with indexed unique-ID fallback; upstream's fixed `reasoning_text` collides with streaming-phase elements and leaves cards stuck loading
+- **Loading icon cleanup on seal/complete failure** — failed finalization no longer leaves a "processing" state behind
+
+### 🏛️ Internal stability refactor (v0.1.1)
+
+- Unified session lifecycle entry points (idempotent registration/cleanup), interrupt takeover no longer deletes new session mappings, terminated sessions can be rebuilt
+- FlushController race protection: completion snapshot prevents redundant reflush, stale timer cancellation prevents double flush
+- Traceable failure reasons via `mark_failed(reason=...)` + structured log events + `_yield_to_gateway` as the single fallback decision point
+- 15 test files with 9 new stability regression tests; CONFIGURATION / TROUBLESHOOTING docs included
+
+---
+
+## 📄 Attribution
 
 Inspired by [hermes-lark-streaming](https://github.com/Cheerwhy/hermes-lark-streaming) (author Cheerwhy), licensed under MIT. This is an independent development with architecture rewrite and feature enhancements.
 
