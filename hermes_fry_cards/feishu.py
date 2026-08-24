@@ -54,6 +54,9 @@ CARDKIT_TRANSIENT_ERROR_CODES = frozenset(
 )
 _TRANSIENT_RETRY_DELAYS_SEC = (0.15, 0.5, 1.0)
 
+# token 失效：飞书后台保存权限/发版/停启用会立即吊销所有已发出的 tenant_token
+FEISHU_TOKEN_INVALID_CODE = 99991663
+
 
 def _sanitize_message(msg: str) -> str:
     """从错误消息中移除 token 和 secret."""
@@ -145,6 +148,19 @@ class FeishuClient:
                 return resp
             except FeishuAPIError as exc:
                 last_error = exc
+                # token 被飞书侧吊销（后台发版/权限变更立即失效所有已发 token）：
+                # 清 SDK 进程内 token 缓存后重试一次，SDK 会重新获取新 token，无需重启网关
+                if exc.code == FEISHU_TOKEN_INVALID_CODE:
+                    self.invalidate_token_cache()
+                    _logger.warning(
+                        "%s token invalidated (code=%s, likely app version/permission change), "
+                        "cleared SDK token cache, retrying once",
+                        operation,
+                        exc.code,
+                    )
+                    resp = await call()
+                    self._check(resp, operation)
+                    return resp
                 if exc.code not in CARDKIT_TRANSIENT_ERROR_CODES or attempt >= attempts - 1:
                     raise
                 delay = _TRANSIENT_RETRY_DELAYS_SEC[attempt]
@@ -159,6 +175,26 @@ class FeishuClient:
                 await asyncio.sleep(delay)
         assert last_error is not None
         raise last_error
+
+    def invalidate_token_cache(self) -> None:
+        """清空 lark-oapi SDK 的进程内 token 缓存，下次请求强制重新获取 tenant_token.
+
+        SDK 的 LocalCache 是类级单例（TokenManager.cache），按 app_id 为 key；
+        飞书后台发版/权限变更会吊销旧 token，但缓存里的旧 token 在 TTL 内不会自动剔除，
+        导致持续 99991663 直到进程重启。此方法提供运行时恢复路径。
+        兼容自定义 ICache 实现：有 .cache dict 则按键删除，否则整体清空重建。
+        """
+        from lark_oapi.core.token.manager import TokenManager
+
+        cache = getattr(TokenManager, "cache", None)
+        if cache is None:
+            return
+        key = f"self_tenant_token:{self.config.app_id}"
+        inner = getattr(cache, "cache", None)
+        if isinstance(inner, dict):
+            inner.pop(key, None)
+        elif hasattr(cache, "set"):
+            cache.set(key, "", 0)
 
     async def send_card_to_chat(
         self,

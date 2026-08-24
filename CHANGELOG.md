@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### 新增
+- **token 吊销运行时恢复** — 遇到 `99991663 Invalid access token`（飞书后台保存权限/
+  发版/停启用会立即吊销所有已发出的 tenant_token）时，自动清空 SDK 进程内 token 缓存
+  并重试一次，无需重启网关；新增 `FeishuClient.invalidate_token_cache()`。
+  此前该错误会持续到进程重启（watchdog 兜底最长 30 分钟空窗）
 - **模型别名** — 新增 `~/.hermes/model_aliases.json` 独立配置文件：
   key 对模型名做大小写不敏感子串匹配，命中显示别名（如 `"longcat": "哈基米"`），
   未命中回落 `truncate_model_name` 截断逻辑；每次渲染重读，改文件即生效无需重启。

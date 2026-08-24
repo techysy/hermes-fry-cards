@@ -156,6 +156,17 @@ $HERMES_PYTHON -m hermes_fry_cards uninstall
 - **失败原因可追溯**：`mark_failed(reason=...)` 记录首次原因且幂等保留
 - **日志事件标准化**：session_created / card_created / card_reply_failed / fallback_to_text / stale_pruned / session_disposed
 
+## 运维要点
+
+### token 被 99991663 吊销的自动恢复
+
+飞书开放平台后台**保存权限变更 / 发版 / 停用再启用**会立即吊销所有已发出的 tenant_token，
+而 lark-oapi SDK 的 LocalCache 在 TTL 内不会剔除旧 token → 持续 99991663 直到进程重启。
+
+`_checked_call` 已内置恢复：遇到 99991663 → `invalidate_token_cache()` 清 SDK 缓存 → 重试一次。
+日志特征：`token invalidated (code=99991663, likely app version/permission change), cleared SDK token cache`。
+发版后若仍见连续 99991663 超过 1 分钟才需要人工介入。
+
 ## 踩坑记录
 
 ### 2026-08-21：完成态 reasoning Duplicate ID 导致卡片卡 loading
