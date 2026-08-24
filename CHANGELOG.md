@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### 文档 / Docs
+- **TROUBLESHOOTING.md** — 新增排障指南：hfc 插件冲突（base.py 残留 patch）、卡片不显示、hook 未生效、cron 推送不显示
+- **README.md** — 文档入口新增排障指南链接
+- **docs/README.md** — 新增排障指南入口
+
+---
+
 ## [0.1.1] - 2026-08-23
 
 ### 内部稳定性优化（对照 OPTIMIZATION_PLAN P0/P1，无配置项与行为面变化）

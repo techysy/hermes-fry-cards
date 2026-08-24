@@ -9,6 +9,10 @@
 - [../INSTALL.md](../INSTALL.md) — 安装与升级说明
 - [../CHANGELOG.md](../CHANGELOG.md) — 版本变更日志
 
+## 排障指南
+
+- [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — 与 hfc 插件冲突、卡片不显示、hook 未生效等常见问题
+
 ## 测试报告
 
 测试报告默认保存在 `tests/reports/` 目录中，生成后请以 `*.md` 或 `*.html` 形式归档，便于后续复盘和回归检查。
