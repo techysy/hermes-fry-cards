@@ -148,6 +148,23 @@ This project is independently developed based on [Cheerwhy/hermes-lark-streaming
 | **Model name truncation** | `truncate_model_name`: `nvidia/moonshotai/kimi-k3` → `⇲kimi-k3`, fixes mobile line wrapping | ❌ Full name shown |
 | **Model aliases** | Standalone JSON config at `~/.hermes/model_aliases.json`: `{"longcat": "哈基米", "gemini": "哈基米"}`; keys are case-insensitive substring-matched against the model name — a hit shows the alias (e.g. LongCat → 哈基米), a miss falls back to truncation; re-read on every render, effective immediately | ❌ None |
 
+### Model alias config
+
+Independent of `config.yaml`, aliases are written in `~/.hermes/model_aliases.json`:
+
+```json
+{
+  "longcat": "哈基米",
+  "gemini": "哈基米"
+}
+```
+
+- **Match**: keys are case-insensitively substring-matched against the full model name (`longcat` → `or/lc/LongCat-2.0` hits)
+- **Priority**: alias hit → show alias; miss → fall back to truncation
+- **Hot reload**: re-read on every render, takes effect immediately on file change
+
+> Full path: `~/.hermes/model_aliases.json`
+
 Behavior default: `show_reasoning` defaults to **true** (upstream defaults to false).
 
 ### 🔧 Key fixes (upstream pitfalls)

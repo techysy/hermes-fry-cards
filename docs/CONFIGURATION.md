@@ -118,6 +118,23 @@ fields:
 | `max_reasoning_panels` | `3` | 超出后推理片段合并进最后一个面板（防飞书 200 元素上限） |
 | `unified_panel_min_duration` | `5` | 秒。耗时≤该值或无工具调用 → 不显示统一面板 |
 | `truncate_model_name` | `true` | `nvidia/moonshotai/kimi-k3` → `⇲kimi-k3` |
+
+### 模型别名配置
+
+独立于 `config.yaml`，别名写在 `~/.hermes/model_aliases.json`：
+
+```json
+{
+  "longcat": "哈基米",
+  "gemini": "哈基米"
+}
+```
+
+- **匹配**：key 对完整模型名做大小写不敏感子串匹配
+- **优先级**：别名命中 → 显示别名；未命中 → 回落截断逻辑
+- **热更新**：每次渲染重读，改完文件即生效
+
+> 完整路径：`~/.hermes/model_aliases.json`
 | `context_display_mode` | `text` | 见下表 |
 
 ### context_display_mode 可选值

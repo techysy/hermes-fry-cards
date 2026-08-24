@@ -109,6 +109,23 @@ display:
 | `max_reasoning_panels` | 最多保留的独立推理面板数（超出后合并，防元素溢出） | `3` |
 | `unified_panel_min_duration` | 统一面板最小展示耗时（秒）；无工具调用或耗时 ≤ 此值不显示统一面板 | `5` |
 | `truncate_model_name` | 截断模型名（`nvidia/moonshotai/kimi-k3` → `⇲kimi-k3`） | `true` |
+
+### 模型别名配置
+
+独立于 `config.yaml`，别名写在 `~/.hermes/model_aliases.json`：
+
+```json
+{
+  "longcat": "哈基米",
+  "gemini": "哈基米"
+}
+```
+
+- **匹配**：key 对完整模型名做大小写不敏感子串匹配（`longcat` → `or/lc/LongCat-2.0` 命中）
+- **优先级**：别名命中 → 显示别名；未命中 → 回落截断逻辑
+- **热更新**：每次渲染重读，改完文件即生效，无需重启网关
+
+> 完整路径：`~/.hermes/model_aliases.json`
 | [模型别名](#-与上游-hermes-lark-streaming-的差异) | `~/.hermes/model_aliases.json` 子串匹配，命中优先于截断 | 无 |
 
 ### 样式效果示例
@@ -204,6 +221,7 @@ $HERMES_PYTHON -m pip uninstall hermes-fry-cards
 - [排障指南](docs/TROUBLESHOOTING.md) — 与 hfc 插件冲突、卡片不显示、hook 未生效等常见问题
 - [文档目录](docs/README.md) — 项目文档入口
 - [测试报告目录](tests/reports/README.md) — 报告存放规范与入口
+- **核心汉化补丁**：`skills/hermes-core-zh-localization/`（仓库内附带，安装方式见 SKILL.md）
 
 > 说明：测试报告建议统一保存在 `tests/reports/`，并按日期/主题命名，便于后续回归对比和审计。
 
