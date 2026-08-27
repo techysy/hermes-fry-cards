@@ -48,7 +48,11 @@ curl https://raw.githubusercontent.com/techysy/hermes-fry-cards/main/INSTALL.md
 ### Manual install
 
 ```bash
+# GitHub (primary)
 git clone https://github.com/techysy/hermes-fry-cards.git
+# or Gitee mirror (faster in CN)
+git clone https://gitee.com/techysy/hermes-fry-cards.git
+
 cd hermes-fry-cards
 HERMES_PYTHON=~/.hermes/hermes-agent/venv/bin/python3
 $HERMES_PYTHON -m pip install -e .

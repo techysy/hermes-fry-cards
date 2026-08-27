@@ -48,7 +48,11 @@ curl https://raw.githubusercontent.com/techysy/hermes-fry-cards/main/INSTALL.md
 ### 手动安装
 
 ```bash
+# GitHub（主仓库）
 git clone https://github.com/techysy/hermes-fry-cards.git
+# 或国内 Gitee 镜像（更快）
+git clone https://gitee.com/techysy/hermes-fry-cards.git
+
 cd hermes-fry-cards
 HERMES_PYTHON=~/.hermes/hermes-agent/venv/bin/python3
 $HERMES_PYTHON -m pip install -e .
@@ -278,6 +282,13 @@ hermes gateway restart
 | 流式卡片变纯文本 | CardKit 创建失败 | 日志检索 `card_reply_failed` / `fallback_to_text` 看具体原因，检查飞书凭据是否正确 |
 | `status` 显示 `warning` | CLI 使用了错误的 Python 解释器 | 用 `$HERMES_PYTHON` 重新执行 |
 | 卡片一直 loading 不收尾 | 完成更新失败（如元素 Duplicate ID） | 日志检索 `card_complete_failed`，确认版本 ≥ v0.1.1（含竞态修复） |
+
+---
+
+## 📦 镜像仓库
+
+- **GitHub 主仓库**：[techysy/hermes-fry-cards](https://github.com/techysy/hermes-fry-cards)
+- **Gitee 国内镜像**：[techysy/hermes-fry-cards](https://gitee.com/techysy/hermes-fry-cards) — 国内访问更快，与 GitHub 同步
 
 ---
 
