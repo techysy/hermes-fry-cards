@@ -185,8 +185,29 @@ def _default_run_path() -> Path:
     return _resolve_module_path("gateway.run", _code_roots())
 
 
+def _default_modular_paths() -> dict[str, Path]:
+    """Hermes 0.21+ split the former gateway/run.py implementation into mixins."""
+    roots = _code_roots()
+    return {
+        "inbound": _resolve_module_path("gateway.run_inbound", roots),
+        "turn": _resolve_module_path("gateway.run_turn", roots),
+        "runner": _resolve_module_path("gateway.run_turn_runner", roots),
+        "busy": _resolve_module_path("gateway.run_busy", roots),
+    }
+
+
 def _default_cron_path() -> Path:
-    return _resolve_module_path("cron.scheduler", _code_roots())
+    roots = _code_roots()
+    legacy = _resolve_module_path("cron.scheduler", roots)
+    if legacy.exists() and "delivered = False" in legacy.read_text(encoding="utf-8"):
+        return legacy
+    # Prefer a modular source in the selected Hermes roots.  Do not let
+    # importlib escape an explicit HERMES_HOME and select another install.
+    for root in roots:
+        modular = _valid_source(root / _module_to_path("cron.scheduler_delivery"))
+        if modular is not None:
+            return modular
+    return legacy
 
 
 MK_CRON_DELIVER = f"# {PREFIX}_CRON_DELIVER_BEGIN"
@@ -271,7 +292,7 @@ def _complete_hook(indent: str) -> str:
             "        message_id=_lark_completion_id,",
             "        answer=response,",
             "        is_error=bool(agent_result.get('failed')),",
-            "        duration=_response_time,",
+            "        duration=locals().get('_response_time', locals().get('_turn_seconds')),",
             "        model=agent_result.get('model', ''),",
             "        tokens={",
             "            'input_tokens': agent_result.get('input_tokens', 0),",
@@ -303,8 +324,11 @@ def _followup_complete_hook(indent: str) -> str:
             "try:",
             "    from hermes_fry_cards.patch import on_queued_followup_boundary",
             "    _lark_delivery_result = response if isinstance(response, dict) else result",
+            "    _lark_event_message_id = locals().get('event_message_id')",
+            "    if not _lark_event_message_id and locals().get('turn_ctx') is not None:",
+            "        _lark_event_message_id = turn_ctx.event_message_id",
             "    _lark_followup_sent = await on_queued_followup_boundary(",
-            "        message_id=event_message_id, result=_lark_delivery_result",
+            "        message_id=_lark_event_message_id, result=_lark_delivery_result",
             "    )",
             "    if _lark_followup_sent and _lark_delivery_result is not result:",
             "        result['response_previewed'] = True",
@@ -526,18 +550,24 @@ def _interrupt_hook(indent: str) -> str:
             "        from hermes_fry_cards.patch import (",
             "            on_message_aborted, on_message_interrupted, on_message_started,",
             "        )",
+            "        _lark_was_interrupted = locals().get('was_interrupted')",
+            "        if _lark_was_interrupted is None:",
+            "            _lark_was_interrupted = bool(locals().get('result', {}).get('interrupted'))",
+            "        _lark_event_message_id = locals().get('event_message_id')",
+            "        if not _lark_event_message_id and locals().get('turn_ctx') is not None:",
+            "            _lark_event_message_id = turn_ctx.event_message_id",
             "        _lark_next_message_id = getattr(pending_event, 'message_id', None) or next_message_id",
             "        _lark_next_anchor_id = next_message_id",
-            "        if was_interrupted and _lark_next_message_id:",
+            "        if _lark_was_interrupted and _lark_next_message_id:",
             "            on_message_interrupted(",
-            "                message_id=event_message_id,",
+            "                message_id=_lark_event_message_id,",
             "                new_message_id=_lark_next_message_id,",
             "                chat_id=source.chat_id,",
             "                anchor_id=_lark_next_anchor_id,",
             "                session_key=locals().get('next_session_key') or locals().get('session_key'),",
             "            )",
-            "        elif was_interrupted:",
-            "            on_message_aborted(message_id=event_message_id)",
+            "        elif _lark_was_interrupted:",
+            "            on_message_aborted(message_id=_lark_event_message_id)",
             "        elif pending_event is not None and _lark_next_message_id:",
             "            on_message_started(",
             "                message_id=_lark_next_message_id,",
@@ -557,19 +587,32 @@ def _cron_deliver_hook(indent: str) -> str:
         MK_CRON_DELIVER_END,
         [
             "try:",
+            "    _lark_target = locals().get('target') or {}",
+            "    _lark_delivery = locals().get('t')",
+            "    _lark_platform_name = (",
+            "        locals().get('platform_name')",
+            "        or getattr(_lark_delivery, 'platform_name', '')",
+            "        or _lark_target.get('platform', '')",
+            "    )",
+            "    _lark_chat_id = (",
+            "        locals().get('chat_id')",
+            "        or getattr(_lark_delivery, 'chat_id', '')",
+            "        or _lark_target.get('chat_id', '')",
+            "    )",
+            "    _lark_transport = locals().get('transport') or getattr(_lark_delivery, 'transport', None)",
             "    if (",
-            "        platform_name.lower() in ('feishu', 'lark')",
-            "        and not getattr(locals().get('transport'), 'is_relay', False)",
+            "        str(_lark_platform_name).lower() in ('feishu', 'lark')",
+            "        and not getattr(_lark_transport, 'is_relay', False)",
             "    ):",
             "        if '_hermes_lark_cron_seen' not in locals():",
             "            _hermes_lark_cron_seen = set()",
-            "        _hermes_lark_cron_key = (str(chat_id), cleaned_delivery_content.strip())",
+            "        _hermes_lark_cron_key = (str(_lark_chat_id), cleaned_delivery_content.strip())",
             "        if _hermes_lark_cron_key in _hermes_lark_cron_seen:",
             "            delivered = True",
             "            continue",
             "        from hermes_fry_cards.patch import on_cron_deliver",
             "        if on_cron_deliver(",
-            "            chat_id=chat_id,",
+            "            chat_id=_lark_chat_id,",
             "            content=cleaned_delivery_content.strip(),",
             "            loop=loop,",
             "            task_name=job.get('name', ''),",
@@ -644,6 +687,25 @@ def _clarify_hook(indent: str) -> str:
     )
 
 
+_HOOK_FNS = {
+    "normalize": _feishu_normalize_hook,
+    "start": _start_hook,
+    "complete": _complete_hook,
+    "followup_complete": _followup_complete_hook,
+    "followup_result": _followup_result_hook,
+    "abort": _abort_hook,
+    "stop": _stop_hook,
+    "interrupt": _interrupt_hook,
+    "tool": _tool_hook,
+    "answer": _answer_hook,
+    "thinking": _thinking_hook,
+    "reasoning": _reasoning_hook,
+    "background_review": _background_review_hook,
+    "bg_deliver": _bg_deliver_hook,
+    "clarify": _clarify_hook,
+}
+
+
 def _remove_block(content: str, begin: str, end: str) -> str:
     lines = content.splitlines(keepends=True)
     result: list[str] = []
@@ -699,36 +761,69 @@ class Patcher:
 
     MARKERS: list[tuple[str, str]] = MARKERS
 
-    def __init__(self, run_path: Path | None = None) -> None:
-        self.run_path = run_path or _default_run_path()
+    def __init__(
+        self,
+        run_path: Path | None = None,
+        modular_paths: dict[str, Path] | None = None,
+    ) -> None:
+        self._modular_paths: dict[str, Path] | None = modular_paths
+        if modular_paths is not None:
+            required = {"inbound", "turn", "runner", "busy"}
+            if set(modular_paths) != required:
+                raise PatcherError(
+                    "modular_paths must contain exactly: " + ", ".join(sorted(required))
+                )
+            self.run_path = modular_paths["turn"]
+        else:
+            self.run_path = run_path or _default_run_path()
+        if run_path is None and modular_paths is None and self.run_path.exists():
+            content = self.run_path.read_text(encoding="utf-8")
+            if "def _handle_message_with_agent" not in content:
+                modular = _default_modular_paths()
+                if all(path.exists() for path in modular.values()):
+                    self._modular_paths = modular
+                    self.run_path = modular["turn"]
         if not self.run_path.exists():
             tried = ", ".join(str(r) for r in _code_roots())
             raise PatcherError(
-                f"gateway/run.py not found: {self.run_path} "
+                f"Hermes gateway source not found: {self.run_path} "
                 f"(tried: {tried}). "
                 f"Set HERMES_HOME to the dir containing hermes-agent/ and rerun."
             )
 
+    def _source_paths(self) -> list[Path]:
+        if self._modular_paths is not None:
+            return list(self._modular_paths.values())
+        return [self.run_path]
+
+    def _combined_content(self) -> str:
+        return "\n".join(path.read_text(encoding="utf-8") for path in self._source_paths())
+
     def is_patched(self) -> bool:
-        return MK_START in self.run_path.read_text(encoding="utf-8")
+        return MK_START in self._combined_content()
 
     def is_fully_patched(self) -> bool:
-        content = self.run_path.read_text(encoding="utf-8")
-        tree = ast.parse(content)
-        lines = content.splitlines(keepends=True)
-        answer_sites = _find_func_bodies(tree, lines, "_stream_delta_cb")
+        content = self._combined_content()
+        answer_name = "stream_delta_cb" if self._modular_paths is not None else "_stream_delta_cb"
+        answer_sites = 0
+        for path in self._source_paths():
+            source = path.read_text(encoding="utf-8")
+            answer_sites += len(_find_func_bodies(ast.parse(source), source.splitlines(keepends=True), answer_name))
         for begin, end in self.MARKERS:
-            expected = len(answer_sites) if begin == MK_ANSWER else 1
+            expected = answer_sites if begin == MK_ANSWER else 1
             if content.count(begin) != expected or content.count(end) != expected:
                 return False
         return True
 
     def marker_status(self) -> dict[str, bool]:
         """返回每个 marker 的安装状态（已安装 / 缺失），供 status 展示."""
-        content = self.run_path.read_text(encoding="utf-8")
+        content = self._combined_content()
         return {begin: begin in content for begin, _end in self.MARKERS}
 
     def verify_target(self) -> None:
+        if self._modular_paths is not None:
+            self._verify_modular_target()
+            return
         content = self.run_path.read_text(encoding="utf-8")
         tree = ast.parse(content)
 
@@ -780,38 +875,158 @@ class Patcher:
                 "Cannot find _handle_message source anchor in run.py — Hermes version may be incompatible"
             )
 
+    def _verify_modular_target(self) -> None:
+        assert self._modular_paths is not None
+        parsed = {}
+        for name, path in self._modular_paths.items():
+            content = path.read_text(encoding="utf-8")
+            parsed[name] = (content, ast.parse(content), content.splitlines(keepends=True))
+
+        _, inbound_tree, inbound_lines = parsed["inbound"]
+        turn_content, turn_tree, turn_lines = parsed["turn"]
+        _, runner_tree, runner_lines = parsed["runner"]
+        _, busy_tree, busy_lines = parsed["busy"]
+        checks = [
+            (_find_handle_message_source_site(inbound_tree, inbound_lines), "normalize"),
+            (_find_func_body(turn_tree, turn_lines, "_handle_message_with_agent"), "start"),
+            (_find_handler_return(turn_tree, turn_lines), "complete"),
+            (_find_followup_complete_site(turn_tree, turn_lines), "queued follow-up boundary"),
+            (_find_followup_result_site(turn_tree, turn_lines), "queued follow-up return"),
+            (_find_handler_abort(turn_tree, turn_lines), "abort"),
+            (_find_interrupt_site(turn_tree, turn_lines), "interrupt"),
+            (_find_bg_deliver_site(turn_tree, turn_lines), "background deliver"),
+            (_find_stop_site(busy_tree, busy_lines), "stop"),
+            (_find_func_body(runner_tree, runner_lines, "progress_callback"), "tool"),
+            (_find_func_body(runner_tree, runner_lines, "interim_assistant_cb"), "thinking"),
+            (_find_reasoning_site(runner_tree, runner_lines), "reasoning"),
+            (_find_background_review_site(runner_tree, runner_lines), "background review"),
+            (_find_clarify_site(runner_tree, runner_lines), "clarify"),
+        ]
+        answer_sites = _find_func_bodies(runner_tree, runner_lines, "stream_delta_cb")
+        if not answer_sites:
+            checks.append((None, "answer callback"))
+        missing = [label for site, label in checks if site is None]
+        if missing:
+            raise PatcherError(
+                "Missing modular Hermes injection targets: " + ", ".join(missing)
+            )
+        if 'hooks.emit("agent:end"' not in turn_content:
+            raise PatcherError("Cannot find hooks.emit('agent:end', ...) in gateway/run_turn.py")
+
     def apply(self) -> None:
         if self.is_fully_patched():
             return
 
         self.verify_target()
-        content = self.run_path.read_text(encoding="utf-8")
-        if any(marker in content for pair in self.MARKERS for marker in pair):
-            for begin, end in self.MARKERS:
-                content = _remove_block_checked(content, begin, end)
+        if self._modular_paths is None:
+            content = self.run_path.read_text(encoding="utf-8")
+            if any(marker in content for pair in self.MARKERS for marker in pair):
+                for begin, end in self.MARKERS:
+                    content = _remove_block_checked(content, begin, end)
+            else:
+                self._backup()
+            content = self._inject_all(content)
+            _atomic_write(self.run_path, content)
+            return
+
+        contents = {name: path.read_text(encoding="utf-8") for name, path in self._modular_paths.items()}
+        has_markers = any(
+            marker in content for content in contents.values() for pair in self.MARKERS for marker in pair
+        )
+        if has_markers:
+            for name, content in contents.items():
+                for begin, end in self.MARKERS:
+                    content = _remove_block_checked(content, begin, end)
+                contents[name] = content
         else:
             self._backup()
-        content = self._inject_all(content)
-        _atomic_write(self.run_path, content)
+        injected = self._inject_modular(contents)
+        for name, content in injected.items():
+            _atomic_write(self._modular_paths[name], content)
 
     def remove(self) -> None:
-        content = self.run_path.read_text(encoding="utf-8")
-        if not any(marker in content for pair in self.MARKERS for marker in pair):
-            return
-        for begin, end in self.MARKERS:
-            content = _remove_block_checked(content, begin, end)
-        _atomic_write(self.run_path, content)
+        for path in self._source_paths():
+            content = path.read_text(encoding="utf-8")
+            if not any(marker in content for pair in self.MARKERS for marker in pair):
+                continue
+            for begin, end in self.MARKERS:
+                content = _remove_block_checked(content, begin, end)
+            _atomic_write(path, content)
 
     def restore(self) -> None:
-        backup = self.run_path.with_suffix(self.run_path.suffix + _BACKUP_SUFFIX)
-        if not backup.exists():
-            raise PatcherError(f"No backup found: {backup}")
-        shutil.copy2(backup, self.run_path)
+        missing = []
+        for path in self._source_paths():
+            backup = path.with_suffix(path.suffix + _BACKUP_SUFFIX)
+            if not backup.exists():
+                missing.append(str(backup))
+                continue
+            shutil.copy2(backup, path)
+        if missing:
+            raise PatcherError(f"No backup found: {', '.join(missing)}")
 
     def _backup(self) -> None:
-        backup = self.run_path.with_suffix(self.run_path.suffix + _BACKUP_SUFFIX)
-        if not backup.exists():
-            shutil.copy2(self.run_path, backup)
+        for path in self._source_paths():
+            backup = path.with_suffix(path.suffix + _BACKUP_SUFFIX)
+            if not backup.exists():
+                shutil.copy2(path, backup)
+
+    def _inject_modular(self, contents: dict[str, str]) -> dict[str, str]:
+        specs: dict[str, list[tuple[str, str, object]]] = {
+            "inbound": [("normalize", "normalize", _find_handle_message_source_site)],
+            "turn": [
+                (
+                    "start",
+                    "start",
+                    lambda tree, lines: _find_func_body(tree, lines, "_handle_message_with_agent"),
+                ),
+                ("complete", "complete", _find_handler_return),
+                ("followup_complete", "followup_complete", _find_followup_complete_site),
+                ("followup_result", "followup_result", _find_followup_result_site),
+                ("abort", "abort", _find_handler_abort),
+                ("interrupt", "interrupt", _find_interrupt_site),
+                ("bg_deliver", "bg_deliver", _find_bg_deliver_site),
+            ],
+            "runner": [
+                (
+                    "tool",
+                    "tool",
+                    lambda tree, lines: _find_func_body(tree, lines, "progress_callback"),
+                ),
+                (
+                    "thinking",
+                    "thinking",
+                    lambda tree, lines: _find_func_body(tree, lines, "interim_assistant_cb"),
+                ),
+                ("reasoning", "reasoning", _find_reasoning_site),
+                ("background_review", "background_review", _find_background_review_site),
+                ("clarify", "clarify", _find_clarify_site),
+            ],
+            "busy": [("stop", "stop", _find_stop_site)],
+        }
+        result: dict[str, str] = {}
+        for name, content in contents.items():
+            tree = ast.parse(content)
+            lines = content.splitlines(keepends=True)
+            hook_defs = [(hook, label, finder(tree, lines)) for hook, label, finder in specs[name]]
+            if name == "runner":
+                hook_defs.extend(
+                    ("answer", f"answer callback {index}", loc)
+                    for index, loc in enumerate(_find_func_bodies(tree, lines, "stream_delta_cb"), start=1)
+                )
+            result[name] = self._inject_sites(lines, hook_defs)
+        return result
+
+    @staticmethod
+    def _inject_sites(lines: list[str], hook_defs: list[tuple[str, str, tuple[int, str] | None]]) -> str:
+        sites: list[tuple[int, str, str]] = []
+        for hook_fn_name, name, loc in hook_defs:
+            if loc is None:
+                raise PatcherError(f"Cannot locate {name} injection site — Hermes version may be incompatible")
+            sites.append((loc[0], loc[1], hook_fn_name))
+        sites.sort(key=lambda item: item[0], reverse=True)
+        for idx, indent, fn_name in sites:
+            lines[idx:idx] = _HOOK_FNS[fn_name](indent).splitlines(keepends=True)
+        return "".join(lines)
 
     def _inject_all(self, content: str) -> str:
         tree = ast.parse(content)
@@ -913,6 +1128,17 @@ def _find_handle_message_source_site(tree: ast.Module, lines: list[str]) -> tupl
                 ):
                     lineno = stmt.end_lineno or stmt.lineno
                     return lineno, _safe_indent(lines, stmt.lineno - 1)
+                # Hermes 0.21+: admission returns ``event, source, is_internal``.
+                if (
+                    isinstance(stmt, ast.Assign)
+                    and len(stmt.targets) == 1
+                    and isinstance(stmt.targets[0], (ast.Tuple, ast.List))
+                    and any(isinstance(elt, ast.Name) and elt.id == "source" for elt in stmt.targets[0].elts)
+                    and isinstance(stmt.value, ast.Name)
+                    and stmt.value.id == "_admitted"
+                ):
+                    lineno = stmt.end_lineno or stmt.lineno
+                    return lineno, _safe_indent(lines, stmt.lineno - 1)
     return None
 
 
@@ -922,6 +1148,9 @@ def _find_handler_return(tree: ast.Module, lines: list[str]) -> tuple[int, str] 
         if stripped.startswith("_already_sent = bool("):
             indent = _safe_indent(lines, i)
             return i, indent
+        # Hermes 0.21+: finish the card before the runtime footer/native-delivery decision.
+        if stripped.startswith("_footer_line = self._hmwa_runtime_footer_line("):
+            return i, _safe_indent(lines, i)
 
     for node in ast.walk(tree):
         if isinstance(node, (ast.AsyncFunctionDef, ast.FunctionDef)) and node.name == "_handle_message_with_agent":
@@ -942,6 +1171,9 @@ def _find_handler_return(tree: ast.Module, lines: list[str]) -> tuple[int, str] 
 
 
 def _find_handler_abort(tree: ast.Module, lines: list[str]) -> tuple[int, str] | None:
+    for i, line in enumerate(lines):
+        if "self._hmwa_discard_stale_result(" in line:
+            return i, _safe_indent(lines, i)
     for i, line in enumerate(lines):
         if "Discarding stale agent result" in line:
             for j in range(i + 1, min(i + 20, len(lines))):
@@ -975,7 +1207,10 @@ def _find_stop_site(tree: ast.Module, lines: list[str]) -> tuple[int, str] | Non
 
 def _find_interrupt_site(tree: ast.Module, lines: list[str]) -> tuple[int, str] | None:
     for i, line in enumerate(lines):
-        if "Restart typing indicator so the user sees activity" in line:
+        if (
+            "Restart typing indicator so the user sees activity" in line
+            or "Restart the typing indicator; the outer typing task may be stale" in line
+        ):
             indent = _safe_indent(lines, i)
             return i, indent
     return None
@@ -984,6 +1219,10 @@ def _find_interrupt_site(tree: ast.Module, lines: list[str]) -> tuple[int, str] 
 def _find_followup_complete_site(tree: ast.Module, lines: list[str]) -> tuple[int, str] | None:
     for i, line in enumerate(lines):
         if line.strip() == 'was_interrupted = result.get("interrupted")':
+            return i, _safe_indent(lines, i)
+        if line.strip() == 'if not result.get("interrupted"):' and any(
+            "def _run_agent_queued_followup" in prior for prior in lines[max(0, i - 80) : i]
+        ):
             return i, _safe_indent(lines, i)
     return None
 
@@ -997,14 +1236,20 @@ def _find_followup_result_site(tree: ast.Module, lines: list[str]) -> tuple[int,
 
 def _find_reasoning_site(tree: ast.Module, lines: list[str]) -> tuple[int, str] | None:
     for i, line in enumerate(lines):
-        if line.strip() == "agent.reasoning_config = reasoning_config":
+        if (
+            line.strip() == "agent.reasoning_config = reasoning_config"
+            or line.strip().startswith("agent.reasoning_config, agent.service_tier = reasoning_config")
+        ):
             return i + 1, _safe_indent(lines, i)
     return None
 
 
 def _find_background_review_site(tree: ast.Module, lines: list[str]) -> tuple[int, str] | None:
     for i, line in enumerate(lines):
-        if line.strip() == "agent.background_review_callback = _bg_review_send":
+        if (
+            line.strip() == "agent.background_review_callback = _bg_review_send"
+            or line.strip().startswith("agent.background_review_callback, bg_release = ")
+        ):
             return i + 1, _safe_indent(lines, i)
     return None
 
@@ -1018,7 +1263,10 @@ def _find_bg_deliver_site(tree: ast.Module, lines: list[str]) -> tuple[int, str]
 
 def _find_clarify_site(tree: ast.Module, lines: list[str]) -> tuple[int, str] | None:
     for i, line in enumerate(lines):
-        if line.strip() == "agent.clarify_callback = _clarify_callback_sync":
+        if line.strip() in {
+            "agent.clarify_callback = _clarify_callback_sync",
+            "agent.clarify_callback = self._clarify_callback_sync",
+        }:
             return i + 1, _safe_indent(lines, i)
     return None
 
@@ -1052,10 +1300,11 @@ class CronPatcher:
 
     def verify_target(self) -> None:
         content = self.cron_path.read_text(encoding="utf-8")
-        if "delivered = False" not in content:
-            raise PatcherError("Cannot find 'delivered = False' anchor in scheduler.py")
         if "cleaned_delivery_content" not in content:
             raise PatcherError("Cannot find 'cleaned_delivery_content' in scheduler.py")
+        modular_anchor = "target_errors: list = []" in content and "for target in targets:" in content
+        if "delivered = False" not in content and not modular_anchor:
+            raise PatcherError("Cannot find 'delivered = False' or modular cron delivery loop anchor")
 
     def apply(self) -> None:
         content = self.cron_path.read_text(encoding="utf-8")
@@ -1071,16 +1320,23 @@ class CronPatcher:
         lines = content.splitlines(keepends=True)
 
         inject_idx = None
-        for i, line in enumerate(lines):
-            if line.strip() == "delivered = False":
-                inject_idx = i
-                break
+        if "target_errors: list = []" in content and "for target in targets:" in content:
+            for i, line in enumerate(lines):
+                if line.strip() == "target_errors: list = []":
+                    inject_idx = i
+                    break
+        else:
+            for i, line in enumerate(lines):
+                if line.strip() == "delivered = False":
+                    inject_idx = i
+                    break
         if inject_idx is None:
-            raise PatcherError("Cannot find 'delivered = False' anchor")
+            raise PatcherError("Cannot find cron delivery loop anchor")
 
         indent = _safe_indent(lines, inject_idx)
         hook = _cron_deliver_hook(indent)
-        lines[inject_idx + 1 : inject_idx + 1] = hook.splitlines(keepends=True)
+        target_idx = inject_idx + 1
+        lines[target_idx:target_idx] = hook.splitlines(keepends=True)
         _atomic_write(self.cron_path, "".join(lines))
 
     def remove(self) -> None:

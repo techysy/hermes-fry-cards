@@ -38,8 +38,13 @@ RUN_BAK = RUN_SRC.with_suffix(RUN_SRC.suffix + ".hermes_lark.bak")
 SAMPLES_DIR = Path(__file__).parent / "samples"
 SAMPLE_RUN = SAMPLES_DIR / "run.py"
 
-_RUN_URL = "https://raw.githubusercontent.com/NousResearch/hermes-agent/main/gateway/run.py"
-_CRON_URL = "https://raw.githubusercontent.com/NousResearch/hermes-agent/main/cron/scheduler.py"
+_HERMES_LEGACY_TAG = "v2026.5.16"
+_RUN_URL = (
+    f"https://raw.githubusercontent.com/NousResearch/hermes-agent/{_HERMES_LEGACY_TAG}/gateway/run.py"
+)
+_CRON_URL = (
+    f"https://raw.githubusercontent.com/NousResearch/hermes-agent/{_HERMES_LEGACY_TAG}/cron/scheduler.py"
+)
 
 CRON_SRC = Path.home() / ".hermes" / "hermes-agent" / "cron" / "scheduler.py"
 CRON_BAK = CRON_SRC.with_suffix(CRON_SRC.suffix + ".hermes_lark.bak")
@@ -48,10 +53,13 @@ SAMPLE_CRON = SAMPLES_DIR / "scheduler.py"
 def _ensure_sample() -> Path:
     src = RUN_BAK if RUN_BAK.exists() else RUN_SRC
     SAMPLES_DIR.mkdir(parents=True, exist_ok=True)
-    if src.exists():
+    if src.exists() and "def _handle_message_with_agent" in src.read_text(encoding="utf-8"):
         shutil.copy2(src, SAMPLE_RUN)
         return SAMPLE_RUN
-    # CI fallback: download from GitHub
+    if SAMPLE_RUN.exists() and "def _handle_message_with_agent" in SAMPLE_RUN.read_text(encoding="utf-8"):
+        return SAMPLE_RUN
+    # Hermes 0.21+ leaves a compatibility facade at gateway/run.py.  Pin the
+    # legacy fixture instead of downloading a moving main branch.
     try:
         urllib.request.urlretrieve(_RUN_URL, SAMPLE_RUN)
     except Exception as exc:
@@ -72,8 +80,10 @@ def run_copy(tmp_path: Path) -> Path:
 def _ensure_cron_sample() -> Path:
     src = CRON_BAK if CRON_BAK.exists() else CRON_SRC
     SAMPLES_DIR.mkdir(parents=True, exist_ok=True)
-    if src.exists():
+    if src.exists() and "cleaned_delivery_content" in src.read_text(encoding="utf-8"):
         shutil.copy2(src, SAMPLE_CRON)
+        return SAMPLE_CRON
+    if SAMPLE_CRON.exists() and "cleaned_delivery_content" in SAMPLE_CRON.read_text(encoding="utf-8"):
         return SAMPLE_CRON
     try:
         urllib.request.urlretrieve(_CRON_URL, SAMPLE_CRON)
@@ -565,7 +575,7 @@ class TestApplyRemove:
         assert "# HERMES_LARK_FOLLOWUP_COMPLETE_BEGIN" in content
         assert "message_id=event_message_id" in content
         assert "_lark_delivery_result = response if isinstance(response, dict) else result" in content
-        assert "message_id=event_message_id, result=_lark_delivery_result" in content
+        assert "message_id=_lark_event_message_id, result=_lark_delivery_result" in content
         assert "# HERMES_LARK_FOLLOWUP_RESULT_BEGIN" in content
         assert "on_queued_followup_result(" in content
         assert "on_message_completed_wait(" in content
@@ -764,7 +774,7 @@ class TestCronApplyRemove:
         cp.apply()
         content = scheduler_copy.read_text(encoding="utf-8")
         assert "on_cron_deliver" in content
-        assert "platform_name.lower()" in content
+        assert "str(_lark_platform_name).lower()" in content
         assert "is_relay" in content
         assert "injected hook failed: cron_deliver" in content
         assert "delivered = True" in content
