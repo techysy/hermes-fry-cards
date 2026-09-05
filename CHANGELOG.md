@@ -9,20 +9,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### 新增
+---
+
+## [0.2.0] - 2026-09-05
+
+### 新增 / Added
+- **Hermes 0.21 modular 网关布局支持**（外部 PR #2 by moliyjin-521）— 自动识别 0.21 拆分后的
+  `run_inbound.py` / `run_turn.py` / `run_turn_runner.py` / `run_busy.py` 布局，把 15 个 hook
+  分布到各拆分文件；同时 patch 新的 `cron/scheduler_delivery.py`，并保留 legacy
+  `gateway/run.py` / `cron/scheduler.py` 兼容路径。modular apply/remove/restore 按源文件原子化、
+  独立备份。新增 `Patcher(modular_paths=...)` 与自包含 modular 回归 fixture
 - **token 吊销运行时恢复** — 遇到 `99991663 Invalid access token`（飞书后台保存权限/
   发版/停启用会立即吊销所有已发出的 tenant_token）时，自动清空 SDK 进程内 token 缓存
-  并重试一次，无需重启网关；新增 `FeishuClient.invalidate_token_cache()`。
-  此前该错误会持续到进程重启（watchdog 兜底最长 30 分钟空窗）
+  并重试一次，无需重启网关；新增 `FeishuClient.invalidate_token_cache()`
 - **模型别名** — 新增 `~/.hermes/model_aliases.json` 独立配置文件：
   key 对模型名做大小写不敏感子串匹配，命中显示别名（如 `"longcat": "哈基米"`），
   未命中回落 `truncate_model_name` 截断逻辑；每次渲染重读，改文件即生效无需重启。
   新增 `_display_model()` 统一模型显示名决策（builder.py 两处调用点收敛）
+- **show_reasoning 默认开启** + 推理面板完成自动收起 — 新装用户开箱即见推理内容，
+  完成后面板自动折叠避免占用卡片空间
+
+### 变更 / Changed
+- CLI `status` 命令读取 Hermes profile `.env`（`load_dotenv`）— 与网关启动器一致，
+  裸插件 CLI 不再把已持久化的有效凭据误报为缺失
+
+### 修复 / Fixed
+- **seal/complete 失败时删除 loading 图标** — 卡片不再残留「处理中」状态
+- **修正 4 个从未通过的陈旧测试** — 对齐合并统一面板后的实际行为（统一面板标识、
+  footer 元素、element_count 会计语义），全量 519 测试通过 / 0 失败
 
 ### 文档 / Docs
 - **TROUBLESHOOTING.md** — 新增排障指南：hfc 插件冲突（base.py 残留 patch）、卡片不显示、hook 未生效、cron 推送不显示
-- **README.md** — 文档入口新增排障指南链接
-- **docs/README.md** — 新增排障指南入口
+- **docs/CONFIGURATION.md** — 新增配置说明（show_reasoning 等默认值）
+- **README.md** — 文档入口、排障指南链接、修复损坏 emoji 与失效链接、架构总览图
+- **docs/README.md** — 新增排障指南与配置入口
+- **hermes-fry-cards-skill.md** — 新增 AI Agent 自动配置开发指南
 
 ---
 
