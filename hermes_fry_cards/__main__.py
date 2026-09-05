@@ -176,8 +176,14 @@ def _cmd_status() -> int:
     if cron_patcher is not None:
         print(f"Cron hook: {'installed' if cron_patcher.is_patched() else 'not installed'}")
 
-    # Check config
-    from .config import Config
+    # Match the Hermes gateway launcher, which loads profile credentials from
+    # ``$HERMES_HOME/.env`` before constructing adapters.  A bare plugin CLI
+    # process otherwise reports valid persisted credentials as missing.
+    from dotenv import load_dotenv
+
+    from .config import Config, hermes_home
+
+    load_dotenv(hermes_home() / ".env", override=False)
 
     cfg = Config()
     print(f"Config streaming.enabled: {cfg.enabled}")
