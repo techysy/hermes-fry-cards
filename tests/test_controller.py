@@ -1264,7 +1264,9 @@ class TestDoFlush:
         assert session.card_msg_id == "msg_next"
         assert session.split_index == 2
         assert session.split_disabled is False
-        assert session.element_count > 1
+        # 新卡 element_count 重置为 loading 基线(1)。合并面板模式下工具面板是建卡骨架内
+        # 的共享元素，走 update 而非 add，不累计进 element_count（见 controller 注释）。
+        assert session.element_count == 1
         assert [s.created for s in session.segment_state.segments] == [True, True, True]
 
     @pytest.mark.asyncio
@@ -1547,13 +1549,14 @@ class TestDoFlush:
         # element_count 同步扣减（避免下一轮 add 重复累加导致阈值虚高、误触发拆分）
         assert session.element_count == 0
 
-        # 第二次 flush：走 add_elements 重建，batch_update 成功
+        # 第二次 flush：合并面板模式下工具面板作为建卡骨架内共享元素被重建（走 update，
+        # 非 add），不累计进 element_count（见 controller 注释），因此 element_count 保持 0
+        # （无重复累加）。恢复的关键不变量：segment 重新标记为已创建、不脏，且无死循环重试。
         await ctrl._do_flush(session)
 
         assert tool_seg.created is True
-        # 重建后 element_count = 当前 tool steps（2 个）的新估算值，无重复计数
-        expected = estimate_segment_elements(tool_seg, session.tool_use.build_display_steps())
-        assert session.element_count == expected
+        assert tool_seg.dirty is False
+        assert session.element_count == 0  # 工具面板不计入 element_count（骨架内元素）
         # 两次 batch_update 调用：第一次失败，第二次成功（非死循环重试 N 次）
         assert client.cardkit_batch_update.await_count == 2
 

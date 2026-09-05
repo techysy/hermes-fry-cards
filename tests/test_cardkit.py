@@ -453,17 +453,19 @@ class TestBuildSegmentCompleteCard:
             show_tool_use=True,
         )
         elements = card["body"]["elements"]
-        # 统一面板包含推理+工具
-        panels = [e for e in elements if e.get("tag") == "collapsible_panel"]
-        # 至少有一个统一面板
-        assert len(panels) >= 1
+        # 统一面板是 header 带 💭（推理计数）的 collapsible_panel，推理+工具合并于其内
+        unified = [
+            e for e in elements
+            if e.get("tag") == "collapsible_panel" and "💭" in str(e.get("header", {}))
+        ]
+        # 恰好一个统一面板，且包含推理内容
+        assert len(unified) == 1
         # 统一面板在卡片底部（answer 之后）
         contents = [str(e) for e in elements]
         a_idx = next(i for i, c in enumerate(contents) if "a1" in c)
-        # 答案在统一面板之前
-        panel_idx = min(
+        panel_idx = next(
             i for i, e in enumerate(elements)
-            if e.get("tag") == "collapsible_panel" and "Agent" in str(e.get("header", {}))
+            if e.get("tag") == "collapsible_panel" and "💭" in str(e.get("header", {}))
         )
         assert a_idx < panel_idx
 
@@ -703,18 +705,26 @@ class TestCompleteCardHeader:
 
 class TestCompleteCardFooter:
     def test_footer_present_by_default(self) -> None:
+        """footer_enabled 默认 True → body 末尾追加 footer 文本元素."""
         card = build_complete_card(
             segments=[_seg("answer", "hi")],
             all_tool_steps=[],
         )
-        tags = [e.get("tag") for e in card["body"]["elements"]]
-        assert "hr" in tags
+        # footer 以 markdown 文本元素呈现（含状态字段），非分隔线 hr
+        footer_els = [
+            e for e in card["body"]["elements"]
+            if e.get("tag") == "markdown" and "✅" in str(e.get("content", ""))
+        ]
+        assert footer_els
 
     def test_footer_disabled(self) -> None:
+        """footer_enabled=False → 不追加 footer 文本元素."""
         card = build_complete_card(
             segments=[_seg("answer", "hi")],
             all_tool_steps=[],
             footer_enabled=False,
         )
-        tags = [e.get("tag") for e in card["body"]["elements"]]
-        assert "hr" not in tags
+        contents = [str(e.get("content", "")) for e in card["body"]["elements"]]
+        # 仅保留 answer，无任何状态/统计 footer
+        assert all("✅" not in c and "💭" not in c and "🔧" not in c for c in contents)
+        assert any("hi" in c for c in contents)
