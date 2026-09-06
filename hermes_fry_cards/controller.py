@@ -705,9 +705,10 @@ class StreamCardController(StreamingController):
         if not _duration and hasattr(session, "created_at"):
             import time as _t
             _duration = _t.time() - session.created_at
+        prev_model = session.footer.get("model") or ""
         session.footer = {
             "duration": _duration,
-            "model": model,
+            "model": model or prev_model,
             **({"input_tokens": tokens.get("input_tokens")} if tokens else {}),
             **({"output_tokens": tokens.get("output_tokens")} if tokens else {}),
             **({"context_used": context.get("used_tokens")} if context else {}),

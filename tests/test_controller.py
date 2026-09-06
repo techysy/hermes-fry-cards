@@ -1879,6 +1879,33 @@ class TestDoCompleteCard:
 
         assert resolver.resolve_await.call_count == 2
 
+    def test_empty_model_does_not_wipe_existing_footer_model(self) -> None:
+        """续接/拆卡路径 model 为空时，不覆盖首个非空模型名（header 不再 🍟 后空白）."""
+        ctrl = _setup_ctrl()
+        session = _make_session("msg_model_keep")
+        # 首次完成：带模型名
+        ctrl._apply_completion_payload(
+            session=session, answer="first", duration=1.0, model="claude-3.5",
+            tokens=None, context=None,
+        )
+        assert session.footer["model"] == "claude-3.5"
+        # 续接/拆卡完成：Hermes followup result 不带 model → 空，但不应清掉已记录的模型名
+        ctrl._apply_completion_payload(
+            session=session, answer="followup", duration=2.0, model="",
+            tokens=None, context=None,
+        )
+        assert session.footer["model"] == "claude-3.5"
+
+    def test_non_empty_model_overwrites_footer_model(self) -> None:
+        """新模型名非空时正常更新（单条消息切换/首次即带模型）."""
+        ctrl = _setup_ctrl()
+        session = _make_session("msg_model_new")
+        ctrl._apply_completion_payload(
+            session=session, answer="a", duration=1.0, model="kimi-k3",
+            tokens=None, context=None,
+        )
+        assert session.footer["model"] == "kimi-k3"
+
 
 # ── _on_thinking_segment 集成测试 ──
 
