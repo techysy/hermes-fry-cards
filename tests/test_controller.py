@@ -157,6 +157,95 @@ def test_on_message_started_registers_anchor_alias_and_cleanup() -> None:
     assert "quoted" not in ctrl._sessions
 
 
+# ── chat_types 卡片类型过滤 ──
+
+
+def test_on_message_started_default_allows_all_chat_types() -> None:
+    """streaming.chat_types 缺省 → 群聊/私聊都发卡片（向后兼容）. """
+    ctrl = StreamCardController()
+    _enable(ctrl)  # 无 chat_types → Config.chat_types is None
+
+    with patch.object(ctrl, "_fire_and_forget", side_effect=lambda coro, loop: coro.close()):
+        ctrl.on_message_started(message_id="dm_msg", chat_id="chat", chat_type="dm")
+        ctrl.on_message_started(message_id="grp_msg", chat_id="chat", chat_type="group")
+
+    assert "dm_msg" in ctrl._sessions
+    assert "grp_msg" in ctrl._sessions
+
+
+def test_on_message_started_filters_group_chat_when_only_dm_configured() -> None:
+    """streaming.chat_types: [dm] → 群聊不发卡片，私聊正常. """
+    ctrl = StreamCardController()
+    _enable(ctrl)
+    ctrl._cfg._raw = {
+        "streaming": {"enabled": True, "chat_types": ["dm"]},
+        "feishu": {"app_id": "app", "app_secret": "secret"},
+    }
+
+    with patch.object(ctrl, "_fire_and_forget", side_effect=lambda coro, loop: coro.close()):
+        ctrl.on_message_started(message_id="grp_msg", chat_id="oc_g", chat_type="group")
+        ctrl.on_message_started(message_id="dm_msg", chat_id="chat", chat_type="dm")
+
+    assert "grp_msg" not in ctrl._sessions
+    assert "dm_msg" in ctrl._sessions
+
+
+def test_on_message_started_filters_when_chat_type_not_in_allowlist() -> None:
+    """chat_type 不在列表内 → 不创建会话（回落纯文本）. """
+    ctrl = StreamCardController()
+    _enable(ctrl)
+    ctrl._cfg._raw = {
+        "streaming": {"enabled": True, "chat_types": ["group"]},
+        "feishu": {"app_id": "app", "app_secret": "secret"},
+    }
+
+    ctrl.on_message_started(message_id="dm_msg", chat_id="chat", chat_type="dm")
+
+    assert "dm_msg" not in ctrl._sessions
+
+
+def test_on_message_started_empty_chat_type_ignores_filter() -> None:
+    """上游未提供 chat_type（空串）→ 不因过滤而跳过，保持兼容. """
+    ctrl = StreamCardController()
+    _enable(ctrl)
+    ctrl._cfg._raw = {
+        "streaming": {"enabled": True, "chat_types": ["dm"]},
+        "feishu": {"app_id": "app", "app_secret": "secret"},
+    }
+
+    with patch.object(ctrl, "_fire_and_forget", side_effect=lambda coro, loop: coro.close()):
+        ctrl.on_message_started(message_id="msg", chat_id="chat", chat_type="")
+
+    assert "msg" in ctrl._sessions
+
+
+def test_on_interrupted_respects_chat_type_filter() -> None:
+    """interrupt 产生的重定向新会话同样遵守 chat_type 过滤. """
+    ctrl = StreamCardController()
+    _enable(ctrl)
+    ctrl._cfg._raw = {
+        "streaming": {"enabled": True, "chat_types": ["dm"]},
+        "feishu": {"app_id": "app", "app_secret": "secret"},
+    }
+    # 注册一个旧的 group 会话（模拟此前已存在，忽略过滤的老会话）
+    old_loop = asyncio.new_event_loop()
+    old = CardSession("old_msg", "oc_g", old_loop)
+    ctrl._sessions["old_msg"] = old
+
+    with patch.object(ctrl, "_fire_and_forget", side_effect=lambda coro, loop: coro.close()):
+        ctrl.on_interrupted(
+            old_message_id="old_msg",
+            new_message_id="new_msg",
+            chat_id="oc_g",
+            chat_type="group",
+        )
+
+    # 旧会话被 abort，新会话（group）不创建
+    assert old.state == SessionState.ABORTED
+    assert "new_msg" not in ctrl._sessions
+    assert ctrl._interrupt_map.get("old_msg") == "new_msg"
+
+
 def test_consume_text_fallback_clears_anchor_alias() -> None:
     ctrl = StreamCardController()
     session = _make_session("msg")

@@ -37,6 +37,36 @@ class TestEnabled:
         assert cfg.enabled is True
 
 
+class TestChatTypes:
+    def test_defaults_none_when_missing(self) -> None:
+        cfg = _make_config({"streaming": {}})
+        assert cfg.chat_types is None
+
+    def test_defaults_none_when_section_missing(self) -> None:
+        cfg = _make_config({})
+        assert cfg.chat_types is None
+
+    def test_list_of_chat_types(self) -> None:
+        cfg = _make_config({"streaming": {"chat_types": ["dm", "group"]}})
+        assert cfg.chat_types == {"dm", "group"}
+
+    def test_single_string_coerced(self) -> None:
+        cfg = _make_config({"streaming": {"chat_types": "dm"}})
+        assert cfg.chat_types == {"dm"}
+
+    def test_empty_list_means_disable_all(self) -> None:
+        cfg = _make_config({"streaming": {"chat_types": []}})
+        assert cfg.chat_types == set()
+
+    def test_case_and_whitespace_normalized(self) -> None:
+        cfg = _make_config({"streaming": {"chat_types": [" DM ", "Group"]}})
+        assert cfg.chat_types == {"dm", "group"}
+
+    def test_non_list_value_returns_none(self) -> None:
+        cfg = _make_config({"streaming": {"chat_types": {"dm": True}}})
+        assert cfg.chat_types is None
+
+
 class TestFooterFields:
     def test_normal_2d_fields(self) -> None:
         cfg = _make_config({"streaming": {"footer": {"fields": [["a", "b"], ["c"]]}}})

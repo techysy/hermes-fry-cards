@@ -49,6 +49,28 @@ class Config:
         return bool(sec.get("enabled", True))
 
     @property
+    def chat_types(self) -> set[str] | None:
+        """允许发流式卡片的聊天类型集合（source.chat_type 的取值，如 ``dm`` / ``group``）。
+
+        读取 ``streaming.chat_types``：
+        - 缺省（配置不存在/为空）→ 返回 ``None``，表示所有聊天类型都发卡片（保持向后兼容）；
+        - 显式给出列表 → 仅列表内的聊天类型发卡片，其余回落纯文本。
+
+        卡片创建策略开关（与 ``streaming.enabled`` 同级），改动需重启网关生效。
+        """
+        sec = self._streaming_sec()
+        value = sec.get("chat_types")
+        if value is None:
+            return None
+        if isinstance(value, str):
+            value = [value]
+        if not isinstance(value, (list, tuple, set)):
+            return None
+        values = {str(v).strip().lower() for v in value if str(v).strip()}
+        # 显式但为空列表 = 全类型都禁用
+        return values if value else set()
+
+    @property
     def panel_expanded(self) -> bool:
         """完成态卡片中面板（工具、推理）是否保持展开."""
         sec = self._streaming_sec()
