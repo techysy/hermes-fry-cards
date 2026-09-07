@@ -72,6 +72,8 @@ hermes gateway restart
 ```yaml
 streaming:
   enabled: true
+  chat_types: [dm, group]  # 允许发流式卡片的聊天类型；缺省 = 全部类型都发。
+                           # 例如只想要私聊卡片、群聊回落纯文本：chat_types: [dm]
   header:
     enabled: true
     min_duration: 0   # 快捷回复去标题阈值(秒)；无工具调用且耗时 < 此值 → 完成态不显示顶部状态栏。0=不启用
@@ -111,6 +113,7 @@ display:
 | `header.min_duration` | 快捷回复去标题阈值（秒）；无工具调用且耗时 `<` 此值 → 完成态不显示顶部状态栏；`0` = 不启用（始终显示） | `0` |
 | `footer.enabled` | 底部元数据栏 | `false` |
 | `panel_expanded` | 完成态面板保持展开 | `false` |
+| `chat_types` | 允许发流式卡片的聊天类型（`source.chat_type`，如 `dm`/`group`）；缺省全部类型都发，列表外类型回落纯文本 | 缺省 = 全部 |
 | `width_mode` | 卡片宽度 (`default` / `compact` / `fill`) | `default` |
 | `show_tool_use` | 展示工具调用面板 | `true` |
 | `show_reasoning` | 展示推理过程 | `false` |
@@ -285,6 +288,7 @@ $HERMES_PYTHON -m pip uninstall hermes-fry-cards
 
 - **插件代码修改**（`git pull` 更新、改源码）
 - `streaming.enabled` 开关
+- `streaming.chat_types` 聊天类型过滤（群聊/私聊是否发卡片）
 - `streaming.header` / `footer` / `body` / `width_mode` 等 streaming 结构类配置
 - 飞书凭据 `app_id` / `app_secret`
 

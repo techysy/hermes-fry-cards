@@ -174,11 +174,27 @@ class StreamCardController(StreamingController):
             session.session_key = session_key
             self._session_keys[session_key] = session
 
+    def _chat_type_allowed(self, chat_type: str) -> bool:
+        """聊天类型是否允许发流式卡片.
+
+        ``streaming.chat_types`` 缺省（Config.chat_types == None）→ 全部类型都允许；
+        显式配置 → 仅命中列表内的聊天类型发卡片。
+        空 chat_type（上游未提供）视为允许，保证向后兼容。
+        """
+        try:
+            allowed = self._cfg.chat_types
+        except Exception:
+            return True
+        if allowed is None or not chat_type:
+            return True
+        return chat_type.strip().lower() in allowed
+
     def on_message_started(
         self,
         *,
         message_id: str | None,
         chat_id: str,
+        chat_type: str = "",
         anchor_id: str | None = None,
         session_key: str | None = None,
     ) -> None:
@@ -199,6 +215,14 @@ class StreamCardController(StreamingController):
             message_id = "syn-" + _uuid.uuid4().hex[:16]
             synthetic = True
             anchor_id = None
+        if not self._chat_type_allowed(chat_type):
+            _logger.info(
+                "chat_type filtered: no card for chat_type=%r chat=%s msg=%s",
+                chat_type,
+                chat_id[:12],
+                message_id[:12],
+            )
+            return
         existing = self._sessions.get(message_id)
         if existing is not None and not existing.state.is_terminal:
             return
@@ -403,6 +427,7 @@ class StreamCardController(StreamingController):
         old_message_id: str,
         new_message_id: str,
         chat_id: str,
+        chat_type: str = "",
         anchor_id: str | None = None,
         session_key: str | None = None,
     ) -> None:
@@ -422,10 +447,13 @@ class StreamCardController(StreamingController):
             )
             self._complete_session(old_session)
 
+        # 若该聊天类型被过滤（如群聊不发卡片），新消息 B 不创建卡片会话，
+        # 但中断映射仍记录，保证旧会话完成/回落逻辑一致。
+        new_card_allowed = self._chat_type_allowed(chat_type)
         existing = self._sessions.get(new_message_id)
         if existing is None or existing.state.is_terminal:
             loop = self._get_loop()
-            if loop is not None:
+            if loop is not None and new_card_allowed:
                 reply_anchor_id = anchor_id if anchor_id and anchor_id != new_message_id else None
                 session = CardSession(new_message_id, chat_id, loop)
                 self._register_session(session, anchor_id=reply_anchor_id, session_key=session_key)
@@ -437,6 +465,13 @@ class StreamCardController(StreamingController):
                     (session_key or "")[:12],
                 )
                 session.create_task = self._fire_and_forget(self._do_create_card(session), loop)
+            elif not new_card_allowed:
+                _logger.info(
+                    "chat_type filtered: interrupt no card for chat_type=%r chat=%s msg=%s",
+                    chat_type,
+                    chat_id[:12],
+                    new_message_id[:12],
+                )
 
         self._interrupt_map[old_message_id] = new_message_id
         for key, val in list(self._interrupt_map.items()):
