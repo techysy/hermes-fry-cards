@@ -67,6 +67,7 @@ class CardSession:
         "split_disabled",
         "split_index",
         "state",
+        "synthetic",
         "tool_panel_created",
         "tool_panel_estimate",
         "tool_use",
@@ -81,6 +82,9 @@ class CardSession:
         self.message_id = message_id
         self.anchor_id: str | None = None
         self.chat_id = chat_id
+        # synthetic=True：无真实飞书 message_id 的轮次（后台通知/clarify 恢复等），
+        # 卡片直接 send_card_to_chat 而非 reply，且完成时接管网关文本投递防止刷屏。
+        self.synthetic: bool = False
         self.session_key: str | None = None
         self.create_task: asyncio.Future[Any] | ConcurrentFuture | None = None
         self.state = SessionState.IDLE

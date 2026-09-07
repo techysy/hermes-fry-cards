@@ -332,7 +332,7 @@ class TestGeneratedAnswerHook:
             result = callback("delta", ctx)
 
         assert result is None
-        on_answer_delta.assert_called_once_with(message_id="modern-message", text="delta")
+        on_answer_delta.assert_called_once_with(message_id="modern-message", text="delta", session_key=ctx.session_key)
 
     def test_legacy_scope_consumes_delta(self) -> None:
         callback = _build_answer_hook_runner(use_turn_context=False)
@@ -345,7 +345,7 @@ class TestGeneratedAnswerHook:
             result = callback("delta", "legacy-message", run_still_current)
 
         assert result is None
-        on_answer_delta.assert_called_once_with(message_id="legacy-message", text="delta")
+        on_answer_delta.assert_called_once_with(message_id="legacy-message", text="delta", session_key=None)
 
     def test_unconsumed_delta_falls_through_to_native_stream(self) -> None:
         callback = _build_answer_hook_runner(use_turn_context=True)
@@ -379,6 +379,7 @@ class TestGeneratedToolHook:
             tool_name="search",
             status="started",
             detail="query",
+            session_key=ctx.session_key,
         )
 
     def test_consumed_tool_event_preserves_log_mode(self) -> None:
@@ -417,6 +418,7 @@ class TestGeneratedToolHook:
             tool_name="search",
             status="completed",
             detail="done",
+            session_key=None,
         )
 
     def test_exception_is_logged_before_native_fallback(self, caplog: pytest.LogCaptureFixture) -> None:
