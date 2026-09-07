@@ -15,6 +15,10 @@
 - [HERMES-UPGRADE-CARD-FIX.md](HERMES-UPGRADE-CARD-FIX.md) — Hermes 大版本升级后卡片不生效的独立排障（hook 注入晚于网关启动）
 - [CONFIGURATION.md](CONFIGURATION.md) — 卡片设置指南：streaming/display 全部配置项、优先级、常用场景
 
+## 功能技术文档
+
+- [GROUP-SECURITY-BOUNDARY.md](GROUP-SECURITY-BOUNDARY.md) — 群聊安全边界：注入点（modular-only）、判定逻辑、配置、验证与升级注意
+
 ## 测试报告
 
 测试报告默认保存在 `tests/reports/` 目录中，生成后请以 `*.md` 或 `*.html` 形式归档，便于后续复盘和回归检查。
