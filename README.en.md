@@ -68,6 +68,7 @@ hermes gateway restart
 ```yaml
 streaming:
   enabled: true
+  chat_types: [dm, group]  # Allowed chat types for cards; default = all types (omit to keep old behavior)
   header_enabled: true
   footer:
     enabled: true
@@ -85,6 +86,7 @@ display:
 | `header.enabled` | Status header bar | `false` |
 | `footer.enabled` | Footer metadata bar | `true` |
 | `panel_expanded` | Keep completion panels expanded | `false` |
+| `chat_types` | Allowed chat types for cards (`dm`/`group`...); omit = all types. Types outside the list fall back to plain text | all (omit) |
 | `width_mode` | Card width (`default` / `compact` / `fill`) | `default` |
 | `show_tool_use` | Show tool-use panels | `true` |
 | `show_reasoning` | Show reasoning process | `false` |

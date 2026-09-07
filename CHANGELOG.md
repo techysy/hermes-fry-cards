@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### 新增 / Added
+- **聊天类型过滤 `streaming.chat_types`** — 按 `source.chat_type` 控制哪些聊天类型发流式卡片：
+  缺省全部类型都发（保持向后兼容）；显式给出列表后，仅列表内类型发卡片，其余（如群聊）回落纯文本。
+  典型用法 `chat_types: [dm]` → 群聊不发卡片、私聊正常。需重启网关生效。
+
+---
+
 ## [0.3.1] - 2026-09-11
 
 ### 修复 / Fixed

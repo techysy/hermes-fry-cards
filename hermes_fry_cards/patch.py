@@ -167,6 +167,7 @@ def on_message_started(
     ctrl: Any,
     message_id: str,
     chat_id: str,
+    chat_type: str = "",
     anchor_id: str | None = None,
     session_key: str | None = None,
 ) -> None:
@@ -174,6 +175,7 @@ def on_message_started(
     ctrl.on_message_started(
         message_id=message_id,
         chat_id=chat_id,
+        chat_type=chat_type,
         anchor_id=anchor_id,
         session_key=session_key,
     )
@@ -326,6 +328,7 @@ def on_message_interrupted(
     message_id: str,
     new_message_id: str,
     chat_id: str,
+    chat_type: str = "",
     anchor_id: str | None = None,
     session_key: str | None = None,
 ) -> None:
@@ -334,6 +337,7 @@ def on_message_interrupted(
         old_message_id=message_id,
         new_message_id=new_message_id,
         chat_id=chat_id,
+        chat_type=chat_type,
         anchor_id=anchor_id,
         session_key=session_key,
     )
