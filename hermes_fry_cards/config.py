@@ -255,6 +255,21 @@ class Config:
         return bool(header.get("enabled", True))
 
     @property
+    def header_min_duration(self) -> float:
+        """快捷回复去 header 阈值(秒). 完成态卡片耗时 < 此值且无工具调用时不显示顶部状态栏.
+        默认 0 = 不启用(始终显示 header)."""
+        sec = self._streaming_sec()
+        header = sec.get("header", {})
+        if not isinstance(header, dict):
+            return 0.0
+        try:
+            val = float(header.get("min_duration", 0))
+        except (TypeError, ValueError):
+            return 0.0
+        return val if val >= 0 else 0.0
+
+
+    @property
     def footer_enabled(self) -> bool:
         """完成态卡片是否显示 footer."""
         sec = self._streaming_sec()

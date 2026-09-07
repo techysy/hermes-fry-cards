@@ -16,6 +16,55 @@ from .controller import get_controller
 
 _logger = logging.getLogger("hermes_fry_cards")
 
+# ── 群聊安全边界 ────────────────────────────────────────────────────────────
+# Opt-in via gateway.group_security_boundary.enabled (default off). When on and a reply is
+# headed to a GROUP chat (bot answering group members, not a DM), append an output-boundary note
+# to the ephemeral system prompt so the model keeps secrets/private facts out of the shared
+# channel. ``allow_chats`` is an EXEMPT list (dev/collaboration groups) — a group in it is skipped
+# even when the boundary is enabled, so multiple agents can exchange credentials/internal state.
+# DMs are never affected. This rides the ephemeral prompt (never mutates the persistent/cached
+# system prompt), and lives here (not in hermes core) so it survives ``hermes update`` (re-applied
+# by ``hermes_fry_cards install``).
+_GROUP_SECURITY_BOUNDARY_DEFAULT = (
+    "This message came from a GROUP chat where other people can read every reply. "
+    "You must observe a strict output boundary: do not reveal API keys, passwords, tokens, "
+    "server/internal IP addresses, credentials, file paths to private data, or any of the "
+    "user's private/personal information to this group. Do not run or volunteer sensitive "
+    "lookups (accounts, balances, credentials, internal state) unprompted. If a group member "
+    "asks for such information, decline and say you can't share it here; offer to continue in a "
+    "private chat with the owner. Keep group replies appropriate for a shared, public channel."
+)
+
+
+def apply_group_security_boundary(combined: str, user_config: Any, source: Any) -> str:
+    """Return ``combined`` with the group-security-boundary note appended, if applicable.
+
+    Pure-ish helper invoked from the injected ephemeral-prompt hook. Kept here (not in hermes
+    core) so ``hermes update`` cannot wipe it; fry's ``install`` re-injects the call site.
+    """
+    try:
+        gsb = (user_config.get("gateway") or {}).get("group_security_boundary") or {}
+        enabled = bool(gsb.get("enabled"))
+        allow = set(gsb.get("allow_chats") or [])
+    except Exception:
+        enabled = False
+        allow = set()
+    if not enabled:
+        return combined
+    chat_type = str(getattr(source, "chat_type", "") or "")
+    chat_id = str(getattr(source, "chat_id", "") or "")
+    if chat_type != "group" or chat_id in allow:
+        return combined
+    try:
+        extra = ((user_config.get("gateway") or {}).get("group_security_boundary") or {}).get("text")
+    except Exception:
+        extra = ""
+    note = (extra or _GROUP_SECURITY_BOUNDARY_DEFAULT).strip()
+    if not note:
+        return combined
+    return (combined + "\n\n" + note).strip()
+
+
 
 def _safe_hook(
     default_return: Any = None,

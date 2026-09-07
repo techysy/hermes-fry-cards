@@ -860,6 +860,21 @@ class StreamingController:
             self._flush_deferred_background_reviews(session)
             self._cleanup_session(session)
 
+    def _complete_header_enabled(self, session: "CardSession", all_tool_steps: list) -> bool:
+        """完成态卡片是否显示顶部 header. 快回复(耗时 < header_min_duration 且无工具调用)时隐藏."""
+        if not self._cfg.header_enabled:
+            return False
+        thresh = self._cfg.header_min_duration
+        if thresh > 0 and not all_tool_steps:
+            duration = session.footer.get("duration") if isinstance(session.footer, dict) else None
+            try:
+                elapsed = float(duration or 0)
+            except (TypeError, ValueError):
+                elapsed = 0.0
+            if elapsed < thresh:
+                return False
+        return True
+
     async def _do_complete_card_inner(self, session: CardSession) -> bool:
         if session.guard.should_skip("_do_complete_card"):
             return False
@@ -895,7 +910,7 @@ class StreamingController:
             footer_enabled=self._cfg.footer_enabled,
             footer_text_size=self._cfg.footer_text_size,
             panel_expanded=self._cfg.panel_expanded,
-            header_enabled=self._cfg.header_enabled,
+            header_enabled=self._complete_header_enabled(session, all_tool_steps),
             body_text_size=self._cfg.body_text_size,
             show_tool_use=self._cfg.show_tool_use,
             width_mode=self._cfg.width_mode,

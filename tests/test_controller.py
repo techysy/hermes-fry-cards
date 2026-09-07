@@ -2156,3 +2156,57 @@ class TestBackgroundDeliver:
         assert result is False
         mock_client.upload_image.assert_not_called()
         mock_client.send_card_to_chat.assert_not_called()
+
+
+# ── _complete_header_enabled: 快回复去 header 阈值 ──────────────────────────
+def _mock_cfg(header_enabled: bool = True, min_duration: float = 0.0) -> MagicMock:
+    cfg = MagicMock()
+    cfg.header_enabled = header_enabled
+    cfg.header_min_duration = min_duration
+    return cfg
+
+
+def _session_with_duration(seconds: float | None) -> CardSession:
+    sess = CardSession.__new__(CardSession)
+    sess.footer = {"duration": seconds} if seconds is not None else {}
+    return sess
+
+
+def test_header_hidden_when_quick_reply_below_threshold() -> None:
+    ctrl = StreamCardController()
+    ctrl._cfg = _mock_cfg(header_enabled=True, min_duration=5.0)
+    # 快速回复 (<5s) 且无工具 → 隐藏 header
+    assert ctrl._complete_header_enabled(_session_with_duration(1.2), []) is False
+
+
+def test_header_shown_when_elapsed_at_or_over_threshold() -> None:
+    ctrl = StreamCardController()
+    ctrl._cfg = _mock_cfg(header_enabled=True, min_duration=5.0)
+    assert ctrl._complete_header_enabled(_session_with_duration(5.0), []) is True
+    assert ctrl._complete_header_enabled(_session_with_duration(9.0), []) is True
+
+
+def test_header_shown_when_has_tool_use_even_if_quick() -> None:
+    ctrl = StreamCardController()
+    ctrl._cfg = _mock_cfg(header_enabled=True, min_duration=5.0)
+    assert ctrl._complete_header_enabled(_session_with_duration(0.5), ["step"]) is True
+
+
+def test_header_enabled_off_wins_over_threshold() -> None:
+    ctrl = StreamCardController()
+    ctrl._cfg = _mock_cfg(header_enabled=False, min_duration=5.0)
+    assert ctrl._complete_header_enabled(_session_with_duration(99.0), []) is False
+
+
+def test_default_min_duration_zero_keeps_header() -> None:
+    ctrl = StreamCardController()
+    ctrl._cfg = _mock_cfg(header_enabled=True, min_duration=0.0)
+    # 默认(不启用阈值)始终显示 header, 即使很快
+    assert ctrl._complete_header_enabled(_session_with_duration(0.3), []) is True
+
+
+def test_missing_duration_treated_as_quick_when_threshold_set() -> None:
+    ctrl = StreamCardController()
+    ctrl._cfg = _mock_cfg(header_enabled=True, min_duration=5.0)
+    # footer 无 duration 字段 → elapsed=0 → 视为快回复隐藏
+    assert ctrl._complete_header_enabled(_session_with_duration(None), []) is False

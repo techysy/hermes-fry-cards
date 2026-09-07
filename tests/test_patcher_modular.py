@@ -55,6 +55,14 @@ MODULAR_SOURCES = {
 
         def stream_delta_cb(text):
             return text
+
+        def _combined_ephemeral_prompt(self):
+            ctx = self._ctx
+            combined = ctx.context_prompt or ""
+            for extra in ((ctx.channel_prompt or "").strip(),):
+                if extra:
+                    combined = (combined + "\\n\\n" + extra).strip()
+            return combined
     """,
     "busy": """
         async def stop(self, session_key):

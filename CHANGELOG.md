@@ -7,7 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [0.3.0] - 2026-09-07
+
+### 新增 / Added
+- **快捷回复去标题开关 `header.min_duration`** — 完成态卡片顶部状态栏可按耗时条件隐藏：
+  当本次回复**无工具调用且耗时小于阈值**（秒）时，不显示顶部 `✅ 已完成` 状态栏（快回复更干净）；
+  正常耗时任务或带工具调用照常显示。`0`（默认）= 不启用，行为不变。
+- **群聊安全边界（modular Hermes 0.21+）** — 对 `gateway/run_turn_runner.py` 新增注入 hook：
+  群友@ bot 时向 ephemeral system prompt 追加输出边界（不透露 API key/密码/令牌/内网 IP/凭据/
+  私人信息、不主动执行敏感查询），DM 不受影响；`gateway.group_security_boundary.enabled` 总开关
+  （默认关）+ `allow_chats` 豁免白名单（多 Agent 协作开发群放行）。**逻辑在插件内，`hermes update`
+  不会覆盖，重跑 `hermes_fry_cards install` 即重打。**
 
 ---
 

@@ -55,6 +55,13 @@ MK_INTERRUPT, MK_INTERRUPT_END = MARKERS[12]
 MK_BG_DELIVER, MK_BG_DELIVER_END = MARKERS[13]
 MK_CLARIFY, MK_CLARIFY_END = MARKERS[14]
 
+# Group-security boundary is MODULAR-ONLY (targets ``_combined_ephemeral_prompt`` in
+# gateway/run_turn_runner.py, which exists only in the Hermes 0.21+ modular layout). Kept out of
+# the shared MARKERS list so the legacy monolithic apply/verify paths (which never host it) and
+# their tests are unaffected.
+MK_GROUP_BOUNDARY = f"# {PREFIX}_GROUP_BOUNDARY_BEGIN"
+MK_GROUP_BOUNDARY_END = f"# {PREFIX}_GROUP_BOUNDARY_END"
+
 _BACKUP_SUFFIX = ".hermes_lark.bak"
 
 
@@ -687,6 +694,23 @@ def _clarify_hook(indent: str) -> str:
     )
 
 
+def _group_boundary_hook(indent: str) -> str:
+    return _make_hook(
+        indent,
+        MK_GROUP_BOUNDARY,
+        MK_GROUP_BOUNDARY_END,
+        [
+            "try:",
+            "    from hermes_fry_cards.patch import apply_group_security_boundary",
+            "    _lark_gb_cfg = getattr(self._ctx, 'user_config', None)",
+            "    _lark_gb_src = getattr(self._ctx, 'source', None)",
+            "    if _lark_gb_cfg is not None and _lark_gb_src is not None:",
+            "        combined = apply_group_security_boundary(combined, _lark_gb_cfg, _lark_gb_src)",
+            *_hook_exception_lines("group_boundary"),
+        ],
+    )
+
+
 _HOOK_FNS = {
     "normalize": _feishu_normalize_hook,
     "start": _start_hook,
@@ -703,6 +727,7 @@ _HOOK_FNS = {
     "background_review": _background_review_hook,
     "bg_deliver": _bg_deliver_hook,
     "clarify": _clarify_hook,
+    "group_boundary": _group_boundary_hook,
 }
 
 
@@ -790,6 +815,10 @@ class Patcher:
                 f"(tried: {tried}). "
                 f"Set HERMES_HOME to the dir containing hermes-agent/ and rerun."
             )
+        # Modular layout additionally hosts the group-security-boundary hook (in
+        # gateway/run_turn_runner.py), so removal / status must know its markers.
+        if self._modular_paths is not None:
+            self.MARKERS = list(MARKERS) + [(MK_GROUP_BOUNDARY, MK_GROUP_BOUNDARY_END)]
 
     def _source_paths(self) -> list[Path]:
         if self._modular_paths is not None:
@@ -901,6 +930,7 @@ class Patcher:
             (_find_reasoning_site(runner_tree, runner_lines), "reasoning"),
             (_find_background_review_site(runner_tree, runner_lines), "background review"),
             (_find_clarify_site(runner_tree, runner_lines), "clarify"),
+            (_find_ephemeral_prompt_return(runner_tree, runner_lines), "group boundary"),
         ]
         answer_sites = _find_func_bodies(runner_tree, runner_lines, "stream_delta_cb")
         if not answer_sites:
@@ -1000,6 +1030,7 @@ class Patcher:
                 ("reasoning", "reasoning", _find_reasoning_site),
                 ("background_review", "background_review", _find_background_review_site),
                 ("clarify", "clarify", _find_clarify_site),
+                ("group_boundary", "group_boundary", _find_ephemeral_prompt_return),
             ],
             "busy": [("stop", "stop", _find_stop_site)],
         }
@@ -1139,6 +1170,26 @@ def _find_handle_message_source_site(tree: ast.Module, lines: list[str]) -> tupl
                 ):
                     lineno = stmt.end_lineno or stmt.lineno
                     return lineno, _safe_indent(lines, stmt.lineno - 1)
+    return None
+
+
+def _find_ephemeral_prompt_return(tree: ast.Module, lines: list[str]) -> tuple[int, str] | None:
+    """Locate the ``return combined`` inside ``TurnRunner._combined_ephemeral_prompt``.
+
+    The group-security-boundary hook is injected immediately before this return, so it can
+    reassign ``combined`` in place before the method returns it.
+    """
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef) or node.name != "_combined_ephemeral_prompt":
+            continue
+        # Find the top-level ``return combined`` (last statement of the method body).
+        target = None
+        for stmt in node.body:
+            if isinstance(stmt, ast.Return) and isinstance(stmt.value, ast.Name) and stmt.value.id == "combined":
+                target = stmt
+        if target is not None and target.lineno is not None:
+            lineno = target.lineno - 1
+            return lineno, _safe_indent(lines, lineno)
     return None
 
 

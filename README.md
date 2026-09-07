@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Hermes](https://img.shields.io/badge/Hermes-%E2%89%A50.14.0-2463eb)](https://github.com/NousResearch/hermes-agent)
 [![Python](https://img.shields.io/badge/Python-%E2%89%A53.11-blue)](https://www.python.org/)
-[![当前版本](https://img.shields.io/badge/Release-v0.2.0-2463eb?logo=github&logoColor=white)](https://github.com/techysy/hermes-fry-cards/releases)
+[![当前版本](https://img.shields.io/badge/Release-v0.3.0-2463eb?logo=github&logoColor=white)](https://github.com/techysy/hermes-fry-cards/releases)
 
 > 🍟 Hermes Gateway 飞书流式卡片插件 — CardKit v2.0 实时流式消息
 
@@ -70,6 +70,7 @@ streaming:
   enabled: true
   header:
     enabled: true
+    min_duration: 0   # 快捷回复去标题阈值(秒)；无工具调用且耗时 < 此值 → 完成态不显示顶部状态栏。0=不启用
   footer:
     enabled: false
     fields:
@@ -103,6 +104,7 @@ display:
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
 | `header.enabled` | 顶部状态栏 | `true` |
+| `header.min_duration` | 快捷回复去标题阈值（秒）；无工具调用且耗时 `<` 此值 → 完成态不显示顶部状态栏；`0` = 不启用（始终显示） | `0` |
 | `footer.enabled` | 底部元数据栏 | `false` |
 | `panel_expanded` | 完成态面板保持展开 | `false` |
 | `width_mode` | 卡片宽度 (`default` / `compact` / `fill`) | `default` |
@@ -151,6 +153,29 @@ display:
 > 无工具调用或回复 ≤ `unified_panel_min_duration` 秒时，整个统一面板（含 header）不显示。
 
 ![A minimal chat card on a pale gray background with a circular profile image on the left. The status line reads 回复 余师评：那不是什么 是高清背景图, with a green checkmark and the label 已完成 above the assistant response. The message body is in Chinese and discusses a background image, with a highlighted sentence mentioning LICENCE and repo-audit-fix. The overall tone is calm and professional, with soft green styling and a clean messaging layout.](assets/quick_reply.png)
+
+## 🛡️ 群聊安全边界（modular Hermes 0.21+）
+
+群友 @ bot 时，回复默认会带输出边界：**不透露 API key / 密码 / 令牌 / 服务器内网 IP / 凭据 /
+私人信息**，也不主动执行敏感查询（账户 / 余额 / 凭据 / 内部状态）；被群友索要这类信息时婉拒并
+引导私聊。**你的私聊 DM 不受影响**。
+
+### 配置（`~/.hermes/config.yaml`）
+
+```yaml
+gateway:
+  group_security_boundary:
+    enabled: true    # 总开关（默认关）
+    allow_chats: []  # 豁免群白名单：这些群不套边界，放行自由交流
+```
+
+- `enabled`：总开关。`true` 时所有群聊（除 `allow_chats` 白名单）套边界。
+- `allow_chats`：**豁免群**。适合多 Agent 协作开发群——群里多个 Agent 互相交流、
+  需要传凭据 / 内部状态干活时不加约束。填入群的 `chat_id`（飞书 `oc_xxx`）即放行。
+
+> 实现：对 `gateway/run_turn_runner.py::_combined_ephemeral_prompt` 注入 hook，走 ephemeral
+> system prompt（不碰持久缓存）。**逻辑在插件内**，`hermes update` 不会覆盖——升级后重跑
+> `hermes_fry_cards install` 即重打。
 
 ---
 

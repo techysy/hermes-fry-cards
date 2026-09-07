@@ -937,3 +937,43 @@ class TestQueuedFollowupHooks:
             on_queued_followup_result(message_id="outer", followup_result=result)
 
             assert result["_hermes_lark_completion_id"] == "deep"
+
+
+class TestGroupSecurityBoundary:
+    """apply_group_security_boundary — 群聊安全边界的纯逻辑 (独立于 AST 注入)."""
+
+    def _apply(self, combined, *, enabled=True, allow=None, chat_type="group", chat_id="oc_g", text=None):
+        from hermes_fry_cards.patch import apply_group_security_boundary, _GROUP_SECURITY_BOUNDARY_DEFAULT
+        cfg = {"gateway": {"group_security_boundary": {"enabled": enabled, **({"allow_chats": allow} if allow is not None else {}), **({"text": text} if text else {})}}}
+        source = SimpleNamespace(chat_type=chat_type, chat_id=chat_id)
+        out = apply_group_security_boundary(combined, cfg, source)
+        return out, _GROUP_SECURITY_BOUNDARY_DEFAULT
+
+    def test_disabled_returns_unchanged(self):
+        out, _d = self._apply("hi", enabled=False)
+        assert out == "hi"
+
+    def test_group_appends_default_boundary(self):
+        out, default = self._apply("hi")
+        assert out == "hi\n\n" + default
+
+    def test_dm_not_affected(self):
+        out, default = self._apply("hi", chat_type="dm")
+        assert out == "hi"
+
+    def test_exempt_chat_not_affected(self):
+        out, default = self._apply("hi", allow=["oc_g"])
+        assert out == "hi"
+
+    def test_non_exempt_group_still_guarded_with_allowlist(self):
+        out, default = self._apply("hi", allow=["oc_other"])
+        assert out == "hi\n\n" + default
+
+    def test_custom_text_overrides_default(self):
+        out, _d = self._apply("hi", text="CUSTOM")
+        assert out == "hi\n\nCUSTOM"
+
+    def test_missing_user_config_returns_unchanged(self):
+        from hermes_fry_cards.patch import apply_group_security_boundary
+        source = SimpleNamespace(chat_type="group", chat_id="oc_g")
+        assert apply_group_security_boundary("hi", None, source) == "hi"
