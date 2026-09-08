@@ -338,3 +338,125 @@ class TestApplyPatch:
 
     def test_none_class_returns_false(self):
         assert clarify.apply_patch(None, SendResult=object) is False
+
+
+# ---------------------------------------------------------------------------
+# Approval gate fix + toast feedback
+# ---------------------------------------------------------------------------
+
+class FakeApprovalAdapter:
+    """Stand-in for the approval path: mirrors the real adapter's shape."""
+
+    _hl_P2CardActionTriggerResponse = P2CardActionTriggerResponse
+    _hl_CallBackCard = CallBackCard
+    _hl_CallBackToast = CallBackToast
+    _hl_handle_clarify = clarify.handle_clarify_card_action
+    _handle_approval_card_action = clarify.handle_approval_card_action_patched
+    _allow_group_message = clarify._allow_group_message_patched
+
+    def __init__(self, *, group_gate_opens: bool, operator_ok: bool = True):
+        self._approval_state: dict = {}
+        self._group_gate_opens = group_gate_opens  # simulates _allow_group_message policy
+        self._operator_ok = operator_ok
+        self.submitted: list = []
+
+    # the wrapped-original we delegate to, mimicking Hermes's real handler
+    def _hl_orig_approval_handler(self, *, event, action_value, loop):
+        sender = SimpleNamespace(open_id="ou_x", user_id="")
+        if not self._allow_group_message_patched_gate(sender):
+            return P2CardActionTriggerResponse()  # Hermes: silent reject
+        resp = P2CardActionTriggerResponse()
+        card = CallBackCard()
+        card.type = "raw"
+        card.data = {"header": {"template": "green"}}
+        resp.card = card
+        return resp
+
+    def _allow_group_message_patched_gate(self, sender_id) -> bool:
+        # simulate the patched gate inside the "original" handler
+        if getattr(clarify._APPROVAL_BYPASS, "active", False):
+            return True
+        return self._group_gate_opens
+
+    def _is_interactive_operator_authorized(self, open_id: str) -> bool:
+        return self._operator_ok
+
+    def _get_cached_sender_name(self, open_id: str) -> str:
+        return "tester"
+
+
+def _approval_event():
+    return SimpleNamespace(
+        operator=SimpleNamespace(open_id="ou_boss", user_id=""),
+        context=SimpleNamespace(open_chat_id="oc_test"),
+    )
+
+
+class TestApprovalFeedback:
+    def _register_approval(self, inst):
+        inst._approval_state["ap1"] = {"chat_id": "oc_test", "session_key": "sk"}
+
+    def test_click_resolves_despite_closed_group_gate(self):
+        # Core bug scenario: group admission closed (no rules) but operator
+        # is authorized → click must still work (bypass) and carry a toast.
+        inst = FakeApprovalAdapter(group_gate_opens=False)
+        self._register_approval(inst)
+        resp = inst._handle_approval_card_action(
+            event=_approval_event(),
+            action_value={"hermes_action": "approve_once", "approval_id": "ap1"},
+            loop=None,
+        )
+        assert resp.card is not None, "审批必须被原处理器受理（变绿卡）"
+        assert resp.toast is not None and resp.toast.type == "success"
+        assert "已允许本次执行" in resp.toast.content
+        # bypass flag must not leak after the call
+        assert not getattr(clarify._APPROVAL_BYPASS, "active", False)
+
+    def test_stale_card_gets_expiry_toast(self):
+        inst = FakeApprovalAdapter(group_gate_opens=True)
+        resp = inst._handle_approval_card_action(
+            event=_approval_event(),
+            action_value={"hermes_action": "approve_once", "approval_id": "ghost"},
+            loop=None,
+        )
+        assert resp.toast is not None and resp.toast.type == "warning"
+        assert "过期" in resp.toast.content
+        assert resp.card is None
+
+    def test_unauthorized_operator_gets_error_toast(self):
+        inst = FakeApprovalAdapter(group_gate_opens=False, operator_ok=False)
+        self._register_approval(inst)
+        resp = inst._handle_approval_card_action(
+            event=_approval_event(),
+            action_value={"hermes_action": "approve_once", "approval_id": "ap1"},
+            loop=None,
+        )
+        assert resp.toast is not None and resp.toast.type == "error"
+        assert "权限" in resp.toast.content
+        # state untouched — nothing resolved
+        assert "ap1" in inst._approval_state
+
+    def test_deny_choice_gets_warning_toast(self):
+        inst = FakeApprovalAdapter(group_gate_opens=True)
+        self._register_approval(inst)
+        resp = inst._handle_approval_card_action(
+            event=_approval_event(),
+            action_value={"hermes_action": "deny", "approval_id": "ap1"},
+            loop=None,
+        )
+        assert resp.toast is not None and resp.toast.type == "warning"
+        assert "拒绝" in resp.toast.content
+
+    def test_allow_group_message_passthrough_when_inactive(self):
+        # Outside an approval click, the patched gate must behave exactly
+        # like the original (no accidental open door).
+        calls = []
+
+        class Stub:
+            _hl_orig_allow_group_message = staticmethod(
+                lambda sender_id, chat_id="", *, is_bot=False: calls.append(1) or False
+            )
+            _allow_group_message = clarify._allow_group_message_patched
+
+        assert Stub()._allow_group_message(SimpleNamespace(open_id="ou", user_id="")) is False
+        assert len(calls) == 1

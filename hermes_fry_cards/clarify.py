@@ -477,6 +477,116 @@ def _on_card_action_trigger_patched(self: Any, data: Any) -> Any:
 
 
 # ---------------------------------------------------------------------------
+# Approval card gate fix + click feedback (Hermes core bug, patched at runtime)
+# ---------------------------------------------------------------------------
+#
+# Hermes's ``_handle_approval_card_action`` gates button clicks with
+# ``_allow_group_message`` — the group-message *admission* policy.  On
+# deployments without per-chat rules (empty allowlist / admin_only default)
+# it rejects every human click: the card never updates, nothing is
+# resolved, and the user sees "click does nothing".  The async resolver
+# ``_resolve_approval`` already re-gates with the correct
+# ``_is_interactive_operator_authorized`` check, so the sync gate is both
+# wrong AND redundant.  We bypass it only for operators who pass the
+# correct gate (thread-local, no cross-thread races), and add toast
+# feedback for resolved / expired / unauthorized clicks.
+
+import threading as _threading
+
+_APPROVAL_BYPASS = _threading.local()
+_APPROVAL_TOASTS = {
+    "once": ("success", "✅ 已允许本次执行，命令继续"),
+    "session": ("success", "✅ 已允许（本会话内同类命令自动放行）"),
+    "always": ("success", "✅ 已永久允许该类命令"),
+    "deny": ("warning", "🚫 已拒绝该命令"),
+}
+
+
+def _approval_choice_from_value(action_value: Dict[str, Any]) -> str:
+    action = str(action_value.get("hermes_action") or "")
+    if action == "approve_once":
+        return "once"
+    if action == "approve_session":
+        return "session"
+    if action == "approve_always":
+        return "always"
+    return "deny"
+
+
+def handle_approval_card_action_patched(
+    self: Any, *, event: Any, action_value: Dict[str, Any], loop: Any
+) -> Any:
+    """Gate approval clicks with the interactive-operator check + toast feedback."""
+    approval_id = action_value.get("approval_id")
+    state = (
+        getattr(self, "_approval_state", {}).get(approval_id)
+        if approval_id is not None
+        else None
+    )
+    if approval_id is not None and state is None:
+        # Stale card: already resolved elsewhere or timed out. Give the
+        # click a visible answer instead of silence (toast only — an empty
+        # card payload would blank the original message on some clients).
+        response = _empty_trigger_response(self)
+        CallBackToast = getattr(self, "_hl_CallBackToast", None)
+        if response is not None and CallBackToast is not None:
+            toast = CallBackToast()
+            toast.type = "warning"
+            toast.content = "⌛ 该审批已过期或已被处理，无需再点"
+            response.toast = toast
+        return response
+
+    operator = getattr(event, "operator", None)
+    open_id = str(getattr(operator, "open_id", "") or "")
+    authorized = True
+    try:
+        authorized = bool(self._is_interactive_operator_authorized(open_id))
+    except Exception:
+        _logger.debug("[fry-cards] approval gate check failed", exc_info=True)
+
+    if authorized:
+        _APPROVAL_BYPASS.active = True
+    try:
+        response = self._hl_orig_approval_handler(
+            event=event, action_value=action_value, loop=loop
+        )
+    finally:
+        if authorized:
+            _APPROVAL_BYPASS.active = False
+
+    if not authorized:
+        return _callback_card(
+            self, {}, toast_type="error",
+            toast_content="⛔ 你没有权限操作此审批",
+        )
+
+    # Original built a resolved-card response → attach completion toast.
+    if response is not None and getattr(response, "card", None) is not None:
+        choice = _approval_choice_from_value(action_value)
+        toast_type, toast_content = _APPROVAL_TOASTS.get(
+            choice, ("info", "审批已处理")
+        )
+        CallBackToast = getattr(self, "_hl_CallBackToast", None)
+        if CallBackToast is not None and getattr(response, "toast", None) is None:
+            toast = CallBackToast()
+            toast.type = toast_type
+            toast.content = toast_content
+            response.toast = toast
+    return response
+
+
+def _allow_group_message_patched(
+    self: Any, sender_id: Any, chat_id: str = "", *, is_bot: bool = False
+) -> bool:
+    """Group-admission gate with a thread-local approval bypass."""
+    if getattr(_APPROVAL_BYPASS, "active", False):
+        return True
+    return self._hl_orig_allow_group_message(
+        sender_id, chat_id, is_bot=is_bot
+    )
+
+
+# ---------------------------------------------------------------------------
 # Patch application
 # ---------------------------------------------------------------------------
 
@@ -508,6 +618,15 @@ def apply_patch(
         _Toast = None
     cls._hl_CallBackToast = _Toast
     cls._hl_orig_card_action_trigger = cls._on_card_action_trigger
+    # Approval gate fix: wrap the original handler + group-admission gate.
+    # Both are instance methods on the real adapter; guard with getattr for
+    # test stubs that only carry the clarify-side methods.
+    if hasattr(cls, "_handle_approval_card_action"):
+        cls._hl_orig_approval_handler = cls._handle_approval_card_action
+        cls._handle_approval_card_action = handle_approval_card_action_patched
+    if hasattr(cls, "_allow_group_message"):
+        cls._hl_orig_allow_group_message = cls._allow_group_message
+        cls._allow_group_message = _allow_group_message_patched
     cls.send_clarify = send_clarify
     cls._hl_handle_clarify = handle_clarify_card_action
     cls._on_card_action_trigger = _on_card_action_trigger_patched
