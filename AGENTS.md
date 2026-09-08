@@ -58,6 +58,12 @@ plugins/platforms/feishu/adapter.py (Hermes)
        └─ clarify.apply_patch() monkey-patches send_clarify + wraps
           _on_card_action_trigger → interactive option buttons, multi-select
           toggles, "其他" inline input (form container) + toast feedback.
+          Also wraps _handle_approval_card_action: Hermes gates approval
+          clicks with _allow_group_message (group admission policy), which
+          rejects every human click on deployments without per-chat rules;
+          the wrapper re-gates with _is_interactive_operator_authorized via
+          a thread-local bypass (async resolver's second check preserved)
+          and adds resolved/expired/unauthorized/deny toast feedback.
           Runtime patch only (no AST surgery); uninstall = block delete.
           State lives in clarify._CLARIFY_STATE (FIFO-capped).
 
