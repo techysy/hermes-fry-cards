@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .patcher import CronPatcher, Patcher
+    from .patcher import ClarifyPatcher, CronPatcher, Patcher
 
 _logger = logging.getLogger("hermes_fry_cards")
 
@@ -72,6 +72,16 @@ def _get_cron_patcher() -> CronPatcher | None:
         return None
 
 
+def _get_clarify_patcher() -> ClarifyPatcher | None:
+    from .patcher import ClarifyPatcher, PatcherError
+
+    try:
+        return ClarifyPatcher()
+    except PatcherError as e:
+        _logger.debug("clarify patcher unavailable: %s", e)
+        return None
+
+
 def _cmd_install() -> int:
     patcher = _get_patcher()
     if patcher is None:
@@ -105,6 +115,15 @@ def _cmd_install() -> int:
         except Exception as e:
             print(f"Cron hook skipped: {e}")
 
+    clarify_patcher = _get_clarify_patcher()
+    if clarify_patcher is not None and not clarify_patcher.is_patched():
+        try:
+            clarify_patcher.verify_target()
+            clarify_patcher.apply()
+            print("Clarify button hook applied.")
+        except Exception as e:
+            print(f"Clarify button hook skipped: {e}")
+
     return 0
 
 
@@ -112,6 +131,14 @@ def _cmd_uninstall() -> int:
     patcher = _get_patcher()
     if patcher is None:
         return 1
+
+    clarify_patcher = _get_clarify_patcher()
+    if clarify_patcher is not None and clarify_patcher.is_patched():
+        try:
+            clarify_patcher.remove()
+            print("Clarify button hook removed.")
+        except Exception as e:
+            print(f"Clarify button hook remove failed: {e}")
 
     cron_patcher = _get_cron_patcher()
     if cron_patcher is not None and cron_patcher.is_patched():
@@ -148,6 +175,14 @@ def _cmd_restore() -> int:
         except Exception:
             pass
 
+    clarify_patcher = _get_clarify_patcher()
+    if clarify_patcher is not None:
+        try:
+            clarify_patcher.restore()
+            print("Clarify button hook restored.")
+        except Exception:
+            pass
+
     print("Restoring from backup...")
     try:
         patcher.restore()
@@ -175,6 +210,10 @@ def _cmd_status() -> int:
     cron_patcher = _get_cron_patcher()
     if cron_patcher is not None:
         print(f"Cron hook: {'installed' if cron_patcher.is_patched() else 'not installed'}")
+
+    clarify_patcher = _get_clarify_patcher()
+    if clarify_patcher is not None:
+        print(f"Clarify button hook: {'installed' if clarify_patcher.is_patched() else 'not installed'}")
 
     # Match the Hermes gateway launcher, which loads profile credentials from
     # ``$HERMES_HOME/.env`` before constructing adapters.  A bare plugin CLI
@@ -229,6 +268,16 @@ def _cmd_verify() -> int:
             print(f"Cron incompatible: {e}")
             return 1
         print("Cron target compatible.")
+
+    clarify_patcher = _get_clarify_patcher()
+    if clarify_patcher is not None:
+        print(f"Clarify target: {clarify_patcher.adapter_path}")
+        try:
+            clarify_patcher.verify_target()
+        except Exception as e:
+            print(f"Clarify target incompatible: {e}")
+            return 1
+        print("Clarify target compatible.")
 
     return 0
 
