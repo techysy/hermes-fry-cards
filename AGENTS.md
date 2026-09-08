@@ -53,6 +53,14 @@ cron/scheduler.py (Hermes)
   └─ CronPatcher (patcher.py) injects on_cron_deliver into _deliver_result
        └─ intercepts feishu/lark targets → build_cron_card → send_card_to_chat
 
+plugins/platforms/feishu/adapter.py (Hermes)
+  └─ ClarifyPatcher (patcher.py) appends a marker block at module scope
+       └─ clarify.apply_patch() monkey-patches send_clarify + wraps
+          _on_card_action_trigger → interactive option buttons, multi-select
+          toggles, "其他" inline input (form container) + toast feedback.
+          Runtime patch only (no AST surgery); uninstall = block delete.
+          State lives in clarify._CLARIFY_STATE (FIFO-capped).
+
 StreamCardController (singleton, controller.py)
   ├─ CardSession per message (state machine: IDLE→CREATING→STREAMING→COMPLETED/FAILED/ABORTED)
   │   └─ stream segments: CardSession.segment_state (SegmentState)
