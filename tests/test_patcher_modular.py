@@ -40,6 +40,16 @@ MODULAR_SOURCES = {
                 response = result
             followup_result = result
             return _preserve_queued_followup_history_offset(result, followup_result)
+
+        async def _run_agent_queued_followup_0211(self, turn_ctx, result, response, next_inbound_id):
+            followup_result = await self._run_agent(
+                message=next_message, context_prompt=turn_ctx.context_prompt, history=updated_history,
+            )
+            merged = _preserve_queued_followup_history_offset(result, followup_result)
+            # 0.21.1: terminal turn ledger identity
+            if isinstance(merged, dict) and "queued_terminal_inbound_id" not in merged:
+                merged = {**merged, "queued_terminal_inbound_id": next_inbound_id}
+            return merged
     """,
     "runner": """
         def configure(self, agent, reasoning_config):

@@ -223,7 +223,14 @@ MK_CRON_DELIVER_END = f"# {PREFIX}_CRON_DELIVER_END"
 _ANCHOR_CHECKS: list[tuple[str, tuple[str, ...], str]] = [
     ("Restart typing indicator so the user sees activity", (), "interrupt"),
     ('was_interrupted = result.get("interrupted")', (), "queued follow-up boundary"),
-    ("return _preserve_queued_followup_history_offset(result, followup_result)", (), "queued follow-up return"),
+    (
+        "return _preserve_queued_followup_history_offset(result, followup_result)",
+        (
+            # Hermes 0.21.1+: return value assigned then augmented with queued_terminal_inbound_id
+            "= _preserve_queued_followup_history_offset(result, followup_result)",
+        ),
+        "queued follow-up return",
+    ),
     ("agent.reasoning_config = reasoning_config", (), "reasoning_config"),
     ("agent.background_review_callback = _bg_review_send", (), "background_review_callback"),
     ("images, text_content = adapter.extract_images(response)", (), "background deliver"),
@@ -1279,8 +1286,22 @@ def _find_followup_complete_site(tree: ast.Module, lines: list[str]) -> tuple[in
 
 
 def _find_followup_result_site(tree: ast.Module, lines: list[str]) -> tuple[int, str] | None:
+    """Locate the queued follow-up return site.
+
+    Two upstream shapes are supported (hook is inserted BEFORE the matched line; it only
+    reads ``followup_result``, already bound by the ``await self._run_agent(...)`` above,
+    so both placements are semantically equivalent):
+
+    - Hermes <= 0.21.0: ``return _preserve_queued_followup_history_offset(result, followup_result)``
+    - Hermes >= 0.21.1: the return value is first assigned (e.g. ``merged = _preserve_...(result,
+      followup_result)``) and later augmented with ``queued_terminal_inbound_id`` before return
+    """
     for i, line in enumerate(lines):
-        if line.strip() == "return _preserve_queued_followup_history_offset(result, followup_result)":
+        stripped = line.strip()
+        if stripped == "return _preserve_queued_followup_history_offset(result, followup_result)":
+            return i, _safe_indent(lines, i)
+        # 0.21.1+ assignment form: <var> = _preserve_queued_followup_history_offset(result, followup_result)
+        if stripped.endswith("= _preserve_queued_followup_history_offset(result, followup_result)") and not stripped.startswith("return"):
             return i, _safe_indent(lines, i)
     return None
 
