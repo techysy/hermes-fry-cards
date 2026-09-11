@@ -30,10 +30,14 @@
 | 🌐 **中英双语** | 卡片文本根据飞书客户端语言自动切换 |
 | 🎨 **可定制样式** | header/footer、文字大小、宽度模式、字段布局均可配置 |
 | 🎯 **状态色框** | 顶部 header 根据状态自动着色：流式中蓝色、完成绿色、中断/错误红色 |
+| ⏱️ **快捷回复去标题** | 无工具调用且耗时低于阈值时隐藏顶部状态栏，回复更干净 |
+| 🛡️ **群聊安全边界** | 群内 @bot 自动注入安全提示，不泄露 key/密码/内网 IP（modular Hermes 0.21+） |
 
 ## 🏗️ 架构总览
 
 ![hermes-fry-cards 架构：Hermes Gateway 事件经 AST hook 注入层进入 StreamCardController，streaming/ 运行时节流编排，cardkit/ 构建卡片 JSON，经飞书 CardKit v2.0 API 交付用户端流式卡片；cron 推送与失败回落路径独立标注](assets/architecture.svg)
+
+> v0.3.0 新增：快捷回复去标题（`header.min_duration`）按耗时条件隐藏顶部状态栏；群聊安全边界（modular Hermes 0.21+）向 ephemeral system prompt 注入输出边界，私聊不受影响。
 
 ---
 
@@ -321,9 +325,9 @@ hermes gateway restart
 
 | 项目 | 说明 | 特性 | Stars |
 |------|------|------|-------|
-| [🍟 hermes-fry-cards](https://github.com/techysy/hermes-fry-cards) | 薯条卡片 — Hermes 飞书流式卡片插件 | 🎯 工具调用合并 · 统一面板 · 状态色框 | ⭐4 |
-| [👸🏻 aiduPOP](https://github.com/monkey2jack/aiduPOP) | 爱嘟泡波卡 — Hermes 飞书流式卡片插件 | 🫧 泡波样式 · 透明治愈 · 灵动 UI | ⭐10 |
-| [🎭 lark-hls-v2](https://github.com/BcubBo/lark-hls-v2) | 飞书 CardKit v2.0 流式卡片插件 for Hermes Agent | 🎭 二次元画风 · 动态台词 · 场景检测 · Fisher-Yates 洗牌 | ⭐7 |
+| [🍟 hermes-fry-cards](https://github.com/techysy/hermes-fry-cards) | 薯条卡片 — Hermes 飞书流式卡片插件 | 🎯 工具调用合并 · 统一面板 · 状态色框 | ⭐6 |
+| [👸🏻 aiduPOP](https://github.com/monkey2jack/aiduPOP) | 爱嘟泡波卡 — Hermes 飞书流式卡片插件 | 🫧 泡波样式 · 透明治愈 · 灵动 UI | ⭐11 |
+| [🎭 lark-hls-v2](https://github.com/BcubBo/lark-hls-v2) | 飞书 CardKit v2.0 流式卡片插件 for Hermes Agent | 🎭 二次元画风 · 动态台词 · 场景检测 · Fisher-Yates 洗牌 | ⭐8 |
 
 ---
 
