@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.1] - 2026-09-11
 
 ### 修复 / Fixed
-- **兼容 Hermes 0.21.1 的 queued follow-up 返回形态**（[#8](https://github.com/techysy/hermes-fry-cards/issues/8)）—
+- **兼容 Hermes 0.21.1 的 queued follow-up 返回形态**（[#8](https://github.com/techysy/hermes-fry-cards/issues/8)，感谢群友 淼淼 和 思如 反馈定位）—
   0.21.1 在 `_run_agent_queued_followup` 里把 `return _preserve_queued_followup_history_offset(result, followup_result)`
   改为先赋值 `merged` 再补 `queued_terminal_inbound_id` 后 return，插件的精确行匹配 verify 失败。
   `_find_followup_result_site` / `_ANCHOR_CHECKS` 现同时匹配两种形态（`return ...` 与 `<var> = ...` 赋值）；
