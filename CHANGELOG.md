@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.3] - 2026-09-12
+
+### 新增 / Added
+- **Clarify 选项按钮卡片**（[#7](https://github.com/techysy/hermes-fry-cards/pull/7)，感谢 @iMissNan）—
+  补齐飞书适配器缺失的 `send_clarify` 原生交互（官方 `base.py` 明确「有原生按钮的平台 SHOULD override」）：
+  单选 = 每选项一个按钮 + 「✏️ 其他」；多选 = toggle 勾选框 + 「提交选择」+ 「其他」；
+  点击后就地变绿显示「✅ 已收到你的选择」；「其他」→ 卡片切换为输入态（form 容器内嵌 input，飞书 V6.8+）→
+  提交后解出自定义文本。防呆：本体若未来原生实现 `send_clarify`，`verify` 会拒绝注入。
+
+### 修复 / Fixed
+- **审批卡片点击无反应（鉴权误用群准入策略）**（[#7](https://github.com/techysy/hermes-fry-cards/pull/7)）—
+  症状：命令审批卡点「允许/拒绝」无反应，日志 `Unauthorized approval click`。
+  根因：本体 `_handle_approval_card_action` 用 `_allow_group_message`（群消息**准入策略**，管群里谁能发言）
+  校验按钮点击，未配置 per-chat 规则的部署会拒绝**所有**人工点击；而异步解析器 `_resolve_approval` 里
+  本来就有正确的 `_is_interactive_operator_authorized` 二次校验——同步这道门既用错又冗余。
+  修法：以交互操作者校验为准（thread-local bypass 进入原处理器，校验不过仍拒绝，**安全面未放松**），
+  并补全四类点击 toast：受理（success）/ 拒绝（warning）/ 过期（warning，原版静默吞掉）/ 无权限（error）。
+- **300313 恢复时工具面板 stale 后永不重建**（[#3](https://github.com/techysy/hermes-fry-cards/issues/3)）—
+  工具面板是**经建卡骨架预置**的共享元素（`tool_panel_created=True`）。300313 回滚 stale segment 后，
+  下一轮 flush 因 `tool_panel_created` 已为 True 落入 TOOL 分支的 `else`——仅翻 `created`/`dirty` 标志、
+  **不发任何 action**。实测后果比原报告更严重：恢复轮整轮 flush 发出 **0 次 `batch_update`**
+  （无 add 也无 partial_update），面板在卡片上持续缺失，而本地已标记 created=True，此后不再尝试恢复。
+  修法：300313 命中 TOOL segment 时把 `tool_panel_created` 一并重置为 False，下一轮走「首次创建」分支重建面板。
+- **Security · 审批鉴权门异常时 fail-closed**（review 期追加）—
+  原 `authorized = True` 作初值：若 `_is_interactive_operator_authorized` 抛异常（`self._admins` 缺失、
+  类型错误等），`authorized` 保持 True → bypass 置位 → 审批点击被**静默放行**（fail-open）。
+  改为异常路径显式置 False 并升为 WARNING 级日志（原 debug 级会掩盖问题）。
+
+> 全量 **569 passed**（含 #7 的 21 例 +#3 的复现/回归用例 + security 反证用例）。
+
+---
+
 ## [0.3.2] - 2026-09-12
 
 ### 新增 / Added
