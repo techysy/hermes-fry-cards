@@ -39,6 +39,23 @@
 
 ## 🚀 Quick Install
 
+### One-line install (recommended)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/techysy/hermes-fry-cards/main/install.sh | bash
+```
+
+The script locates Hermes's venv Python, installs the package, runs `verify`, and injects the hooks — then tells you to restart the gateway.
+
+```bash
+# Pin a version (default: main)
+curl -fsSL .../install.sh | FRY_REF=v0.3.3 bash
+# Override the interpreter if auto-detection misses
+curl -fsSL .../install.sh | HERMES_PYTHON=/path/to/python3 bash
+```
+
+> ⚠️ The script never restarts the gateway itself (a restart from inside a gateway turn would kill it). Run `hermes gateway restart` yourself afterwards.
+
 ### AI Agent one-liner
 
 ```

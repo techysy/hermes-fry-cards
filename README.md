@@ -45,6 +45,23 @@
 
 ## 🚀 快速安装
 
+### 一行安装（推荐）
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/techysy/hermes-fry-cards/main/install.sh | bash
+```
+
+脚本自动完成：定位 Hermes 的 venv Python → 安装包 → `verify` 兼容性检查 → 注入 hook，最后提示你重启网关。
+
+```bash
+# 指定版本（默认 main）
+curl -fsSL .../install.sh | FRY_REF=v0.3.3 bash
+# 自动探测失败时手动指定解释器
+curl -fsSL .../install.sh | HERMES_PYTHON=/path/to/python3 bash
+```
+
+> ⚠️ 脚本**不会**替你重启网关（从网关进程内部触发的重启会杀掉自己），装完请自行执行 `hermes gateway restart`。
+
 ### AI Agent 一键安装
 
 ```

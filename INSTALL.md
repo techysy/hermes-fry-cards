@@ -10,7 +10,46 @@
 
 ---
 
-## Path A — Manual (step by step)
+## Path A — One-line install (recommended)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/techysy/hermes-fry-cards/main/install.sh | bash
+```
+
+The script does everything in Path C below — locates Hermes's venv Python, installs the package, runs `verify`, and injects the hooks — then tells you to restart the gateway.
+
+Useful knobs:
+
+```bash
+# Pin a version (default: main)
+curl -fsSL .../install.sh | FRY_REF=v0.3.3 bash
+
+# Override the interpreter if auto-detection misses
+curl -fsSL .../install.sh | HERMES_PYTHON=/path/to/python3 bash
+
+# Install the package only, skip verify + hook injection
+curl -fsSL .../install.sh | FRY_SKIP_HOOKS=1 bash
+```
+
+> The script never restarts the gateway for you — a restart would kill the process
+> running it when invoked from inside a gateway turn. Run `hermes gateway restart`
+> yourself afterwards.
+
+---
+
+## Path B — AI Agent auto-install
+
+Have your Hermes-connected AI agent execute:
+
+```
+curl https://raw.githubusercontent.com/techysy/hermes-fry-cards/main/INSTALL.md
+```
+
+The agent will read this guide and perform the steps automatically. Review its actions before the hook-injection step if you prefer manual confirmation.
+
+---
+
+## Path C — Manual (step by step)
 
 ### Step 1 — Clone the repo
 
@@ -98,18 +137,6 @@ hermes gateway restart
 ```
 
 All hooks should read `installed`, and `Feishu credentials:` should read `configured`.
-
----
-
-## Path B — AI Agent auto-install
-
-Have your Hermes-connected AI agent execute:
-
-```
-curl https://raw.githubusercontent.com/techysy/hermes-fry-cards/main/INSTALL.md
-```
-
-The agent will read this guide and perform Steps 1–7 automatically. Review its actions before Step 6 (hook injection) if you prefer manual confirmation.
 
 ---
 
