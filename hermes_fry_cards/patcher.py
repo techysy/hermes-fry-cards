@@ -1454,3 +1454,119 @@ class CronPatcher:
         backup = self.cron_path.with_suffix(self.cron_path.suffix + _BACKUP_SUFFIX)
         if not backup.exists():
             shutil.copy2(self.cron_path, backup)
+
+
+# ---------------------------------------------------------------------------
+# Clarify button cards (Feishu adapter runtime patch)
+# ---------------------------------------------------------------------------
+
+MK_CLARIFY_CARD = f"# {PREFIX}_CLARIFY_CARD_BEGIN"
+MK_CLARIFY_CARD_END = f"# {PREFIX}_CLARIFY_CARD_END"
+
+_CLARIFY_BLOCK = f"""{MK_CLARIFY_CARD}
+try:  # hermes-fry-cards: clarify option buttons for Feishu
+    from hermes_fry_cards import clarify as _hl_clarify
+
+    _hl_clarify.apply_patch(
+        FeishuAdapter,
+        SendResult=SendResult,
+        CallBackCard=CallBackCard,
+        P2CardActionTriggerResponse=P2CardActionTriggerResponse,
+    )
+except Exception:  # pragma: no cover - never break the adapter import
+    import logging as _hl_logging
+
+    _hl_logging.getLogger("hermes_fry_cards").warning(
+        "[fry-cards] clarify button patch failed to apply", exc_info=True
+    )
+{MK_CLARIFY_CARD_END}
+"""
+
+
+def _default_feishu_adapter_path() -> Path:
+    """Locate plugins/platforms/feishu/adapter.py under known Hermes roots."""
+    rel = Path("plugins") / "platforms" / "feishu" / "adapter.py"
+    for root in _code_roots():
+        candidate = root / rel
+        if candidate.is_file():
+            return candidate
+    tried = ", ".join(str(r) for r in _code_roots())
+    raise PatcherError(
+        f"Feishu adapter not found: {rel} (tried: {tried}). "
+        f"Set HERMES_HOME to the dir containing hermes-agent/ and rerun."
+    )
+
+
+class ClarifyPatcher:
+    """Append a runtime-patch block to the Feishu adapter (clarify buttons).
+
+    Unlike the gateway hooks (AST injection into method bodies), this patch
+    only appends a self-contained block at module scope; the actual behavior
+    lives in ``hermes_fry_cards.clarify`` and is applied via monkey-patching
+    when the adapter module is imported.  Removal is a plain block delete.
+    """
+
+    def __init__(self, adapter_path: Path | None = None) -> None:
+        self.adapter_path = adapter_path or _default_feishu_adapter_path()
+        if not self.adapter_path.exists():
+            raise PatcherError(f"Feishu adapter not found: {self.adapter_path}")
+
+    def is_patched(self) -> bool:
+        return MK_CLARIFY_CARD in self.adapter_path.read_text(encoding="utf-8")
+
+    def verify_target(self) -> None:
+        content = self.adapter_path.read_text(encoding="utf-8")
+        required = (
+            "class FeishuAdapter",
+            "def _on_card_action_trigger",
+            "def _is_interactive_operator_authorized",
+            "def _feishu_send_with_retry",
+            "def _finalize_send_result",
+            "SendResult",
+        )
+        missing = [name for name in required if name not in content]
+        if missing:
+            raise PatcherError(
+                "Feishu adapter is missing expected anchors: "
+                + ", ".join(missing)
+                + " — Hermes version may be incompatible"
+            )
+        if "def send_clarify" in content:
+            raise PatcherError(
+                "Feishu adapter already defines send_clarify — "
+                "Hermes shipped a native implementation; clarify patch not needed"
+            )
+
+    def apply(self) -> None:
+        content = self.adapter_path.read_text(encoding="utf-8")
+        has_markers = MK_CLARIFY_CARD in content or MK_CLARIFY_CARD_END in content
+        if has_markers:
+            cleaned = _remove_block_checked(content, MK_CLARIFY_CARD, MK_CLARIFY_CARD_END)
+            if content.count(MK_CLARIFY_CARD) == 1 and content.count(MK_CLARIFY_CARD_END) == 1:
+                return
+            content = cleaned
+        self.verify_target()
+        if not has_markers:
+            self._backup()
+        if content and not content.endswith("\n"):
+            content += "\n"
+        content += _CLARIFY_BLOCK
+        _atomic_write(self.adapter_path, content)
+
+    def remove(self) -> None:
+        content = self.adapter_path.read_text(encoding="utf-8")
+        if MK_CLARIFY_CARD not in content and MK_CLARIFY_CARD_END not in content:
+            return
+        content = _remove_block_checked(content, MK_CLARIFY_CARD, MK_CLARIFY_CARD_END)
+        _atomic_write(self.adapter_path, content)
+
+    def restore(self) -> None:
+        backup = self.adapter_path.with_suffix(self.adapter_path.suffix + _BACKUP_SUFFIX)
+        if not backup.exists():
+            raise PatcherError(f"No backup found: {backup}")
+        shutil.copy2(backup, self.adapter_path)
+
+    def _backup(self) -> None:
+        backup = self.adapter_path.with_suffix(self.adapter_path.suffix + _BACKUP_SUFFIX)
+        if not backup.exists():
+            shutil.copy2(self.adapter_path, backup)
