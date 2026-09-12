@@ -511,6 +511,17 @@ class StreamingController:
                     if seg.el_id == missing_el_id and seg.created:
                         seg.created = False
                         seg.dirty = True
+                        # issue #3: 工具面板是【经建卡骨架预置】的共享元素
+                        # （tool_panel_created=True）。若只回滚 segment，下一轮 TOOL
+                        # 分支会因 tool_panel_created 已为 True 落入 else 分支——仅翻
+                        # 标志位、不发任何 action，缺失面板永不重建。这里把骨架标志一并
+                        # 重置，让下一轮走“首次创建”分支重新 update 面板元素。
+                        if seg.type == SegmentType.TOOL and session.tool_panel_created:
+                            session.tool_panel_created = False
+                            _logger.info(
+                                "CardKit recovered stale tool panel skeleton "
+                                "(tool_panel_created -> False) -> will rebuild on next flush",
+                            )
                         # 同步扣减元素计数：该 segment 当初 add 成功时已累加进 element_count，
                         # 回滚为未创建后下一轮会重新 add 并再次累加，这里先扣除避免重复计数。
                         session.element_count -= seg.element_estimate
