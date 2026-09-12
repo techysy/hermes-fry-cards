@@ -29,6 +29,7 @@ from .segment_helper import (
     build_add_segment_action,
     build_reasoning_finalized_action,
     build_tool_update_action,
+    estimate_answer_elements,
     estimate_segment_elements,
     estimate_tool_elements,
     find_tool_split_offset,
@@ -193,6 +194,19 @@ class StreamingController:
         assert self._client is not None
         segments = segment_state.segments
         all_steps = session.tool_use.build_display_steps()
+
+        # ── 步骤 0: answer 段动态重估 ──
+        # answer 元素在服务端会随内容膨胀（表格展开为单元格、完成态长文切块），
+        # 创建时的一次性估算追不上文本增长。每次 flush 按当前文本重算，
+        # 差值同步进 element_count，让阈值判断反映卡片真实元素数，
+        # 主动在超阈值前拆卡，而不是撞 300305 后被动拆。
+        for seg in segments[session.split_index:]:
+            if seg.type == SegmentType.ANSWER and seg.created:
+                new_est = estimate_answer_elements(seg.text)
+                delta = new_est - seg.element_estimate
+                if delta:
+                    session.element_count += delta
+                    seg.element_estimate = new_est
 
         # ── 步骤 1: batch_update — 按 segment 顺序处理结构性变更 ──
         actions: list[dict[str, Any]] = []

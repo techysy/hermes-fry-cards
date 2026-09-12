@@ -19,12 +19,44 @@ ELEMENT_THRESHOLD = 180  # 飞书硬上限 200，预留 20（18 给波动 + 2 fo
 FOOTER_RESERVE = 2  # footer 元素预留（hr + markdown）
 
 
+def estimate_answer_elements(text: str) -> int:
+    """估算 answer segment 当前文本在服务端占用的元素数。
+
+    服务端真实元素 = 流式 markdown 元素本身 + 两个隐藏膨胀源：
+    1. markdown 表格展开：每个单元格在服务端渲染为独立元素（计入 200 上限）
+    2. 完成态长文切块：build_complete_card 按 _MAX_CHUNK_CHARS 拆成多个
+       markdown 元素（流式态单元素，完成态多元素，取大者保守估算）
+
+    流式阶段 answer 文本持续增长，此估算必须每次 flush 重算并同步差值，
+    否则 element_count 严重低估 → 撞 300305 才被动拆卡。
+    """
+    if not text or not text.strip():
+        return 1
+    from ..cardkit.markdown import (
+        _MAX_CHUNK_CHARS,
+        _downgrade_tables,
+        _find_tables_outside_code_blocks,
+    )
+    content = _downgrade_tables(text)
+    cells = 0
+    for _start, _end, raw in _find_tables_outside_code_blocks(content):
+        rows = [ln for ln in raw.strip().splitlines() if ln.strip()]
+        if not rows:
+            continue
+        cols = max(1, rows[0].count("|") - 1)
+        # 表头行 + 分隔行不渲染为数据单元格，但表格容器与行列结构仍有开销，
+        # 按 (rows-1)*cols 估算数据格，另加 1 个表格元素
+        cells += max(1, (len(rows) - 1)) * cols + 1
+    chunks = max(1, -(-len(content) // _MAX_CHUNK_CHARS))
+    return max(1, chunks) + cells
+
+
 def estimate_segment_elements(seg: Segment, all_steps: list[ToolDisplayStep]) -> int:
     """估算单个 segment 新增的卡片元素数."""
     if seg.type == SegmentType.REASONING:
         return 4  # collapsible_panel + plain_text + standard_icon + markdown
     if seg.type == SegmentType.ANSWER:
-        return 1
+        return estimate_answer_elements(seg.text)
     if seg.type == SegmentType.TOOL:
         return estimate_tool_elements(
             seg.tool_offset,
