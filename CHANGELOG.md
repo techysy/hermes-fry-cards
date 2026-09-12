@@ -7,12 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [0.3.2] - 2026-09-12
 
 ### 新增 / Added
-- **聊天类型过滤 `streaming.chat_types`** — 按 `source.chat_type` 控制哪些聊天类型发流式卡片：
+- **聊天类型过滤 `streaming.chat_types`** — 按 `source.chat_type` 控制哪些聊天类型发流式卡片（[#6](https://github.com/techysy/hermes-fry-cards/pull/6)，感谢 @JasonXX89）：
   缺省全部类型都发（保持向后兼容）；显式给出列表后，仅列表内类型发卡片，其余（如群聊）回落纯文本。
   典型用法 `chat_types: [dm]` → 群聊不发卡片、私聊正常。需重启网关生效。
+
+### 修复 / Fixed
+- **无 message_id 轮次卡片丢失退化为纯文本轰炸**（[#4](https://github.com/techysy/hermes-fry-cards/pull/4)，感谢 @iMissNan）—
+  三处根因修复：① `on_message_started` 在 message_id 为空但有 chat_id 时创建 `synthetic` 会话，
+  卡片经 `send_card_to_chat` 直接投递到聊天（不再依赖回复真实消息）；② 全部 delta/complete hook 透传
+  `session_key`，controller 侧 `_resolve_session` 兜底查找会话（合成会话以 session_key 注册）；
+  ③ 拆卡（300305）路径同步支持 synthetic 投递。
+  复现场景：cron/后台任务完成通知、clarify 选择题恢复轮——此前整轮无卡片，长回复被 Hermes 拆成几十条纯文本刷屏。
+
+### 性能 / Performance
+- **answer 段元素动态重估，根治 300305 被动拆卡**（[#5](https://github.com/techysy/hermes-fry-cards/pull/5)，感谢 @iMissNan，报告人 群友 linxuan）—
+  根因：answer segment 创建时一次性估算恒记 1 个元素，但服务端会随内容膨胀（markdown 表格展开为独立单元格、
+  完成态长文按 `_MAX_CHUNK_CHARS` 切块），本地 `element_count` 严重低估，直到撞飞书硬上限（300305）才被动 force-split。
+  修复：新增 `estimate_answer_elements(text)`（按当前文本算分块数 + 表格单元格数，代码块内伪表格不计）；
+  `_do_flush` 步骤 0 每次 flush 对已创建 answer 段重估，差值同步进 `element_count`，让阈值判断追上真实重量，
+  **主动在超阈值前拆卡**。实测场景：单日 27 次撞墙、最狠一轮拆成 104 张卡 → 消除。
+
+> 三者合并后全量 **547 passed**（基线 534 + 13 例新增）。
 
 ---
 
