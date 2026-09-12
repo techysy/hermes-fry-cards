@@ -124,6 +124,22 @@ class StreamCardController(StreamingController):
             return None
         return session
 
+    def _resolve_session(
+        self,
+        message_id: str | None,
+        session_key: str | None = None,
+    ) -> CardSession | None:
+        """按 message_id 解析会话；无 ID（合成轮次）时按 session_key 兜底."""
+        if message_id:
+            session = self._sessions.get(message_id)
+            if session is not None and not session.state.is_terminal:
+                return session
+        if session_key:
+            session = self._session_keys.get(session_key)
+            if session is not None and not session.state.is_terminal:
+                return session
+        return None
+
     def _fire_and_forget(
         self,
         coro: Coroutine[Any, Any, Any],
@@ -166,12 +182,23 @@ class StreamCardController(StreamingController):
         anchor_id: str | None = None,
         session_key: str | None = None,
     ) -> None:
-        """消息处理开始 — 创建会话 + 发占位卡片."""
+        """消息处理开始 — 创建会话 + 发占位卡片.
+
+        message_id 缺失时（后台通知/clarify 恢复等合成轮次）降级为 synthetic
+        会话：卡片直接 send_card_to_chat，不再放弃卡片回退纯文本。
+        """
         if not self.enabled:
             return
+        synthetic = False
         if not message_id:
-            _logger.warning("on_message_started: missing message_id, chat=%s", chat_id[:12])
-            return
+            if not chat_id or not session_key:
+                _logger.warning("on_message_started: missing message_id, chat=%s", chat_id[:12])
+                return
+            import uuid as _uuid
+
+            message_id = "syn-" + _uuid.uuid4().hex[:16]
+            synthetic = True
+            anchor_id = None
         existing = self._sessions.get(message_id)
         if existing is not None and not existing.state.is_terminal:
             return
@@ -183,13 +210,15 @@ class StreamCardController(StreamingController):
             _logger.warning("no event loop available, skipping: msg=%s", message_id[:12])
             return
         session = CardSession(message_id, chat_id, loop)
+        session.synthetic = synthetic
         self._register_session(session, anchor_id=anchor_id, session_key=session_key)
         _logger.info(
-            "session_created: msg=%s chat=%s anchor=%s key=%s",
+            "session_created: msg=%s chat=%s anchor=%s key=%s%s",
             message_id[:12],
             chat_id[:12],
             (anchor_id or "")[:12],
             (session_key or "")[:12],
+            " synthetic=1" if synthetic else "",
         )
 
         session.create_task = self._fire_and_forget(self._do_create_card(session), loop)
@@ -212,11 +241,11 @@ class StreamCardController(StreamingController):
             self._text_fallback_aliases.pop(key, None)
         return True
 
-    def on_thinking(self, *, message_id: str, text: str) -> bool:
+    def on_thinking(self, *, message_id: str, text: str, session_key: str | None = None) -> bool:
         """思考内容增量."""
         if not self.enabled:
             return False
-        session = self._get_active_session(message_id)
+        session = self._resolve_session(message_id, session_key)
         if session is None or session.guard.should_skip("on_thinking"):
             return False
 
@@ -224,13 +253,13 @@ class StreamCardController(StreamingController):
             return False
         return self._on_thinking_segment(session, text)
 
-    def on_reasoning(self, *, message_id: str, text: str) -> bool:
+    def on_reasoning(self, *, message_id: str, text: str, session_key: str | None = None) -> bool:
         """Native model reasoning delta (incremental append)."""
         if not self.enabled:
             return False
         if not self._cfg.show_reasoning:
             return False
-        session = self._get_active_session(message_id)
+        session = self._resolve_session(message_id, session_key)
         if session is None or session.guard.should_skip("on_reasoning"):
             return False
 
@@ -248,11 +277,12 @@ class StreamCardController(StreamingController):
         tool_name: str,
         status: str,
         detail: str = "",
+        session_key: str | None = None,
     ) -> bool:
         """工具调用事件."""
         if not self.enabled:
             return False
-        session = self._get_active_session(message_id)
+        session = self._resolve_session(message_id, session_key)
         if session is None or session.guard.should_skip("on_tool_update"):
             return False
         if session.segment_state is None:
@@ -307,11 +337,11 @@ class StreamCardController(StreamingController):
             if future is not None and not future.done():
                 future.cancel()
 
-    def on_answer(self, *, message_id: str, text: str) -> bool:
+    def on_answer(self, *, message_id: str, text: str, session_key: str | None = None) -> bool:
         """答案文本增量（流式）."""
         if not self.enabled:
             return False
-        session = self._get_active_session(message_id)
+        session = self._resolve_session(message_id, session_key)
         if session is None or session.guard.should_skip("on_answer"):
             return False
         if session.segment_state is None:
@@ -410,7 +440,7 @@ class StreamCardController(StreamingController):
 
         self._interrupt_map[old_message_id] = new_message_id
         for key, val in list(self._interrupt_map.items()):
-            if val == old_message_id:
+            if val == old_message_id and key != old_message_id:
                 self._interrupt_map[key] = new_message_id
 
     def on_clarify_enter(
@@ -467,11 +497,12 @@ class StreamCardController(StreamingController):
         model: str = "",
         tokens: dict | None = None,
         context: dict | None = None,
+        session_key: str | None = None,
     ) -> bool:
         """消息处理完成，并等待卡片真正收尾后返回是否已发送."""
         if not self.enabled:
             return False
-        session = self._completion_session(message_id)
+        session = self._completion_session(message_id, session_key)
         if session is None:
             return False
         message_id = session.message_id
@@ -639,22 +670,30 @@ class StreamCardController(StreamingController):
     def _cleanup_session(self, session: CardSession) -> None:
         self._dispose_session(session)
 
-    def _completion_session(self, message_id: str) -> CardSession | None:
-        session = self._sessions.get(message_id)
+    def _completion_session(
+        self, message_id: str | None, session_key: str | None = None
+    ) -> CardSession | None:
+        session = self._sessions.get(message_id) if message_id else None
         # 允许 FAILED session 重新获取以便完成收尾，排除已 COMPLETED/ABORTED 的
         if session is not None and session.state != SessionState.COMPLETED and session.state != SessionState.ABORTED:
             return session
 
-        redirected_id = self._interrupt_map.pop(message_id, None)
+        redirected_id = self._interrupt_map.pop(message_id, None) if message_id else None
         if redirected_id is not None:
             _logger.info(
                 "on_completed: redirect msg=%s -> msg=%s",
-                message_id[:12],
+                (message_id or "")[:12],
                 redirected_id[:12],
             )
             redirected = self._sessions.get(redirected_id)
             if redirected is not None and not redirected.state.is_terminal:
                 return redirected
+        if session_key:
+            fallback = self._session_keys.get(session_key)
+            if fallback is not None and fallback.state not in (
+                SessionState.COMPLETED, SessionState.ABORTED
+            ):
+                return fallback
         return None
 
     async def _wait_for_card_creation(self, session: CardSession) -> bool:

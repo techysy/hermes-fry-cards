@@ -124,25 +124,32 @@ class StreamingController:
                 width_mode=self._cfg.width_mode,
             )
             card_id = await self._client.cardkit_create(card)
-            try:
-                card_msg_id = await self._client.reply_card_by_id(
-                    reply_to_message_id,
-                    card_id,
+            if session.synthetic:
+                # 合成轮次（后台通知/clarify 恢复）无真实消息可回复，卡片直接投递到聊天
+                card_msg_id = await self._client.send_card_to_chat(
+                    chat_id=session.chat_id,
+                    card={"type": "card", "data": {"card_id": card_id}},
                 )
-            except FeishuAPIError as error:
-                if error.code != CARDKIT_CONTENT_FAILED:
-                    raise
-                card_id = await self._client.cardkit_create(card)
+            else:
                 try:
                     card_msg_id = await self._client.reply_card_by_id(
                         reply_to_message_id,
                         card_id,
                     )
-                except FeishuAPIError:
-                    card_msg_id = await self._client.send_card_to_chat(
-                        chat_id=session.chat_id,
-                        card={"type": "card", "data": {"card_id": card_id}},
-                    )
+                except FeishuAPIError as error:
+                    if error.code != CARDKIT_CONTENT_FAILED:
+                        raise
+                    card_id = await self._client.cardkit_create(card)
+                    try:
+                        card_msg_id = await self._client.reply_card_by_id(
+                            reply_to_message_id,
+                            card_id,
+                        )
+                    except FeishuAPIError:
+                        card_msg_id = await self._client.send_card_to_chat(
+                            chat_id=session.chat_id,
+                            card={"type": "card", "data": {"card_id": card_id}},
+                        )
             session.set_card(card_id=card_id, card_msg_id=card_msg_id)
             session.element_count = 1  # loading element
             session.flush.set_throttle(CARDKIT_MS)
@@ -724,9 +731,16 @@ class StreamingController:
                 width_mode=self._cfg.width_mode,
             )
             new_card_id = await self._client.cardkit_create(card)
-            new_msg_id = await self._client.reply_card_by_id(
-                session.anchor_id or session.message_id, new_card_id,
-            )
+            if session.synthetic:
+                # 合成轮次无真实消息可回复，拆卡后新卡直接投递到聊天
+                new_msg_id = await self._client.send_card_to_chat(
+                    chat_id=session.chat_id,
+                    card={"type": "card", "data": {"card_id": new_card_id}},
+                )
+            else:
+                new_msg_id = await self._client.reply_card_by_id(
+                    session.anchor_id or session.message_id, new_card_id,
+                )
         except Exception:
             _logger.warning(
                 "CardKit create streaming card failed for msg=%s",

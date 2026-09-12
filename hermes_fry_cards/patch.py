@@ -190,6 +190,7 @@ async def on_message_completed_wait(
     model: str = "",
     tokens: dict[str, Any] | None = None,
     context: dict[str, Any] | None = None,
+    session_key: str | None = None,
 ) -> bool:
     """[注入点 2] return 前 — message.completed，等待卡片完成收尾."""
     return bool(
@@ -201,6 +202,7 @@ async def on_message_completed_wait(
             model=model,
             tokens=tokens,
             context=context,
+            session_key=session_key,
         )
     )
 
@@ -212,7 +214,9 @@ def on_message_needs_text_fallback(*, ctrl: Any, message_id: str) -> bool:
 
 
 @_safe_hook(default_return=False)
-async def on_queued_followup_boundary(*, ctrl: Any, message_id: str, result: dict[str, Any]) -> bool:
+async def on_queued_followup_boundary(
+    *, ctrl: Any, message_id: str, result: dict[str, Any], session_key: str | None = None
+) -> bool:
     """Complete the current card before Hermes drains a queued follow-up turn."""
     if not isinstance(result, dict) or result.get("interrupted"):
         return False
@@ -232,6 +236,7 @@ async def on_queued_followup_boundary(*, ctrl: Any, message_id: str, result: dic
                 "used_tokens": result.get("last_prompt_tokens", 0),
                 "max_tokens": result.get("context_length", 0),
             },
+            session_key=session_key,
         )
     )
     if sent:
@@ -258,6 +263,7 @@ def on_tool_updated(
     tool_name: str,
     status: str,
     detail: str = "",
+    session_key: str | None = None,
 ) -> bool:
     """[注入点 3] progress_callback — tool.updated."""
     return bool(
@@ -266,26 +272,27 @@ def on_tool_updated(
             tool_name=tool_name,
             status=status,
             detail=detail,
+            session_key=session_key,
         )
     )
 
 
 @_safe_hook(default_return=False, log_level="debug")
-def on_answer_delta(*, ctrl: Any, message_id: str, text: str) -> bool:
+def on_answer_delta(*, ctrl: Any, message_id: str, text: str, session_key: str | None = None) -> bool:
     """[注入点 4] _stream_delta_cb — answer.delta."""
-    return bool(ctrl.on_answer(message_id=message_id, text=text))
+    return bool(ctrl.on_answer(message_id=message_id, text=text, session_key=session_key))
 
 
 @_safe_hook(default_return=False, log_level="debug")
-def on_thinking_delta(*, ctrl: Any, message_id: str, text: str) -> bool:
+def on_thinking_delta(*, ctrl: Any, message_id: str, text: str, session_key: str | None = None) -> bool:
     """[注入点 5] _interim_assistant_cb — thinking.delta."""
-    return bool(ctrl.on_thinking(message_id=message_id, text=text))
+    return bool(ctrl.on_thinking(message_id=message_id, text=text, session_key=session_key))
 
 
 @_safe_hook(default_return=False, log_level="debug")
-def on_reasoning_delta(*, ctrl: Any, message_id: str, text: str) -> bool:
+def on_reasoning_delta(*, ctrl: Any, message_id: str, text: str, session_key: str | None = None) -> bool:
     """[注入点 6] reasoning_callback — native model reasoning delta."""
-    return bool(ctrl.on_reasoning(message_id=message_id, text=text))
+    return bool(ctrl.on_reasoning(message_id=message_id, text=text, session_key=session_key))
 
 
 @_safe_hook(default_return=False, log_level="debug")
