@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### 优化 / Changed
+- **完成态卡片统一面板按真实工作流交错渲染** —
+  统一面板内从原先的「所有思考集中在前、所有工具堆在末尾」改为按真实发生顺序交错展现：
+  `💭 思考1 → 🔧 工具组1 → 💭 思考2 → 🔧 工具组2 …`，保持复杂 Agent 执行链路的时间线一致性。
+
+---
+
 ## [0.3.3] - 2026-09-12
 
 ### 新增 / Added
