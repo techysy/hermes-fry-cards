@@ -7,7 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [0.4.0] - 2026-09-20
+
+> **算法与架构大改版**：渲染层引入 Markdown 防爆引擎（无损表格压缩 + 字节级内容预算），
+> 新增 **Studio 可视化配置工作坊**（真 builder 预览 / 白名单安全写回 / 状态诊断），
+> 模型别名支持时段人设（与 openclaw/claw-fry-cards 格式互通），群聊安全边界可视化。
+> **配置 schema 向后兼容**——升级无需改任何现有配置；纯新增能力，无破坏性变更。
 
 ### 新增 / Added
 - **Markdown 防爆引擎**（借鉴 [aiduPOP](https://github.com/monkey2jack/aiduPOP) 贝氏降级引擎）—

@@ -55,7 +55,7 @@ curl -fsSL https://raw.githubusercontent.com/techysy/hermes-fry-cards/main/insta
 
 ```bash
 # 指定版本（默认 main）
-curl -fsSL .../install.sh | FRY_REF=v0.3.3 bash
+curl -fsSL .../install.sh | FRY_REF=v0.4.0 bash
 # 自动探测失败时手动指定解释器
 curl -fsSL .../install.sh | HERMES_PYTHON=/path/to/python3 bash
 ```

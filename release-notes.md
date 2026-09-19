@@ -1,3 +1,31 @@
+## 🍟 hermes-fry-cards v0.4.0（算法与架构大改版）
+
+> 配置 schema **向后兼容**——升级无需改任何现有配置，装完 `hermes gateway restart` 即可。
+
+**🧱 Markdown 防爆引擎**
+
+- 超限表格无损压缩为「Table N · Row M」字段列表（fence 感知扫描，inline code 竖线/未闭合围栏均正确处理）
+- 字节级内容预算 `clamp_utf8`（18KB）：流式渐进截断 + 完成态首尾双保，杜绝 ~30KB 卡片 JSON 溢出断屏
+
+**🎛️ Studio 可视化配置工作坊**（`python -m hermes_fry_cards studio`）
+
+- 三页签：配置（白名单键表单 + 群聊安全边界）/ 预览（**服务端真实 builder** 渲染，4 场景 × 三态）/ 状态（hook 注入、兼容性、版本号、一键重启）
+- 写回安全五件套：严格校验 / 解析失败拒写 / 备份轮转 20 份 / 白名单深合并 / 原子落盘
+- 仅监听 127.0.0.1，Host 门防 DNS rebinding；宽屏三列响应式布局
+
+**🏷️ 模型别名时段人设**（与 openclaw/claw-fry-cards 格式逐字兼容）
+
+- `model_aliases.json` 值支持时段对象：按北京时间 HH:MM + 星期自动切换显示名（DeepSeek 峰谷：峰段梁文锋⚡️ / 谷段梁文谷⚡️）
+- 总开关 `display.model_aliases_enabled`；Studio 内可视化编辑（星期芯片 + 工作日/周末快捷选择）
+
+**🛡️ 群聊安全边界可视化**
+
+- Studio 直接开关 + 编辑豁免群白名单；手写自定义 `text` 与 gateway 兄弟键原样保留
+
+**其他**：瞬态错误码扩充（频控 230020 / 99991400）、内容层文案双语（`streaming.content_lang`）、星期芯片周一起始、状态页与顶栏版本号显示。
+
+---
+
 ## 🍟 hermes-fry-cards v0.1.1（首个正式版本）
 
 > 灵感来自 [hermes-lark-streaming](https://github.com/Cheerwhy/hermes-lark-streaming)，独立开发版本。
