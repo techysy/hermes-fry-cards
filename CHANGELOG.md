@@ -24,8 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   由飞书客户端按 locale 渲染，markdown 正文只接受纯字符串无法如此，故按部署方偏好定死（需重启网关生效）。
 - **Studio 可视化配置工作坊**（`python -m hermes_fry_cards studio`，借鉴 [aiduPOP](https://github.com/monkey2jack/aiduPOP) studio）—
   纯 stdlib `http.server` + 原生前端，三页签：**配置**（白名单键表单编辑，按「流式卡片 / **统一面板**
-  ——模型·推理·工具·上下文全套开关** / Header / Footer」分组——Footer 组置尾并提示「一般不开启，元数据
-  由统一面板承载」；含多行 footer 字段保护与异常值原样回传）/ **预览**（服务端调**真实 builder** 渲染，与线上卡片同一代码路径——快捷回复 / 工作流
+  ——模型·推理·工具·上下文全套开关** / 模型别名 / 状态栏（Header 与 Footer 合并一组、组内分节）」分组——
+  Footer 分节带提示「一般不开启，元数据由统一面板承载」；含多行 footer 字段保护与异常值原样回传）/ **预览**（服务端调**真实 builder** 渲染，与线上卡片同一代码路径——快捷回复 / 工作流
   交错 / 多表格压缩 / 超长截断 × 流式·完成·出错态；overrides 只作用于渲染不落盘）/ **状态**（hook 注入
   markers、cron/clarify、三目标 verify 兼容性、凭据、一键重启网关）。
   写回安全五件套：严格校验 400 / 解析失败拒写 409（保护凭证）/ 写前备份轮转 20 份 / 白名单深合并

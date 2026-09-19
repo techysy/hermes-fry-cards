@@ -64,6 +64,8 @@ fieldset {
   background: var(--card); margin: 0; padding: 14px 16px 16px;
 }
 legend { font-weight: 600; padding: 0 6px; font-size: 13px; color: var(--text-2); }
+.sub-group + .sub-group { border-top: 1px dashed var(--border); margin-top: 10px; padding-top: 6px; }
+.sub-title { font-size: 12px; font-weight: 700; color: var(--text-2); margin-bottom: 2px; }
 .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 10px 0; }
 .row.col { flex-direction: column; align-items: flex-start; gap: 6px; }
 .lbl { font-size: 13px; }
