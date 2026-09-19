@@ -77,6 +77,18 @@ class Config:
         return bool(sec.get("panel_expanded", False))
 
     @property
+    def content_lang(self) -> str:
+        """内容层提示语文案语言（markdown 正文内嵌的表格转换/截断提示）.
+
+        读取 ``streaming.content_lang``，仅接受 ``zh`` / ``en``，非法值回落 ``zh``。
+        正文元素只接受纯字符串 content，无法像 UI 词条那样走 ``i18n_content``
+        双语 dict 由飞书客户端选择，故构建时按部署方偏好定死。
+        """
+        sec = self._streaming_sec()
+        lang = str(sec.get("content_lang", "zh")).strip().lower()
+        return lang if lang in ("zh", "en") else "zh"
+
+    @property
     def show_reasoning(self) -> bool:
         """是否展示推理过程（display.platforms.feishu.show_reasoning → display.show_reasoning）.
 

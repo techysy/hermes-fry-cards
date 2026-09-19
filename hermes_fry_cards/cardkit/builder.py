@@ -12,6 +12,7 @@ from .i18n import _LOCALES, _T, _i18n, _t
 from .markdown import (
     _downgrade_tables,
     _split_long_text,
+    clamp_utf8,
     optimize_markdown_style,
 )
 
@@ -622,6 +623,7 @@ def build_complete_card(
         elif seg.type == SegmentType.ANSWER and seg.text:
             has_answer = True
             content = _downgrade_tables(optimize_markdown_style(seg.text))
+            content = clamp_utf8(content, preserve_tail=True)
             for chunk in _split_long_text(content):
                 elements.append({"tag": "markdown", "content": chunk, "text_size": body_text_size})
 
@@ -787,7 +789,7 @@ def build_cron_card(
     summary = content[:120].replace("\n", " ").replace("```", "").strip()
     if summary:
         card["config"]["summary"] = {"content": summary}
-    for chunk in _split_long_text(optimize_markdown_style(content)):
+    for chunk in _split_long_text(clamp_utf8(optimize_markdown_style(content))):
         if chunk.strip():
             card["body"]["elements"].append({"tag": "markdown", "content": chunk})
     return card
@@ -807,7 +809,7 @@ def build_background_card(preview: str, content: str) -> dict[str, Any]:
     summary = body[:120].replace("\n", " ").replace("```", "").strip()
     if summary:
         card["config"]["summary"] = {"content": summary}
-    for chunk in _split_long_text(optimize_markdown_style(body)):
+    for chunk in _split_long_text(clamp_utf8(optimize_markdown_style(body))):
         if chunk.strip():
             card["body"]["elements"].append({"tag": "markdown", "content": chunk})
     return card

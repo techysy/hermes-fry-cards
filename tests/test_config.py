@@ -393,3 +393,25 @@ def test_nested_lark_domain_uses_larksuite_url() -> None:
 
     with patch.dict(os.environ, {}, clear=True):
         assert cfg.feishu_base_url == "https://open.larksuite.com"
+
+
+class TestContentLang:
+    def test_default_zh(self) -> None:
+        cfg = _make_config({"streaming": {}})
+        assert cfg.content_lang == "zh"
+
+    def test_explicit_en(self) -> None:
+        cfg = _make_config({"streaming": {"content_lang": "en"}})
+        assert cfg.content_lang == "en"
+
+    def test_case_and_whitespace_normalized(self) -> None:
+        cfg = _make_config({"streaming": {"content_lang": " EN "}})
+        assert cfg.content_lang == "en"
+
+    def test_invalid_falls_back_zh(self) -> None:
+        cfg = _make_config({"streaming": {"content_lang": "fr"}})
+        assert cfg.content_lang == "zh"
+
+    def test_streaming_section_not_dict(self) -> None:
+        cfg = _make_config({"streaming": "invalid"})
+        assert cfg.content_lang == "zh"

@@ -116,11 +116,27 @@ class TestDowngradeTables:
         text = f"{table}\n\n{table}\n\n{table}"
         assert _downgrade_tables(text) == text
 
-    def test_over_limit_downgraded(self) -> None:
+    def test_over_limit_compacted_to_field_list(self) -> None:
         table = "| A | B |\n|---|---|\n| 1 | 2 |"
         text = "\n\n".join([table] * 6)
         result = _downgrade_tables(text)
-        assert result.count("```") >= 2  # 超限表格被包装为代码块
+        # 前 5 张表原样保留
+        assert result.count("| A | B |") == 5
+        # 第 6 张表无损压缩为字段列表（内容保留，不再渲染为表格）
+        assert "Table 6 · Row 1" in result
+        assert "- A: 1" in result
+        assert "- B: 2" in result
+
+    def test_compaction_preserves_all_cell_content(self) -> None:
+        header = "| 名称 | 数值 |"
+        row = "| 关键指标 | 42 |"
+        table = f"{header}\n|---|---|\n{row}"
+        text = "\n\n".join([table] * 7)
+        result = _downgrade_tables(text)
+        assert "关键指标" in result
+        assert "42" in result
+        # 压缩产物中不再含 markdown 表格管道行
+        assert "|---|" not in result.split("Table 7")[1]
 
 
 # --- 文本拆分 ---

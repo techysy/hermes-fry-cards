@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 from ..cardkit.builder import build_background_card, build_complete_card, build_cron_card, build_streaming_card_v2, LOADING_ELEMENT_ID, TOOL_PANEL_ELEMENT_ID
 from ..cardkit.markdown import (
     _downgrade_tables,
+    clamp_utf8,
     optimize_markdown_style,
 )
 from ..feishu import (
@@ -395,6 +396,7 @@ class StreamingController:
                     if session.image_resolver:
                         content = session.image_resolver.resolve_images(content)
                     content = _downgrade_tables(optimize_markdown_style(content)) or " "
+                    content = clamp_utf8(content, preserve_tail=False)
                     session.sequence += 1
                     _logger.info(
                         "CardKit stream element: msg=%s seq=%d type=answer len=%d",

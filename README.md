@@ -133,6 +133,7 @@ display:
 | `footer.enabled` | 底部元数据栏 | `false` |
 | `panel_expanded` | 完成态面板保持展开 | `false` |
 | `chat_types` | 允许发流式卡片的聊天类型（`source.chat_type`，如 `dm`/`group`）；缺省全部类型都发，列表外类型回落纯文本 | 缺省 = 全部 |
+| `content_lang` | 内容层提示语文案语言（表格转换引导、超长截断提示等正文内嵌文案）：`zh` / `en`。UI 词条走卡片级 i18n 由飞书客户端自动选语言，正文内嵌文案无法如此，故按部署方偏好定死 | `zh` |
 | `width_mode` | 卡片宽度 (`default` / `compact` / `fill`) | `default` |
 | `show_tool_use` | 展示工具调用面板 | `true` |
 | `show_reasoning` | 展示推理过程 | `false` |
@@ -308,6 +309,7 @@ $HERMES_PYTHON -m pip uninstall hermes-fry-cards
 - **插件代码修改**（`git pull` 更新、改源码）
 - `streaming.enabled` 开关
 - `streaming.chat_types` 聊天类型过滤（群聊/私聊是否发卡片）
+- `streaming.content_lang` 内容层提示语语言
 - `streaming.header` / `footer` / `body` / `width_mode` 等 streaming 结构类配置
 - 飞书凭据 `app_id` / `app_secret`
 

@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### 新增 / Added
+- **Markdown 防爆引擎**（借鉴 [aiduPOP](https://github.com/monkey2jack/aiduPOP) 贝氏降级引擎）—
+  - **无损表格压缩**：超限表格（>5）不再包装为代码块，改为 fence 感知扫描后压缩为
+    「**Table N · Row M**」字段列表，内容完整保留且可读性更好；inline code/转义中的竖线
+    与未闭合代码围栏均正确处理；引擎异常时自动回退旧代码块方案。
+  - **字节级内容预算 `clamp_utf8`**（18KB ≈ 6000 汉字）：飞书卡片 JSON ~30KB 上限此前仅靠
+    元素数估算防护，单段超长 answer 可在拆卡触发前先撞上限。流式进行中渐进截断
+    （preserve_tail=False），完成态封卡首 60% + 尾 40% 双保（结论不丢）；
+    覆盖 `build_complete_card` / `build_cron_card` / `build_background_card` 与流式 answer flush。
+- **瞬态错误码扩充**：重试集合新增频控 `230020` 与开放平台频率限制 `99991400`（限流类错误短退避重试即可恢复）。
+- **内容层文案双语支持**：正文内嵌提示语（表格转换引导、两条截断提示）纳入 `i18n.py` 词条表，
+  新增 `streaming.content_lang`（`zh`/`en`，默认 `zh`）构建时选取——UI 词条走 `i18n_content` 双语 dict
+  由飞书客户端按 locale 渲染，markdown 正文只接受纯字符串无法如此，故按部署方偏好定死（需重启网关生效）。
+
+### 测试 / Tests
+- 新增 `tests/test_md_guard.py` 20 用例（扫描器/压缩/钳制/错误码/文案语言）+ `content_lang` 配置 5 用例；全量 **571 passed**（Windows 本地，另 2 例 Win 路径断言差异为存量）。
+
+---
+
 ## [0.3.3] - 2026-09-12
 
 ### 新增 / Added
