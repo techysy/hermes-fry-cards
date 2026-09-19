@@ -49,6 +49,36 @@
         </fieldset>
 
         <fieldset>
+          <legend>状态栏 · 顶部 Header 与底部 Footer</legend>
+          <div class="sub-group">
+            <div class="sub-title">Header 顶部状态栏</div>
+            <label class="row"><span class="lbl">显示 header</span><input type="checkbox" id="f-header-enabled"></label>
+            <label class="row"><span class="lbl">快捷回复去标题阈值（秒，0=始终显示）</span>
+              <input type="number" id="f-header-min-duration" min="0" max="86400" step="0.5">
+            </label>
+          </div>
+          <div class="sub-group">
+            <div class="sub-title">Footer 底部元数据栏</div>
+            <div class="hint" style="margin-bottom: 8px;">ℹ️ 一般不开启：模型 / 耗时 / 上下文等元数据由「统一面板」承载。</div>
+            <label class="row"><span class="lbl">显示 footer</span><input type="checkbox" id="f-footer-enabled"></label>
+            <label class="row"><span class="lbl">显示字段标签</span><input type="checkbox" id="f-footer-show-label"></label>
+            <label class="row"><span class="lbl">文字大小</span>
+              <select id="f-footer-text-size"><option value="notation">notation（小）</option><option value="normal">normal</option></select>
+            </label>
+            <div class="row col"><span class="lbl">字段（点击选择，单行）</span>
+              <div class="chips" id="f-footer-fields">
+                <button type="button" class="chip" data-field="status">状态</button>
+                <button type="button" class="chip" data-field="elapsed">耗时</button>
+                <button type="button" class="chip" data-field="model">模型</button>
+                <button type="button" class="chip" data-field="tokens">Tokens</button>
+                <button type="button" class="chip" data-field="context">上下文</button>
+              </div>
+              <span class="lbl" id="fields-note" hidden>当前为多行字段配置：保存时原样保留，UI 不可编辑。</span>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset>
           <legend>统一面板（模型 · 推理 · 工具 · 上下文）</legend>
           <label class="row"><span class="lbl">完成态面板保持展开</span><input type="checkbox" id="f-panel-expanded"></label>
           <label class="row"><span class="lbl">展示推理过程</span><input type="checkbox" id="f-show-reasoning"></label>
@@ -80,36 +110,6 @@
           </div>
           <div id="alias-rows" class="alias-rows"></div>
           <button type="button" class="btn ghost" id="btn-add-alias" style="margin-top: 8px;">＋ 添加别名</button>
-        </fieldset>
-
-        <fieldset>
-          <legend>状态栏 · 顶部 Header 与底部 Footer</legend>
-          <div class="sub-group">
-            <div class="sub-title">Header 顶部状态栏</div>
-            <label class="row"><span class="lbl">显示 header</span><input type="checkbox" id="f-header-enabled"></label>
-            <label class="row"><span class="lbl">快捷回复去标题阈值（秒，0=始终显示）</span>
-              <input type="number" id="f-header-min-duration" min="0" max="86400" step="0.5">
-            </label>
-          </div>
-          <div class="sub-group">
-            <div class="sub-title">Footer 底部元数据栏</div>
-            <div class="hint" style="margin-bottom: 8px;">ℹ️ 一般不开启：模型 / 耗时 / 上下文等元数据由「统一面板」承载。</div>
-            <label class="row"><span class="lbl">显示 footer</span><input type="checkbox" id="f-footer-enabled"></label>
-            <label class="row"><span class="lbl">显示字段标签</span><input type="checkbox" id="f-footer-show-label"></label>
-            <label class="row"><span class="lbl">文字大小</span>
-              <select id="f-footer-text-size"><option value="notation">notation（小）</option><option value="normal">normal</option></select>
-            </label>
-            <div class="row col"><span class="lbl">字段（点击选择，单行）</span>
-              <div class="chips" id="f-footer-fields">
-                <button type="button" class="chip" data-field="status">状态</button>
-                <button type="button" class="chip" data-field="elapsed">耗时</button>
-                <button type="button" class="chip" data-field="model">模型</button>
-                <button type="button" class="chip" data-field="tokens">Tokens</button>
-                <button type="button" class="chip" data-field="context">上下文</button>
-              </div>
-              <span class="lbl" id="fields-note" hidden>当前为多行字段配置：保存时原样保留，UI 不可编辑。</span>
-            </div>
-          </div>
         </fieldset>
 
         <fieldset>
