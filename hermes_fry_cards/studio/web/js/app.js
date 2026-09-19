@@ -377,14 +377,17 @@
               var on = days.indexOf(di) >= 0 ? " on" : "";
               return '<button type="button" class="chip day-chip' + on + '" data-day="' + di + '">' + lab + "</button>";
             }).join("");
+            // 两段式：星期一行 / 时间+名称一行——窄列（三列布局）下不再随机换行
             return (
               '<div class="alias-rule" data-r="' + ri + '">' +
-              '<span class="rule-days">' + dayChips + "</span>" +
+              '<div class="rule-days">' + dayChips + "</div>" +
+              '<div class="rule-time-row">' +
               '<input type="time" class="rule-start" value="' + (rule.start || "") + '">' +
               "<span>–</span>" +
               '<input type="time" class="rule-end" value="' + (rule.end || "") + '">' +
               '<input type="text" class="rule-name" placeholder="该时段显示名" value="' + escAttr(rule.name) + '">' +
               '<button type="button" class="chip rule-del">✕</button>' +
+              "</div>" +
               "</div>"
             );
           })

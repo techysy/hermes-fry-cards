@@ -27,7 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   （Header 与 Footer 合并一组、组内分节，Footer 分节带「一般不开启」提示）/ **统一面板**
   ——模型·推理·工具·上下文全套开关** / 模型别名 / 🛡️ 群聊安全边界（`gateway.group_security_boundary`
   白名单只写 enabled/allow_chats，手写 `text` 与 gateway 兄弟键原样保留；置底）」分组——
-  含多行 footer 字段保护与异常值原样回传；宽屏 ≥1280px 三列布局）/ **预览**（服务端调**真实 builder** 渲染，与线上卡片同一代码路径——快捷回复 / 工作流
+  含多行 footer 字段保护与异常值原样回传；时段规则行两段式布局（星期一行 / 时间+名称一行，弹性均分
+  任何列宽不换行）；宽屏 ≥1280px 三列布局）/ **预览**（服务端调**真实 builder** 渲染，与线上卡片同一代码路径——快捷回复 / 工作流
   交错 / 多表格压缩 / 超长截断 × 流式·完成·出错态；overrides 只作用于渲染不落盘）/ **状态**（hook 注入
   markers、cron/clarify、三目标 verify 兼容性、凭据、一键重启网关）。
   写回安全五件套：严格校验 400 / 解析失败拒写 409（保护凭证）/ 写前备份轮转 20 份 / 白名单深合并
