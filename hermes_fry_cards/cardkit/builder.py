@@ -149,8 +149,9 @@ def _build_tool_panel(
     *,
     expanded: bool = True,
     element_id: str | None = TOOL_PANEL_ELEMENT_ID,
+    running: bool = False,
 ) -> dict:
-    en_t, zh_t = _T["tool_use"]
+    en_t, zh_t = _T["tool_running"] if running else _T["tool_use"]
     en_parts, zh_parts = [en_t], [zh_t]
     if steps:
         tpl_en, tpl_zh = _T["steps"]
@@ -550,7 +551,7 @@ def build_streaming_card_v2(
     # 工具面板放在底部（answer之后，loading之前）
     if show_tool_use:
         if tool_steps:
-            elements.append(_build_tool_panel(tool_steps, elapsed_ms))
+            elements.append(_build_tool_panel(tool_steps, elapsed_ms, running=True))
         else:
             elements.append(build_streaming_tool_use_pending_panel())
 
@@ -596,22 +597,31 @@ def build_complete_card(
     show_tool_use: bool = True,
     width_mode: str = "default",
 ) -> dict[str, Any]:
-    """完成态流式卡片 — 推理+工具合并成底部统一面板，答案在上面."""
+    """完成态流式卡片 — 推理+工具合并成底部统一面板，答案在上面.
+
+    统一面板内部按 segments 的**真实发生顺序**交错渲染：
+    💭 思考1 → 🔧 工具组1 → 💭 思考2 → 🔧 工具组2 …（对齐工作流时间线）。
+    """
     elements: list[dict] = []
     has_answer = False
     # 收集所有 reasoning rounds + tool steps，合并成一个底部统一面板
     reasoning_rounds: list[dict] = []
     tool_steps_total: list[ToolDisplayStep] = []
-    tool_elapsed_ms = 0
+    tool_elapsed_ms: int | float = 0
+    # 过程时间线：按 segments 到达顺序保序记录 reasoning / tool 组，
+    # 终态据此交错渲染（不再「先所有思考、再所有工具」两堆堆叠）。
+    timeline: list[dict] = []
 
     for seg in segments:
         if seg.type == SegmentType.REASONING:
             if seg.text:
-                reasoning_rounds.append({
+                round_entry = {
                     "text": seg.text,
                     "elapsed_ms": seg.elapsed_ms,
                     "text_el_id": seg.text_el_id,  # 复用流式阶段的 text element id，避免完成态 Duplicate ID
-                })
+                }
+                reasoning_rounds.append(round_entry)
+                timeline.append({"kind": "reasoning", "round": round_entry})
         elif seg.type == SegmentType.TOOL:
             if not show_tool_use:
                 continue
@@ -621,6 +631,11 @@ def build_complete_card(
             if steps:
                 tool_steps_total.extend(steps)
                 tool_elapsed_ms += seg.elapsed_ms or 0
+                timeline.append({
+                    "kind": "tools",
+                    "steps": steps,
+                    "elapsed_ms": seg.elapsed_ms or 0,
+                })
         elif seg.type == SegmentType.ANSWER and seg.text:
             has_answer = True
             content = _downgrade_tables(optimize_markdown_style(seg.text))
@@ -654,24 +669,37 @@ def build_complete_card(
             border_color = "yellow"
         else:
             border_color = "green"
-        # 构建统一面板内容：先推理轮次，再工具步骤
+        # 构建统一面板内容：按 timeline 真实顺序交错（💭思考 → 🔧工具组 → 💭思考 …）
         unified_children: list[dict] = []
-        for i, rnd in enumerate(reasoning_rounds):
-            if rnd["text"].strip():
+        _reasoning_seq = 0
+        _tool_group_seq = 0
+        for entry in timeline:
+            if entry["kind"] == "reasoning":
+                rnd = entry["round"]
+                if not rnd["text"].strip():
+                    continue
                 # 复用流式阶段 text_el_id，避免与已完成卡片上现有元素重名（Duplicate ID）。
                 # 流式阶段 text_el_id 形如 reasoning_{c}_text，非空；若为空则用带索引后缀的唯一 ID，
                 # 绝不回落到固定 REASONING_TEXT_ELEMENT_ID，防止单轮 reasoning 在 merge 更新下重复。
-                text_el_id = rnd.get("text_el_id") or f"reasoning_text_{i}"
+                text_el_id = rnd.get("text_el_id") or f"reasoning_text_{_reasoning_seq}"
+                _reasoning_seq += 1
                 unified_children.append(_build_reasoning_panel(
                     text=rnd["text"],
                     elapsed_ms=rnd["elapsed_ms"],
                     expanded=panel_expanded,
                     text_element_id=text_el_id,
                 ))
-        if tool_steps_total:
-            tool_panel = _build_tool_panel(tool_steps_total, tool_elapsed_ms, expanded=panel_expanded, element_id=None)
-            if "elements" in tool_panel:
-                unified_children.extend(tool_panel["elements"])
+            elif entry["kind"] == "tools":
+                # 每个工具组独立成一个嵌套 🔧 面板（保留 fry 现有工具面板样式），
+                # 交错在思考轮次之间，而非全部堆到末尾。
+                _tool_group_seq += 1
+                tool_panel = _build_tool_panel(
+                    entry["steps"],
+                    entry["elapsed_ms"],
+                    expanded=panel_expanded,
+                    element_id=f"tool_panel_{_tool_group_seq}",
+                )
+                unified_children.append(tool_panel)
         # header: 🍟 model · 💭n · 🔧n · ⏳ context · ⏱️ elapsed
         model_name = (footer_data or {}).get("model") or ""
         if model_name:

@@ -21,6 +21,7 @@ _T: dict[str, tuple[str, str]] = {
     "processing": ("Processing...", "处理中..."),
     "processing_prefix": ("💭 Processing...", "💭 处理中..."),
     "tool_use": ("Tool use", "工具执行"),
+    "tool_running": ("Tool running", "工具执行中"),
     "tool_pending": ("🛠️ Tool use pending", "🛠️ 等待工具执行"),
     "steps": ("{} step{}", "{} 步"),
     "thought": ("Thought", "思考"),

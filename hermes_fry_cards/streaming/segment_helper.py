@@ -118,7 +118,7 @@ def build_add_segment_action(
     elif seg.type == SegmentType.TOOL:
         start = seg.tool_offset
         end = seg.tool_end_offset if seg.tool_end_offset else len(all_steps)
-        element = _build_tool_panel(all_steps[start:end], element_id=seg.el_id)
+        element = _build_tool_panel(all_steps[start:end], element_id=seg.el_id, running=True)
     else:
         raise ValueError(f"unsupported segment type: {seg.type}")
 
@@ -161,9 +161,10 @@ def build_tool_update_action(
     *,
     element_id: str,
     steps: list[ToolDisplayStep],
+    running: bool = True,
 ) -> dict[str, Any]:
     """构造 tool panel 局部更新 action."""
-    panel = _build_tool_panel(steps)
+    panel = _build_tool_panel(steps, running=running)
     return {
         "action": "partial_update_element",
         "params": {

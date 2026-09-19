@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > 模型别名支持时段人设（与 openclaw/claw-fry-cards 格式互通），群聊安全边界可视化。
 > **配置 schema 向后兼容**——升级无需改任何现有配置；纯新增能力，无破坏性变更。
 
+### 优化 / Changed
+- **完成态卡片统一面板按真实工作流交错渲染**（[#10](https://github.com/techysy/hermes-fry-cards/pull/10)，感谢 @JasonXX89）—
+  统一面板内从「所有思考集中在前、所有工具堆在末尾」改为按真实发生顺序交错展现：
+  `💭 思考1 → 🔧 工具组1 → 💭 思考2 → 🔧 工具组2 …`，保持复杂 Agent 执行链路的时间线一致性。
+- **工具面板标题状态感知（生成中「工具执行中」 vs 终态「工具执行」）** —
+  流式生成阶段工具折叠面板标题为 `🔧 工具执行中 · N 步`，卡片生成完毕后自动转为 `🔧 工具执行 · N 步 (Xs)`。
+
 ### 新增 / Added
 - **Markdown 防爆引擎**（借鉴 [aiduPOP](https://github.com/monkey2jack/aiduPOP) 贝氏降级引擎）—
   - **无损表格压缩**：超限表格（>5）不再包装为代码块，改为 fence 感知扫描后压缩为
