@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Hermes](https://img.shields.io/badge/Hermes-%E2%89%A50.14.0-2463eb)](https://github.com/NousResearch/hermes-agent)
 [![Python](https://img.shields.io/badge/Python-%E2%89%A53.11-blue)](https://www.python.org/)
-[![当前版本](https://img.shields.io/badge/Release-v0.3.0-2463eb?logo=github&logoColor=white)](https://github.com/techysy/hermes-fry-cards/releases)
+[![当前版本](https://img.shields.io/badge/Release-v0.4.0-2463eb?logo=github&logoColor=white)](https://github.com/techysy/hermes-fry-cards/releases)
 
 > 🍟 Hermes Gateway 飞书流式卡片插件 — CardKit v2.0 实时流式消息
 
@@ -34,12 +34,21 @@
 | 🛡️ **群聊安全边界** | 群内 @bot 自动注入安全提示，不泄露 key/密码/内网 IP（modular Hermes 0.21+，Studio 可视化开关） |
 | ❓ **Clarify 按钮卡片** | 选项提问渲染为可点击按钮卡片（单选/多选勾选/「其他」内嵌输入框 + toast 反馈），补齐飞书适配器缺失的 `send_clarify` 原生交互 |
 | 🔐 **审批卡片点击修复** | 审批按钮点击改用交互回调鉴权（原版误用群消息准入策略导致点击被吞），并为受理/过期/无权限/拒绝补全 toast 反馈 |
+| 🎛️ **Studio 工作坊** | `studio` 命令一键起本地 Web UI：配置表单 + **真 builder 预览**（4 场景 × 三态）+ 状态诊断与一键重启；写回安全五件套 |
+| 🏷️ **模型别名时段人设** | `model_aliases.json` 子串匹配 + 北京时间时段对象自动切换显示名（DeepSeek 峰谷：峰段梁文锋⚡️/谷段梁文谷⚡️），与 openclaw 格式互通，Studio 可视化编辑 |
+| 🧱 **Markdown 防爆引擎** | 超限表格无损压缩为字段列表 + 字节级 18KB 内容预算（流式渐进截断/完成态首尾双保），杜绝 ~30KB 卡片 JSON 溢出断屏 |
+| 🔀 **工作流交错渲染** | 完成态统一面板按真实发生顺序交错展现思考与工具组（💭→🔧→💭→🔧），时间线不再被堆叠打乱 |
 
 ## 🏗️ 架构总览
 
-![hermes-fry-cards 架构：Hermes Gateway 事件经 AST hook 注入层进入 StreamCardController，streaming/ 运行时节流编排，cardkit/ 构建卡片 JSON，经飞书 CardKit v2.0 API 交付用户端流式卡片；cron 推送与失败回落路径独立标注](assets/architecture.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/architecture.svg">
+  <img src="assets/architecture-light.svg" alt="hermes-fry-cards 架构：Hermes Gateway 事件经 AST hook 注入层进入 StreamCardController，streaming/ 运行时节流编排，cardkit/ 构建卡片 JSON，经飞书 CardKit v2.0 API 交付用户端流式卡片；cron 推送与失败回落路径独立标注">
+</picture>
 
-> v0.3.0 新增：快捷回复去标题（`header.min_duration`）按耗时条件隐藏顶部状态栏；群聊安全边界（modular Hermes 0.21+）向 ephemeral system prompt 注入输出边界，私聊不受影响。
+> 🆕 v0.4.0：**Studio 可视化配置工作坊**（`studio` 命令，真 builder 预览/白名单安全写回/状态诊断）、
+> **Markdown 防爆引擎**（无损表格压缩 + 字节级预算）、**模型别名时段人设**（openclaw 格式互通）、
+> **工作流交错渲染**（#10）与群聊安全边界可视化。架构图随 GitHub 明暗主题自动切换。
 
 ---
 
@@ -296,11 +305,13 @@ $HERMES_PYTHON -m pip uninstall hermes-fry-cards
   → 终态卡片（token/耗时/上下文）
 ```
 
-### 🛡️ 稳定性保障（v0.1.1）
+### 🛡️ 稳定性保障
 
-- **session 生命周期统一管理**：注册/清理单一入口、幂等可重入；中断接管不误删新会话映射；异常残留的终态会话允许重建，不再需要重启网关恢复
-- **flush 竞态防护**：完成标记与刷新请求交叉时不会误触发多余 CardKit 调用；同一份数据不会被重复刷新
+- **session 生命周期统一管理**：注册/清理单一入口、幂等可重入；中断接管不误删新会话映射；异常残留的终态会话允许重建，不再需要重启网关恢复（v0.1.1）
+- **flush 竞态防护**：完成标记与刷新请求交叉时不会误触发多余 CardKit 调用；同一份数据不会被重复刷新（v0.1.1）
 - **失败原因可追溯**：卡片失败时记录首次失败原因（`mark_failed(reason=...)`），回退网关纯文本是统一决策点
+- **Markdown 防爆引擎 + 300305 主动拆卡**：元素/字节双预算，超限前主动拆分（v0.4.0）
+- **Studio 写回安全五件套**：严格校验 / 拒写保护 / 备份轮转 / 白名单深合并 / 原子落盘（v0.4.0）
 
 排查问题时可直接按以下标准化日志事件在 `~/.hermes/logs/agent.log` 中检索：
 
@@ -381,7 +392,7 @@ hermes gateway restart
 | Hook 丢失 | Hermes 升级覆盖了已 patch 的文件 | `verify` + `install` + 重启 |
 | 流式卡片变纯文本 | CardKit 创建失败 | 日志检索 `card_reply_failed` / `fallback_to_text` 看具体原因，检查飞书凭据是否正确 |
 | `status` 显示 `warning` | CLI 使用了错误的 Python 解释器 | 用 `$HERMES_PYTHON` 重新执行 |
-| 卡片一直 loading 不收尾 | 完成更新失败（如元素 Duplicate ID） | 日志检索 `card_complete_failed`，确认版本 ≥ v0.1.1（含竞态修复） |
+| 卡片一直 loading 不收尾 | 完成更新失败（如元素 Duplicate ID） | 日志检索 `card_complete_failed`，确认版本 ≥ v0.1.1（含竞态修复）；0.4.0 起另有防爆引擎与工作流交错渲染 |
 
 ---
 

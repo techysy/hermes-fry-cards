@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Hermes](https://img.shields.io/badge/Hermes-%E2%89%A50.14.0-2463eb)](https://github.com/NousResearch/hermes-agent)
 [![Python](https://img.shields.io/badge/Python-%E2%89%A53.11-blue)](https://www.python.org/)
-[![当前版本](https://img.shields.io/badge/Release-v0.1.0--rc2-2463eb?logo=github&logoColor=white)](https://github.com/techysy/hermes-fry-cards/releases)
+[![当前版本](https://img.shields.io/badge/Release-v0.4.0-2463eb?logo=github&logoColor=white)](https://github.com/techysy/hermes-fry-cards/releases)
 
 > 🍟 Hermes Gateway plugin for real-time streaming Feishu/Lark CardKit v2.0 cards
 
@@ -30,10 +30,21 @@
 | 🌐 **Bilingual** | Card text auto-switches based on Feishu client language |
 | 🎨 **Customizable** | Header/footer, text sizes, width mode, footer fields |
 | 🎯 **Status border** | Header auto-colors by state: blue streaming, green completed, red error |
+| ⏱️ **Quick-reply trim** | Hides the status header when no tool calls and duration is under a threshold |
+| 🛡️ **Group security boundary** | Group @bot replies get an output boundary (no keys/passwords/internal IPs); DMs unaffected (modular Hermes 0.21+, editable in Studio) |
+| ❓ **Clarify button cards** | Option questions render as clickable button cards (single/multi-select + "other" inline input + toast) |
+| 🔐 **Approval click fix** | Approval buttons use interactive-callback auth (upstream misused group admission policy and swallowed clicks), with accept/expired/denied toasts |
+| 🎛️ **Studio workbench** | `studio` command launches a local Web UI: config forms + **real-builder preview** (4 scenarios × 3 states) + status diagnostics & one-click restart; safe write-back pipeline |
+| 🏷️ **Model alias time-persona** | `model_aliases.json` substring matching + Beijing-time time-window objects auto-switch display names (DeepSeek peak/valley), openclaw-compatible, editable in Studio |
+| 🧱 **Markdown guard engine** | Overflow tables losslessly compacted to field lists + 18KB byte budget (progressive streaming trim / head+tail preserved on seal) — no more ~30KB card JSON overflow |
+| 🔀 **Interleaved workflow rendering** | Completion panel interleaves reasoning and tool groups in true arrival order (💭→🔧→💭→🔧) |
 
 ## 🏗️ Architecture
 
-![hermes-fry-cards architecture: gateway events flow through the AST hook injection layer into StreamCardController, orchestrated by the streaming/ runtime with 100ms flush throttling; cardkit/ builds card JSON delivered via Feishu CardKit v2.0 API to streaming user cards; cron delivery and failure fallback paths are shown separately](assets/architecture.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/architecture.svg">
+  <img src="assets/architecture-light.svg" alt="hermes-fry-cards architecture: gateway events flow through the AST hook injection layer into StreamCardController, orchestrated by the streaming/ runtime with 100ms flush throttling; cardkit/ builds card JSON delivered via Feishu CardKit v2.0 API to streaming user cards; cron delivery and failure fallback paths are shown separately">
+</picture>
 
 ---
 
@@ -49,7 +60,7 @@ The script locates Hermes's venv Python, installs the package, runs `verify`, an
 
 ```bash
 # Pin a version (default: main)
-curl -fsSL .../install.sh | FRY_REF=v0.3.3 bash
+curl -fsSL .../install.sh | FRY_REF=v0.4.0 bash
 # Override the interpreter if auto-detection misses
 curl -fsSL .../install.sh | HERMES_PYTHON=/path/to/python3 bash
 ```
@@ -100,13 +111,18 @@ display:
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `header.enabled` | Status header bar | `false` |
-| `footer.enabled` | Footer metadata bar | `true` |
+| `header.enabled` | Status header bar | `true` |
+| `header.min_duration` | Quick-reply trim threshold (seconds, 0 = always show) | `0` |
+| `footer.enabled` | Footer metadata bar | `false` |
 | `panel_expanded` | Keep completion panels expanded | `false` |
 | `chat_types` | Allowed chat types for cards (`dm`/`group`...); omit = all types. Types outside the list fall back to plain text | all (omit) |
+| `content_lang` | Language for in-content notices (table compaction / truncation): `zh` / `en` | `zh` |
 | `width_mode` | Card width (`default` / `compact` / `fill`) | `default` |
 | `show_tool_use` | Show tool-use panels | `true` |
 | `show_reasoning` | Show reasoning process | `false` |
+| `model_aliases_enabled` | Master switch for model aliases; `false` falls back to truncation (config kept) | `true` |
+| `gateway.group_security_boundary.enabled` | Group security boundary master switch (output boundary on group replies; DMs unaffected) | `false` |
+| `gateway.group_security_boundary.allow_chats` | Exempt-group whitelist (`oc_xxx`, one per line; listed groups skip the boundary) | `[]` |
 
 ---
 
@@ -118,6 +134,7 @@ $HERMES_PYTHON -m hermes_fry_cards verify     # Verify compatibility
 $HERMES_PYTHON -m hermes_fry_cards install    # Inject hooks
 $HERMES_PYTHON -m hermes_fry_cards uninstall  # Remove hooks
 $HERMES_PYTHON -m hermes_fry_cards status     # Show status
+$HERMES_PYTHON -m hermes_fry_cards studio     # Visual config studio (127.0.0.1:8765)
 ```
 
 ---
@@ -169,21 +186,29 @@ This project is independently developed based on [Cheerwhy/hermes-lark-streaming
 | **Context progress bar** | Independent `show_context` switch + `context_display_mode` with three modes (`text` / gradient-shaded `bar` / `text_bar`), smart units (k below 1M) | ❌ Footer plain-text percentage only, no toggle |
 | **Reasoning panel cap** | `max_reasoning_panels` (default 3); overflow merges into the last panel — supports models without segmented thinking (e.g. deepseek-v4-flash), prevents 300305 element overflow | ❌ Uncapped, long thinking always overflows |
 | **Model name truncation** | `truncate_model_name`: `nvidia/moonshotai/kimi-k3` → `⇲kimi-k3`, fixes mobile line wrapping | ❌ Full name shown |
-| **Model aliases** | Standalone JSON config at `~/.hermes/model_aliases.json`: `{"longcat": "哈基米", "gemini": "哈基米"}`; keys are case-insensitive substring-matched against the model name — a hit shows the alias (e.g. LongCat → 哈基米), a miss falls back to truncation; re-read on every render, effective immediately | ❌ None |
+| **Model aliases (time-persona)** | Standalone JSON config at `~/.hermes/model_aliases.json`: `{"mimo": "小虾米"}` substring matching, or time-window objects `{"deepseek": {"name": "梁文谷⚡️", "timeAliases": [{"days": [1,2,3,4,5], "start": "09:00", "end": "12:00", "name": "梁文锋⚡️"}]}}` resolved on fixed Beijing time (UTC+8, half-open windows, cross-midnight, `name` fallback) — byte-compatible with openclaw/claw-fry-cards. Master switch `display.model_aliases_enabled` (hot-reloaded); editable in Studio | ❌ None |
 
 ### Model alias config
 
-Independent of `config.yaml`, aliases are written in `~/.hermes/model_aliases.json`:
+Independent of `config.yaml`, aliases are written in `~/.hermes/model_aliases.json` (or edited visually in **Studio → 配置 → 模型别名**):
 
 ```json
 {
   "longcat": "哈基米",
-  "gemini": "哈基米"
+  "mimo": "小虾米",
+  "deepseek": {
+    "name": "梁文谷⚡️",
+    "timeAliases": [
+      { "days": [1, 2, 3, 4, 5], "start": "09:00", "end": "12:00", "name": "梁文锋⚡️" },
+      { "days": [1, 2, 3, 4, 5], "start": "14:00", "end": "18:00", "name": "梁文锋⚡️" }
+    ]
+  }
 }
 ```
 
-- **Match**: keys are case-insensitively substring-matched against the full model name (`longcat` → `or/lc/LongCat-2.0` hits)
-- **Priority**: alias hit → show alias; miss → fall back to truncation
+- **Match**: keys are case-insensitively substring-matched against the full model name (`longcat` → `or/lc/LongCat-2.0` hits), first hit in insertion order wins
+- **Time-persona objects**: resolved on fixed Beijing time (UTC+8, host-timezone independent); `days` as array (0 = Sunday) or `"1-5"` / `"0,6"` strings; windows are `[start, end)` half-open with cross-midnight support; no hit falls back to `name`
+- **Priority**: alias hit → show alias; miss → fall back to truncation; `display.model_aliases_enabled: false` disables aliases entirely (config kept)
 - **Hot reload**: re-read on every render, takes effect immediately on file change
 
 > Full path: `~/.hermes/model_aliases.json`
