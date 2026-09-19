@@ -583,3 +583,22 @@ class TestGroupSecurityBoundary:
         )
         assert code == 409
         assert json.loads(body)["ok"] is False
+
+
+class TestVersionInStatus:
+    def test_fry_version_present(self, server: str) -> None:
+        state = _get_json(server, "/api/state")
+        ver = state["status"]["fry_version"]
+        assert isinstance(ver, str) and ver
+        # 与 pyproject 单一真相源一致
+        from importlib.metadata import version as md_version
+
+        assert ver == md_version("hermes-fry-cards")
+
+    def test_hermes_version_key_present(self, server: str) -> None:
+        # hermes CLI 缺失时为 None（容器/真机有 CLI 时为首行版本字符串）
+        state = _get_json(server, "/api/state")
+        assert "hermes_version" in state["status"]
+        assert state["status"]["hermes_version"] is None or isinstance(
+            state["status"]["hermes_version"], str
+        )

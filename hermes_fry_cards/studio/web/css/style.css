@@ -33,6 +33,7 @@ body {
 }
 .brand { font-weight: 700; font-size: 15px; }
 .brand-sub { color: var(--blue); font-weight: 600; margin-left: 4px; }
+.brand-ver { color: var(--grey); font-weight: 500; font-size: 12px; margin-left: 6px; }
 .tabs { display: flex; gap: 4px; }
 .tab {
   border: none; background: transparent; padding: 6px 14px;

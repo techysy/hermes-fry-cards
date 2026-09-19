@@ -188,6 +188,9 @@
   async function loadState() {
     var data = await api("/api/state");
     fillForm(data);
+    var ver = data.status && data.status.fry_version;
+    var el = document.getElementById("brand-version");
+    if (el && ver) el.textContent = "v" + ver;
     return data;
   }
 
@@ -308,6 +311,8 @@
       (st.credentials ? '<span class="badge ok">已配置</span>' : '<span class="badge bad">缺失</span>') + "</div></div>" +
 
       '<div class="status-card"><h3>Hermes 环境</h3>' +
+      '<div class="status-line"><span>插件版本</span><span class="badge mute">' + esc(st.fry_version || "未知") + "</span></div>" +
+      '<div class="status-line"><span>Hermes Agent</span><span class="badge mute">' + esc(st.hermes_version || "未找到 CLI") + "</span></div>" +
       '<div class="status-line mono">' + esc(st.hermes_python || "（未找到 hermes python）") + "</div>" +
       '<div class="status-line mono">' + esc(st.install_dir || "（未找到安装目录）") + "</div></div>" +
       "</div>";

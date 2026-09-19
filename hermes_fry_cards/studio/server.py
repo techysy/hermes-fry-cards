@@ -568,8 +568,41 @@ def _marker_label(begin: str) -> str:
     return begin.replace("# HERMES_LARK_", "").replace("_BEGIN", "").lower()
 
 
+def _fry_version() -> str | None:
+    """插件版本：pip 元数据（pyproject）为准，__version__ 兜底。"""
+    try:
+        from importlib.metadata import version as _md_version
+
+        return _md_version("hermes-fry-cards")
+    except Exception:
+        pass
+    try:
+        from . import __version__
+
+        return __version__
+    except Exception:
+        return None
+
+
+def _hermes_cli_version() -> str | None:
+    """Hermes Agent 版本（hermes --version 首行），尽力而为。"""
+    cli = shutil.which("hermes")
+    if not cli:
+        return None
+    try:
+        proc = subprocess.run(
+            [cli, "--version"], capture_output=True, text=True, timeout=10, check=False,
+        )
+    except (subprocess.SubprocessError, OSError):
+        return None
+    out = (proc.stdout or proc.stderr or "").strip().splitlines()
+    return out[0].strip() if out else None
+
+
 def _collect_status(home: Path) -> dict[str, Any]:
     st: dict[str, Any] = {
+        "fry_version": _fry_version(),
+        "hermes_version": _hermes_cli_version(),
         "patched": None,
         "target": None,
         "markers": {},
