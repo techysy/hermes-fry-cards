@@ -23,7 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   新增 `streaming.content_lang`（`zh`/`en`，默认 `zh`）构建时选取——UI 词条走 `i18n_content` 双语 dict
   由飞书客户端按 locale 渲染，markdown 正文只接受纯字符串无法如此，故按部署方偏好定死（需重启网关生效）。
 - **Studio 可视化配置工作坊**（`python -m hermes_fry_cards studio`，借鉴 [aiduPOP](https://github.com/monkey2jack/aiduPOP) studio）—
-  纯 stdlib `http.server` + 原生前端，三页签：**配置**（白名单键表单编辑，按「流式卡片 / **统一面板**
+  纯 stdlib `http.server` + 原生前端，三页签：**配置**（白名单键表单编辑，按「流式卡片 / 🛡️ 群聊安全边界
+  （开关 + 豁免群白名单，`gateway.group_security_boundary` 白名单只写 enabled/allow_chats，手写 `text`
+  与 gateway 兄弟键原样保留）/ **统一面板**
   ——模型·推理·工具·上下文全套开关** / 模型别名 / 状态栏（Header 与 Footer 合并一组、组内分节）」分组——
   Footer 分节带提示「一般不开启，元数据由统一面板承载」；含多行 footer 字段保护与异常值原样回传）/ **预览**（服务端调**真实 builder** 渲染，与线上卡片同一代码路径——快捷回复 / 工作流
   交错 / 多表格压缩 / 超长截断 × 流式·完成·出错态；overrides 只作用于渲染不落盘）/ **状态**（hook 注入
@@ -51,9 +53,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 测试 / Tests
 - 新增 `tests/test_md_guard.py` 20 用例（扫描器/压缩/钳制/错误码/文案语言）+ `content_lang` 配置 5 用例
   + 模型别名解析 16 用例（claw 同款时间锚点：半开区间/跨午夜/legacy days/固定 UTC+8/总开关优先级）
-  + `tests/test_studio.py` 79 用例（校验/拒写/备份/白名单/Host 门/路径穿越/1MB 上限/预览/别名端点/静态资源可达性）。
-  本地全量 **665 passed**（Windows，另 2 例 Win 路径断言差异为存量）；容器 Hermes v0.21.3 全量回归
-  **685 passed** + Studio 服务冒烟（静态 4×200 / state / preview schema 2.0 / 外来 Host → 403）。
+  + `tests/test_studio.py` 91 用例（校验/拒写/备份/白名单/Host 门/路径穿越/1MB 上限/预览/别名端点/
+  群聊安全边界端点/静态资源可达性）。
+  本地全量 **681 passed**（Windows，另 2 例 Win 路径断言差异为存量）；容器 Hermes v0.21.3 全量回归
+  **701 passed** + Studio 服务冒烟（静态 4×200 / state / preview schema 2.0 / 外来 Host → 403）。
 
 ---
 

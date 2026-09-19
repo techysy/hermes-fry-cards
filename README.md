@@ -31,7 +31,7 @@
 | 🎨 **可定制样式** | header/footer、文字大小、宽度模式、字段布局均可配置 |
 | 🎯 **状态色框** | 顶部 header 根据状态自动着色：流式中蓝色、完成绿色、中断/错误红色 |
 | ⏱️ **快捷回复去标题** | 无工具调用且耗时低于阈值时隐藏顶部状态栏，回复更干净 |
-| 🛡️ **群聊安全边界** | 群内 @bot 自动注入安全提示，不泄露 key/密码/内网 IP（modular Hermes 0.21+） |
+| 🛡️ **群聊安全边界** | 群内 @bot 自动注入安全提示，不泄露 key/密码/内网 IP（modular Hermes 0.21+，Studio 可视化开关） |
 | ❓ **Clarify 按钮卡片** | 选项提问渲染为可点击按钮卡片（单选/多选勾选/「其他」内嵌输入框 + toast 反馈），补齐飞书适配器缺失的 `send_clarify` 原生交互 |
 | 🔐 **审批卡片点击修复** | 审批按钮点击改用交互回调鉴权（原版误用群消息准入策略导致点击被吞），并为受理/过期/无权限/拒绝补全 toast 反馈 |
 
@@ -143,6 +143,8 @@ display:
 | `unified_panel_min_duration` | 统一面板最小展示耗时（秒）；无工具调用或耗时 ≤ 此值不显示统一面板 | `5` |
 | `truncate_model_name` | 截断模型名（`nvidia/moonshotai/kimi-k3` → `⇲kimi-k3`） | `true` |
 | `model_aliases_enabled` | 模型别名总开关；`false` 时忽略别名整体回落截断（配置保留） | `true` |
+| `gateway.group_security_boundary.enabled` | 群聊安全边界总开关（群聊回复套输出边界，私聊不受影响） | `false` |
+| `gateway.group_security_boundary.allow_chats` | 豁免群白名单（`oc_xxx`，一行一个；这些群不套边界） | `[]` |
 
 ### 模型别名配置
 
@@ -206,7 +208,7 @@ $HERMES_PYTHON -m hermes_fry_cards studio --port 9000 --no-browser
 
 | 页签 | 能力 |
 |------|------|
-| **配置** | 流式开关 / **统一面板**（模型·推理·工具·上下文的全套开关，元数据默认由它承载）/ **模型别名**（含时段人设星期芯片编辑器 + 总开关）/ header / footer 等**白名单键**的表单化编辑 |
+| **配置** | 流式开关 / **群聊安全边界**（开关 + 豁免群白名单）/ **统一面板**（模型·推理·工具·上下文的全套开关，元数据默认由它承载）/ **模型别名**（含时段人设星期芯片编辑器 + 总开关）/ 状态栏（Header·Footer 合并组）等**白名单键**的表单化编辑 |
 | **预览** | 服务端**真实 builder** 渲染（与线上卡片同一代码路径，非前端模拟）：快捷回复 / 工作流交错 / 多表格压缩 / 超长截断 四场景 × 流式·完成·出错态 |
 | **状态** | hook 注入状态、verify 兼容性、飞书凭据、Hermes 环境一览 + 一键重启网关 |
 
@@ -238,6 +240,9 @@ gateway:
 - `enabled`：总开关。`true` 时所有群聊（除 `allow_chats` 白名单）套边界。
 - `allow_chats`：**豁免群**。适合多 Agent 协作开发群——群里多个 Agent 互相交流、
   需要传凭据 / 内部状态干活时不加约束。填入群的 `chat_id`（飞书 `oc_xxx`）即放行。
+
+> 也可以在 **Studio → 配置 → 🛡️ 群聊安全边界** 直接开关和编辑豁免群（白名单只写
+> `enabled`/`allow_chats` 两键，你手写的 `text` 自定义边界文案与 `gateway` 下其他配置原样保留）。
 
 > 实现：对 `gateway/run_turn_runner.py::_combined_ephemeral_prompt` 注入 hook，走 ephemeral
 > system prompt（不碰持久缓存）。**逻辑在插件内**，`hermes update` 不会覆盖——升级后重跑

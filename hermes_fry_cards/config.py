@@ -290,6 +290,29 @@ class Config:
         return base / "model_aliases.json"
 
     @property
+    def group_security_boundary(self) -> dict[str, Any]:
+        """群聊安全边界配置 {enabled, allow_chats}（gateway.group_security_boundary）.
+
+        与 patch.apply_group_security_boundary 的读取口径一致：enabled 默认 False；
+        allow_chats 容错清洗（仅保留非空字符串）。自定义 ``text`` 键不在此暴露——
+        Studio 白名单只写 enabled/allow_chats，手写的 text 原样保留。
+        每次从磁盘重读（随每轮 ephemeral prompt 注入生效）。
+        """
+        gw = self._reload().get("gateway")
+        if not isinstance(gw, dict):
+            return {"enabled": False, "allow_chats": []}
+        gsb = gw.get("group_security_boundary")
+        if not isinstance(gsb, dict):
+            return {"enabled": False, "allow_chats": []}
+        allow = gsb.get("allow_chats")
+        chats = (
+            [str(c).strip() for c in allow if isinstance(c, str) and str(c).strip()]
+            if isinstance(allow, list)
+            else []
+        )
+        return {"enabled": bool(gsb.get("enabled")), "allow_chats": chats}
+
+    @property
     def model_aliases_enabled(self) -> bool:
         """模型别名总开关（display.platforms.feishu.model_aliases_enabled，默认 True）.
 

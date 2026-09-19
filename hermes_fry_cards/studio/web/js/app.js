@@ -110,6 +110,10 @@
     setVal("f-max-panels", d.max_reasoning_panels);
     setVal("f-unified-min-duration", d.unified_panel_min_duration);
     setVal("f-context-mode", d.context_display_mode);
+
+    var gsb = ((state.gateway || {}).group_security_boundary) || {};
+    setCheck("f-gsb-enabled", gsb.enabled);
+    document.getElementById("f-gsb-allow").value = (gsb.allow_chats || []).join("\n");
   }
 
   function num(sel) {
@@ -128,6 +132,11 @@
     if (ctSel === "__custom") chatTypes = __origChatTypes;
     else if (ctSel === "all") chatTypes = null;
     else chatTypes = [ctSel];
+
+    var gsbChats = (document.getElementById("f-gsb-allow").value || "")
+      .split("\n")
+      .map(function (s) { return s.trim(); })
+      .filter(Boolean);
 
     var picked = [];
     document.querySelectorAll("#f-footer-fields .chip.on").forEach(function (c) {
@@ -166,6 +175,12 @@
         max_reasoning_panels: int("#f-max-panels"),
         unified_panel_min_duration: num("#f-unified-min-duration"),
         context_display_mode: $("#f-context-mode").value,
+      },
+      gateway: {
+        group_security_boundary: {
+          enabled: $("#f-gsb-enabled").checked,
+          allow_chats: gsbChats,
+        },
       },
     };
   }

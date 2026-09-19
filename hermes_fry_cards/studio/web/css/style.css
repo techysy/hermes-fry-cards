@@ -238,3 +238,11 @@ details.cp .cp-children { margin-top: 8px; }
   padding: 5px 8px; font-size: 13px; flex: 1; background: #fff;
 }
 .alias-empty { color: var(--grey); font-size: 13px; padding: 4px 0; }
+
+/* ---------- 群聊安全边界 ---------- */
+textarea.gsb-allow {
+  width: 100%; border: 1px solid var(--border); border-radius: 6px;
+  padding: 6px 8px; font-size: 13px; font-family: Consolas, "Courier New", monospace;
+  resize: vertical; min-height: 64px; background: #fff;
+}
+textarea.gsb-allow:focus { outline: none; border-color: var(--blue); }

@@ -150,6 +150,23 @@ def _validate_chat_types(v: Any, name: str) -> list[str] | None:
     return result
 
 
+def _validate_chat_list(v: Any, name: str) -> list[str]:
+    """群 ID 白名单（如 allow_chats）：非空字符串数组，去重保序，单个 ≤64 且无空白/控制字符."""
+    if not isinstance(v, list):
+        raise ValueError(f"{name} 必须是数组（一行一个群 chat_id）")
+    if len(v) > 200:
+        raise ValueError(f"{name} 最多 200 个")
+    out: list[str] = []
+    for item in v:
+        if not isinstance(item, str) or not item or len(item) > 64:
+            raise ValueError(f"{name} 每项必须是 1~64 字符的字符串 chat_id")
+        if item != item.strip() or any(c.isspace() or ord(c) < 32 for c in item):
+            raise ValueError(f"{name} 含空白或控制字符: {item!r}")
+        if item not in out:
+            out.append(item)
+    return out
+
+
 _STREAMING_SCALARS: dict[str, str] = {
     "enabled": "bool",
     "content_lang": "lang",
@@ -175,6 +192,7 @@ _DISPLAY_KEYS: dict[str, str] = {
     "unified_panel_min_duration": "dur600",
     "context_display_mode": "context",
 }
+_GATEWAY_KEYS = {"enabled": "bool", "allow_chats": "chatlist"}
 
 
 def _validate_scalar(v: Any, name: str, kind: str) -> Any:
@@ -188,6 +206,8 @@ def _validate_scalar(v: Any, name: str, kind: str) -> Any:
         return _expect_choice(v, name, _CONTEXT_MODES)
     if kind == "chat_types":
         return _validate_chat_types(v, name)
+    if kind == "chatlist":
+        return _validate_chat_list(v, name)
     if kind == "fields":
         return _validate_fields(v, name)
     if kind == "textsize":
@@ -230,7 +250,7 @@ def validate_payload(payload: Any) -> dict[str, Any]:
     """校验 POST /api/config 或预览 overrides — 返回仅含受管键的规范化结构."""
     if not isinstance(payload, dict):
         raise ValueError("payload 必须是对象")
-    unknown = set(payload) - {"streaming", "display"}
+    unknown = set(payload) - {"streaming", "display", "gateway"}
     if unknown:
         raise ValueError(f"未知顶层字段: {', '.join(sorted(unknown))}")
 
@@ -244,8 +264,11 @@ def validate_payload(payload: Any) -> dict[str, Any]:
     display = _validate_section(payload, "display", _DISPLAY_KEYS)
     if display:
         result["display"] = display
+    gateway = _validate_section(payload, "gateway", {"group_security_boundary": _GATEWAY_KEYS})
+    if gateway:
+        result["gateway"] = gateway
     if not result:
-        raise ValueError("payload 至少要包含 streaming 或 display 段")
+        raise ValueError("payload 至少要包含 streaming、display 或 gateway 段")
     return result
 
 
@@ -363,6 +386,29 @@ def merge_managed(base: dict[str, Any], validated: dict[str, Any]) -> tuple[dict
             path = f"display.platforms.feishu.{key}"
             if _track(path, feishu.get(key, _MISSING), key in feishu, value):
                 feishu[key] = value
+
+    if "gateway" in validated:
+        gw_raw = out.get("gateway")
+        if gw_raw is None:
+            gw: dict[str, Any] = {}
+            out["gateway"] = gw
+        elif isinstance(gw_raw, dict):
+            gw = gw_raw
+        else:
+            raise ConfigReadError("gateway 段不是映射，拒绝写入")
+        for section, sub in validated["gateway"].items():
+            sub_raw = gw.get(section)
+            if sub_raw is None:
+                subd: dict[str, Any] = {}
+                gw[section] = subd
+            elif isinstance(sub_raw, dict):
+                subd = sub_raw
+            else:
+                raise ConfigReadError(f"gateway.{section} 不是映射，拒绝写入")
+            for k2, v2 in sub.items():
+                path = f"gateway.{section}.{k2}"
+                if _track(path, subd.get(k2, _MISSING), k2 in subd, v2):
+                    subd[k2] = v2
 
     return out, changed
 
@@ -622,7 +668,13 @@ def collect_state(home: Path | None = None) -> dict[str, Any]:
         "unified_panel_min_duration": cfg.unified_panel_min_duration,
         "context_display_mode": cfg.context_display_mode,
     }
-    return {"streaming": streaming, "display": display, "status": _collect_status(home)}
+    gateway = {"group_security_boundary": cfg.group_security_boundary}
+    return {
+        "streaming": streaming,
+        "display": display,
+        "gateway": gateway,
+        "status": _collect_status(home),
+    }
 
 
 # ---------------------------------------------------------------------------

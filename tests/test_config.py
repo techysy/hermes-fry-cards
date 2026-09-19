@@ -544,3 +544,37 @@ class TestModelAliasesFile:
         cfg = Config(home=tmp_path)
         (tmp_path / "model_aliases.json").write_text(json.dumps({"MIMO": "小虾米"}), encoding="utf-8")
         assert cfg.model_aliases() == {"mimo": "小虾米"}
+
+
+class TestGroupSecurityBoundaryProperty:
+    def test_defaults(self, tmp_path: Path) -> None:
+        assert Config(home=tmp_path).group_security_boundary == {"enabled": False, "allow_chats": []}
+
+    def test_reads_and_cleans(self, tmp_path: Path) -> None:
+        conf = tmp_path / "config.yaml"
+        conf.write_text(
+            "gateway:\n"
+            "  group_security_boundary:\n"
+            "    enabled: true\n"
+            "    allow_chats: ['oc_ok', 123, '', '  oc_pad  ', null]\n"
+            "    text: CUSTOM\n",
+            encoding="utf-8",
+        )
+        gsb = Config(home=tmp_path).group_security_boundary
+        assert gsb["enabled"] is True
+        assert gsb["allow_chats"] == ["oc_ok", "oc_pad"]  # 非法项剔除、空白裁剪
+        # text 不在返回结构里（Studio 白名单不写它，但文件里保留）
+        assert "text" not in gsb
+        assert "text" in conf.read_text(encoding="utf-8")
+
+    def test_gateway_not_dict_falls_back(self, tmp_path: Path) -> None:
+        (tmp_path / "config.yaml").write_text("gateway: broken\n", encoding="utf-8")
+        assert Config(home=tmp_path).group_security_boundary == {"enabled": False, "allow_chats": []}
+
+    def test_non_list_allow_chats_falls_back(self, tmp_path: Path) -> None:
+        (tmp_path / "config.yaml").write_text(
+            "gateway:\n  group_security_boundary:\n    enabled: true\n    allow_chats: oops\n",
+            encoding="utf-8",
+        )
+        gsb = Config(home=tmp_path).group_security_boundary
+        assert gsb == {"enabled": True, "allow_chats": []}

@@ -506,3 +506,80 @@ class TestAliasesEndpoint:
         assert conf["display"]["platforms"]["feishu"]["model_aliases_enabled"] is False
         _post_ok(server, "/api/config", {"display": {"model_aliases_enabled": True}})
         assert _get_json(server, "/api/state")["display"]["model_aliases_enabled"] is True
+
+
+# ---------------------------------------------------------------------------
+# HTTP：群聊安全边界（gateway.group_security_boundary）
+# ---------------------------------------------------------------------------
+
+
+class TestGroupSecurityBoundary:
+    def test_state_default(self, server: str) -> None:
+        state = _get_json(server, "/api/state")
+        gsb = state["gateway"]["group_security_boundary"]
+        assert gsb == {"enabled": False, "allow_chats": []}
+
+    def test_enable_and_roundtrip_with_dedupe(self, server: str, home: Path) -> None:
+        payload = {
+            "gateway": {
+                "group_security_boundary": {"enabled": True, "allow_chats": ["oc_dev1", "oc_dev1", "oc_team2"]}
+            }
+        }
+        data = _post_ok(server, "/api/config", payload)
+        assert "gateway.group_security_boundary.enabled" in data["changed"]
+        gsb = _get_json(server, "/api/state")["gateway"]["group_security_boundary"]
+        assert gsb == {"enabled": True, "allow_chats": ["oc_dev1", "oc_team2"]}
+        conf = yaml.safe_load((home / "config.yaml").read_text(encoding="utf-8"))
+        assert conf["gateway"]["group_security_boundary"]["enabled"] is True
+
+    def test_sibling_gateway_keys_and_custom_text_preserved(self, server: str, home: Path) -> None:
+        # 预置 gateway 段：兄弟键 + 未纳管的自定义 text 必须在保存后存活
+        (home / "config.yaml").write_text(
+            "gateway:\n"
+            "  other_gw_key: 42\n"
+            "  group_security_boundary:\n"
+            "    enabled: false\n"
+            "    text: CUSTOM-BOUNDARY-TEXT\n",
+            encoding="utf-8",
+        )
+        _post_ok(
+            server,
+            "/api/config",
+            {"gateway": {"group_security_boundary": {"enabled": True, "allow_chats": ["oc_x"]}}},
+        )
+        conf = yaml.safe_load((home / "config.yaml").read_text(encoding="utf-8"))
+        gw = conf["gateway"]
+        assert gw["other_gw_key"] == 42  # 兄弟键存活
+        assert gw["group_security_boundary"]["text"] == "CUSTOM-BOUNDARY-TEXT"  # 未纳管键存活
+        assert gw["group_security_boundary"]["enabled"] is True
+        assert gw["group_security_boundary"]["allow_chats"] == ["oc_x"]
+
+    @pytest.mark.parametrize(
+        "gsb",
+        [
+            {"allow_chats": "oc_x"},  # 非数组
+            {"allow_chats": ["has space"]},  # 含空白
+            {"allow_chats": [""]},  # 空串
+            {"allow_chats": ["x" * 65]},  # 超长
+            {"allow_chats": [123]},  # 非字符串
+            {"bogus": True},  # 未知字段
+            {"enabled": "yes"},  # 非布尔
+        ],
+    )
+    def test_invalid_gsb_rejected_untouched(self, server: str, home: Path, gsb: dict) -> None:
+        before = (home / "config.yaml").read_bytes()
+        code, body, _ = _req(server, "/api/config", {"gateway": {"group_security_boundary": gsb}})
+        assert code == 400, body
+        assert (home / "config.yaml").read_bytes() == before
+
+    def test_unknown_gateway_section_rejected(self, server: str) -> None:
+        code, _, _ = _req(server, "/api/config", {"gateway": {"other_section": {}}})
+        assert code == 400
+
+    def test_gsb_shape_mismatch_refused_409(self, server: str, home: Path) -> None:
+        (home / "config.yaml").write_text("gateway:\n  group_security_boundary: broken\n", encoding="utf-8")
+        code, body, _ = _req(
+            server, "/api/config", {"gateway": {"group_security_boundary": {"enabled": True}}}
+        )
+        assert code == 409
+        assert json.loads(body)["ok"] is False

@@ -111,6 +111,21 @@
             </div>
           </div>
         </fieldset>
+
+        <fieldset>
+          <legend>🛡️ 群聊安全边界（modular Hermes 0.21+）</legend>
+          <label class="row"><span class="lbl">启用（群聊回复套输出边界，私聊 DM 不受影响）</span><input type="checkbox" id="f-gsb-enabled"></label>
+          <div class="row col">
+            <span class="lbl">豁免群白名单（一行一个 chat_id，oc_xxx；填入的群不套边界）</span>
+            <textarea id="f-gsb-allow" class="gsb-allow" rows="3" placeholder="oc_xxxxxxxxxxxxxxxx"></textarea>
+          </div>
+          <div class="hint" style="margin-bottom: 0;">
+            开启后群聊回复将被约束：<b>不透露 API key / 密码 / 令牌 / 内网 IP / 凭据 / 私人信息</b>，
+            被群友索要时婉拒并引导私聊。边界走每轮 ephemeral prompt 注入（不碰持久 system prompt），
+            hook 逻辑在插件内，<code>hermes update</code> 不会覆盖；改完下一条消息生效，必要时
+            <code>hermes gateway restart</code>。豁免群适合多 Agent 协作群。详见 README「群聊安全边界」。
+          </div>
+        </fieldset>
       </div>
       <div class="actions">
         <button type="button" class="btn ghost" id="btn-reload">放弃修改，重新读取</button>
