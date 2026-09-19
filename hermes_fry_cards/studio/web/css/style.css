@@ -227,7 +227,9 @@ details.cp .cp-children { margin-top: 8px; }
   padding: 8px; background: #fff;
   font-size: 13px;
 }
-.rule-days { display: flex; gap: 4px; }
+.rule-days { display: flex; gap: 4px; align-items: center; }
+.day-presets { margin-left: auto; display: flex; gap: 4px; }
+.day-preset { font-size: 11px; padding: 3px 8px; height: 24px; }
 .rule-time-row { display: flex; gap: 6px; align-items: center; min-width: 0; }
 .alias-rule input[type="time"] {
   flex: 1; min-width: 0; width: auto;

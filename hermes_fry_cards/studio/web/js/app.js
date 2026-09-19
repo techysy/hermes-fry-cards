@@ -370,6 +370,10 @@
       var rulesHtml = "";
       if (isObj) {
         var rules = entry.value.timeAliases || [];
+        var sameDays = function (days, preset) {
+          var cur = days == null ? [0, 1, 2, 3, 4, 5, 6] : days;
+          return cur.length === preset.length && preset.every(function (d) { return cur.indexOf(d) >= 0; });
+        };
         var rulesInner = rules
           .map(function (rule, ri) {
             var days = rule.days == null ? [0, 1, 2, 3, 4, 5, 6] : rule.days;
@@ -377,10 +381,15 @@
               var on = days.indexOf(di) >= 0 ? " on" : "";
               return '<button type="button" class="chip day-chip' + on + '" data-day="' + di + '">' + lab + "</button>";
             }).join("");
-            // 两段式：星期一行 / 时间+名称一行——窄列（三列布局）下不再随机换行
+            var presets =
+              '<span class="day-presets">' +
+              '<button type="button" class="chip day-preset' + (sameDays(days, [1, 2, 3, 4, 5]) ? " on" : "") + '" data-mode="work">工作日</button>' +
+              '<button type="button" class="chip day-preset' + (sameDays(days, [0, 6]) ? " on" : "") + '" data-mode="weekend">周末</button>' +
+              "</span>";
+            // 两段式：星期一行（含快捷选择）/ 时间+名称一行——窄列（三列布局）下不再随机换行
             return (
               '<div class="alias-rule" data-r="' + ri + '">' +
-              '<div class="rule-days">' + dayChips + "</div>" +
+              '<div class="rule-days">' + dayChips + presets + "</div>" +
               '<div class="rule-time-row">' +
               '<input type="time" class="rule-start" value="' + (rule.start || "") + '">' +
               "<span>–</span>" +
@@ -392,12 +401,13 @@
             );
           })
           .join("");
+        // 兜底默认名放底部（以上规则都不命中时生效）
         rulesHtml =
           '<div class="alias-rules">' +
-          '<div class="alias-default-row"><span>其他时间：</span>' +
-          '<input type="text" class="alias-default-name" placeholder="默认显示名（规则都不命中时）" value="' + escAttr(nameVal) + '"></div>' +
           rulesInner +
           '<div><button type="button" class="chip add-rule">＋ 时段规则</button></div>' +
+          '<div class="alias-default-row"><span>其他时间（以上规则都不命中时）：</span>' +
+          '<input type="text" class="alias-default-name" placeholder="默认显示名" value="' + escAttr(nameVal) + '"></div>' +
           "</div>";
       }
       div.innerHTML =
@@ -498,6 +508,11 @@
         cur.sort();
       }
       rule.days = cur;
+      renderAliasRows();
+      return;
+    }
+    if (t.classList.contains("day-preset")) {
+      rules[ri].days = t.dataset.mode === "work" ? [1, 2, 3, 4, 5] : [0, 6];
       renderAliasRows();
     }
   });
