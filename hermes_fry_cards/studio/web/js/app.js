@@ -377,9 +377,10 @@
         var rulesInner = rules
           .map(function (rule, ri) {
             var days = rule.days == null ? [0, 1, 2, 3, 4, 5, 6] : rule.days;
-            var dayChips = DAY_LABELS.map(function (lab, di) {
+            // 中文习惯周一开始显示；底层数据仍 0=周日（claw 兼容），仅展示顺序调整
+            var dayChips = [1, 2, 3, 4, 5, 6, 0].map(function (di) {
               var on = days.indexOf(di) >= 0 ? " on" : "";
-              return '<button type="button" class="chip day-chip' + on + '" data-day="' + di + '">' + lab + "</button>";
+              return '<button type="button" class="chip day-chip' + on + '" data-day="' + di + '">' + DAY_LABELS[di] + "</button>";
             }).join("");
             var presets =
               '<span class="day-presets">' +
