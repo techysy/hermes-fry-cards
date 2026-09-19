@@ -22,9 +22,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **内容层文案双语支持**：正文内嵌提示语（表格转换引导、两条截断提示）纳入 `i18n.py` 词条表，
   新增 `streaming.content_lang`（`zh`/`en`，默认 `zh`）构建时选取——UI 词条走 `i18n_content` 双语 dict
   由飞书客户端按 locale 渲染，markdown 正文只接受纯字符串无法如此，故按部署方偏好定死（需重启网关生效）。
+- **Studio 可视化配置工作坊**（`python -m hermes_fry_cards studio`，借鉴 [aiduPOP](https://github.com/monkey2jack/aiduPOP) studio）—
+  纯 stdlib `http.server` + 原生前端，三页签：**配置**（白名单键表单编辑，按「流式卡片 / **统一面板**
+  ——模型·推理·工具·上下文全套开关** / Header / Footer」分组——Footer 组置尾并提示「一般不开启，元数据
+  由统一面板承载」；含多行 footer 字段保护与异常值原样回传）/ **预览**（服务端调**真实 builder** 渲染，与线上卡片同一代码路径——快捷回复 / 工作流
+  交错 / 多表格压缩 / 超长截断 × 流式·完成·出错态；overrides 只作用于渲染不落盘）/ **状态**（hook 注入
+  markers、cron/clarify、三目标 verify 兼容性、凭据、一键重启网关）。
+  写回安全五件套：严格校验 400 / 解析失败拒写 409（保护凭证）/ 写前备份轮转 20 份 / 白名单深合并
+  （手写键存活）/ tmp+fsync+rename 原子落盘；安全面仅 loopback、Host 门防 DNS rebinding、无 CORS、
+  body ≤1MB（413 有界排空防客户端写端 RST）、`nosniff`。
+  ⚠️ 保存重写 config.yaml 会丢 YAML 注释（UI 显著提示）；`display.*` 展示类键保存免重启。
+
+### 修复 / Fixed（Studio 真机走查）
+- **preview.js 写入缺失**导致 `app.js` 因 `window.FryPreview` 未定义整体挂掉（表单不填充、页签无响应）——补文件 + 新增全资源可达性测试。
+- **setVal 对 number input 误走 `<select>.options 分支**崩溃（`Array.prototype.forEach called on null`），表单填充死在 header 阈值行。
+- **CB0 代码围栏占位符**被 `trim()` 吃掉两端空格后正则失配，代码块泄漏 ` CB0 ` 文本——改 trim 后匹配。
 
 ### 测试 / Tests
-- 新增 `tests/test_md_guard.py` 20 用例（扫描器/压缩/钳制/错误码/文案语言）+ `content_lang` 配置 5 用例；全量 **571 passed**（Windows 本地，另 2 例 Win 路径断言差异为存量）。
+- 新增 `tests/test_md_guard.py` 20 用例（扫描器/压缩/钳制/错误码/文案语言）+ `content_lang` 配置 5 用例
+  + `tests/test_studio.py` 60 用例（校验/拒写/备份/白名单/Host 门/路径穿越/1MB 上限/预览/静态资源可达性）。
+  本地全量 **631 passed**（Windows，另 2 例 Win 路径断言差异为存量）；容器 Hermes v0.21.3 全量
+  **651 passed** + Studio 服务冒烟（静态 4×200 / state / preview schema 2.0 / 外来 Host → 403）。
 
 ---
 

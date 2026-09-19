@@ -15,6 +15,7 @@ $HERMES_PYTHON -m hermes_fry_cards install    # Inject hooks into run.py and cro
 $HERMES_PYTHON -m hermes_fry_cards uninstall  # Remove hooks
 $HERMES_PYTHON -m hermes_fry_cards restore    # Restore from .hermes_lark.bak backup
 $HERMES_PYTHON -m hermes_fry_cards status     # Show patch status
+$HERMES_PYTHON -m hermes_fry_cards studio     # Visual config studio (127.0.0.1:8765)
 
 # Install for development
 $HERMES_PYTHON -m pip install -e .
@@ -100,6 +101,11 @@ Card templates (cardkit/)
   │   └─ build_background_card — static card for background task delivery
   ├─ markdown.py — CardKit markdown normalization and table/image helpers
   └─ i18n.py — localized CardKit labels
+
+Studio (studio/ — visual config workbench, stdlib http.server + native JS only)
+  ├─ server.py — whitelist validation / refuse-write (409) / backup rotation / atomic merge;
+  │              real-builder preview (4 scenarios × streaming/completed/error); structured status collect
+  └─ web/ — index.html + style.css + preview.js (CardKit JSON→DOM renderer) + app.js (form/status/save)
 ```
 
 ## Key Constraints

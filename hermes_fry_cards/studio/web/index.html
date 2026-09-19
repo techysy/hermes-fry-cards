@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>🍟 fry-cards Studio</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">🍟 hermes-fry-cards <span class="brand-sub">Studio</span></div>
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-tab="config">配置</button>
+    <button class="tab" data-tab="preview">预览</button>
+    <button class="tab" data-tab="status">状态</button>
+  </nav>
+  <div class="topbar-right"><a href="https://github.com/techysy/hermes-fry-cards" target="_blank" rel="noreferrer">GitHub ↗</a></div>
+</header>
+
+<main>
+  <!-- ================= 配置 ================= -->
+  <section class="panel active" data-panel="config">
+    <div class="hint warn">
+      ⚠️ 保存会<strong>重写整个 config.yaml（YAML 注释会丢失）</strong>；写前自动备份到
+      <code>~/.hermes/backups/fry_studio/</code>（保留 20 份）。
+      只写白名单键，你手写的其他配置原样保留。保存后需 <code>hermes gateway restart</code> 生效。
+    </div>
+    <form id="config-form">
+      <div class="grid">
+        <fieldset>
+          <legend>流式卡片</legend>
+          <label class="row"><span class="lbl">启用流式卡片</span><input type="checkbox" id="f-enabled"></label>
+          <label class="row"><span class="lbl">卡片宽度 width_mode</span>
+            <select id="f-width"><option value="default">default</option><option value="compact">compact</option><option value="fill">fill</option></select>
+          </label>
+          <label class="row"><span class="lbl">内容提示语语言</span>
+            <select id="f-content-lang"><option value="zh">zh（中文）</option><option value="en">en（English）</option></select>
+          </label>
+          <label class="row"><span class="lbl">发卡片的聊天类型</span>
+            <select id="f-chat-types">
+              <option value="all">全部类型</option>
+              <option value="dm">仅私聊 dm</option>
+              <option value="group">仅群聊 group</option>
+            </select>
+          </label>
+          <label class="row"><span class="lbl">正文文字大小</span>
+            <select id="f-body-text-size"><option value="normal_v2">normal_v2</option><option value="normal">normal</option><option value="notation">notation（小）</option></select>
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>统一面板（模型 · 推理 · 工具 · 上下文）</legend>
+          <label class="row"><span class="lbl">完成态面板保持展开</span><input type="checkbox" id="f-panel-expanded"></label>
+          <label class="row"><span class="lbl">展示推理过程</span><input type="checkbox" id="f-show-reasoning"></label>
+          <label class="row"><span class="lbl">展示工具调用面板</span><input type="checkbox" id="f-show-tool-use"></label>
+          <label class="row"><span class="lbl">面板 header 显示上下文</span><input type="checkbox" id="f-show-context"></label>
+          <label class="row"><span class="lbl">上下文显示格式</span>
+            <select id="f-context-mode">
+              <option value="text">text</option><option value="bar">bar</option>
+              <option value="text_bar">text_bar</option><option value="block">block</option>
+              <option value="block_text">block_text</option>
+            </select>
+          </label>
+          <label class="row"><span class="lbl">最多独立推理面板数（1~50）</span>
+            <input type="number" id="f-max-panels" min="1" max="50" step="1">
+          </label>
+          <label class="row"><span class="lbl">面板最小耗时阈值（秒，短回复不显示）</span>
+            <input type="number" id="f-unified-min-duration" min="0" max="600" step="0.5">
+          </label>
+          <label class="row"><span class="lbl">面板 header 截断长模型名</span><input type="checkbox" id="f-truncate-model"></label>
+        </fieldset>
+
+        <fieldset>
+          <legend>顶部状态栏 Header</legend>
+          <label class="row"><span class="lbl">显示 header</span><input type="checkbox" id="f-header-enabled"></label>
+          <label class="row"><span class="lbl">快捷回复去标题阈值（秒，0=始终显示）</span>
+            <input type="number" id="f-header-min-duration" min="0" max="86400" step="0.5">
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>底部元数据栏 Footer</legend>
+          <div class="hint" style="margin-bottom: 8px;">ℹ️ 一般不开启：模型 / 耗时 / 上下文等元数据由「统一面板」承载。</div>
+          <label class="row"><span class="lbl">显示 footer</span><input type="checkbox" id="f-footer-enabled"></label>
+          <label class="row"><span class="lbl">显示字段标签</span><input type="checkbox" id="f-footer-show-label"></label>
+          <label class="row"><span class="lbl">文字大小</span>
+            <select id="f-footer-text-size"><option value="notation">notation（小）</option><option value="normal">normal</option></select>
+          </label>
+          <div class="row col"><span class="lbl">字段（点击选择，单行）</span>
+            <div class="chips" id="f-footer-fields">
+              <button type="button" class="chip" data-field="status">状态</button>
+              <button type="button" class="chip" data-field="elapsed">耗时</button>
+              <button type="button" class="chip" data-field="model">模型</button>
+              <button type="button" class="chip" data-field="tokens">Tokens</button>
+              <button type="button" class="chip" data-field="context">上下文</button>
+            </div>
+            <span class="lbl" id="fields-note" hidden>当前为多行字段配置：保存时原样保留，UI 不可编辑。</span>
+          </div>
+        </fieldset>
+      </div>
+      <div class="actions">
+        <button type="button" class="btn ghost" id="btn-reload">放弃修改，重新读取</button>
+        <button type="submit" class="btn primary" id="btn-save">保存配置</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- ================= 预览 ================= -->
+  <section class="panel" data-panel="preview">
+    <div class="hint">
+      服务端用<strong>真实 builder</strong> 渲染（与线上卡片同一代码路径），非前端模拟。
+      未保存的表单改动不会参与渲染；统一面板阈值等深层项以<strong>已保存配置</strong>为准。
+    </div>
+    <div class="preview-controls">
+      <label>场景
+        <select id="p-scenario">
+          <option value="workflow">工作流交错（思考+工具+答案）</option>
+          <option value="short">快捷回复（短耗时）</option>
+          <option value="tables">多表格压力（第6张起压缩）</option>
+          <option value="longtext">超长文本（18KB 截断）</option>
+        </select>
+      </label>
+      <label>状态
+        <select id="p-state"><option value="completed">完成态</option><option value="streaming">流式中</option></select>
+      </label>
+      <label>结果
+        <select id="p-outcome"><option value="completed">✅ 完成</option><option value="error">❌ 出错</option><option value="aborted">🛑 中止</option></select>
+      </label>
+      <button type="button" class="btn primary" id="btn-render">渲染预览</button>
+    </div>
+    <div id="preview-mount" class="preview-mount"><div class="preview-empty">点击「渲染预览」查看卡片</div></div>
+  </section>
+
+  <!-- ================= 状态 ================= -->
+  <section class="panel" data-panel="status">
+    <div class="actions">
+      <button type="button" class="btn ghost" id="btn-refresh-status">刷新</button>
+      <button type="button" class="btn danger" id="btn-restart">重启网关</button>
+    </div>
+    <div id="status-mount"><div class="preview-empty">加载中…</div></div>
+  </section>
+</main>
+
+<div id="toast" class="toast" hidden></div>
+<script src="/js/preview.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>

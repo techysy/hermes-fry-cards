@@ -21,6 +21,8 @@ def main() -> int:
         return 0
 
     cmd = args[0]
+    if cmd == "studio":
+        return _cmd_studio(args[1:])
     commands = _commands()
     handler = commands.get(cmd)
     if handler is not None:
@@ -29,6 +31,44 @@ def main() -> int:
     print(f"Unknown command: {cmd}")
     _print_usage()
     return 1
+
+
+def _cmd_studio(argv: list[str]) -> int:
+    """启动可视化配置工作坊（stdlib HTTP，默认 127.0.0.1:8765）."""
+    host = "127.0.0.1"
+    port = 8765
+    open_browser = True
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg in ("-h", "--help"):
+            print("Usage: python -m hermes_fry_cards studio [--host HOST] [--port PORT] [--no-browser]")
+            return 0
+        if arg == "--host" and i + 1 < len(argv):
+            host = argv[i + 1]
+            i += 2
+            continue
+        if arg == "--port" and i + 1 < len(argv):
+            try:
+                port = int(argv[i + 1])
+            except ValueError:
+                print(f"Invalid port: {argv[i + 1]}")
+                return 1
+            if not 0 <= port <= 65535:
+                print(f"Port out of range: {port}")
+                return 1
+            i += 2
+            continue
+        if arg == "--no-browser":
+            open_browser = False
+            i += 1
+            continue
+        print(f"Unknown studio option: {arg}")
+        print("Usage: python -m hermes_fry_cards studio [--host HOST] [--port PORT] [--no-browser]")
+        return 1
+    from .studio.server import run_studio_server
+
+    return run_studio_server(host, port, open_browser=open_browser)
 
 
 def _commands() -> dict[str, Callable[[], int]]:
@@ -50,6 +90,7 @@ def _print_usage() -> None:
     print("  restore    Restore from backup")
     print("  status     Show current patch status")
     print("  verify     Verify compatibility without patching")
+    print("  studio     Launch visual config studio (http://127.0.0.1:8765)")
 
 
 def _get_patcher() -> Patcher | None:
@@ -218,7 +259,7 @@ def _cmd_status() -> int:
     # Match the Hermes gateway launcher, which loads profile credentials from
     # ``$HERMES_HOME/.env`` before constructing adapters.  A bare plugin CLI
     # process otherwise reports valid persisted credentials as missing.
-    from dotenv import load_dotenv
+    from dotenv import load_dotenv  # type: ignore[import-not-found]
 
     from .config import Config, hermes_home
 

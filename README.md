@@ -181,6 +181,31 @@ display:
 
 ![A minimal chat card on a pale gray background with a circular profile image on the left. The status line reads 回复 余师评：那不是什么 是高清背景图, with a green checkmark and the label 已完成 above the assistant response. The message body is in Chinese and discusses a background image, with a highlighted sentence mentioning LICENCE and repo-audit-fix. The overall tone is calm and professional, with soft green styling and a clean messaging layout.](assets/quick_reply.png)
 
+## 🎛️ Studio 可视化配置工作坊
+
+本地 Web UI 调卡片配置 + 实时预览 + 状态诊断。零第三方依赖（纯 stdlib `http.server` + 原生 HTML/CSS/JS）：
+
+```bash
+$HERMES_PYTHON -m hermes_fry_cards studio                 # 默认 http://127.0.0.1:8765，自动开浏览器
+$HERMES_PYTHON -m hermes_fry_cards studio --port 9000 --no-browser
+```
+
+| 页签 | 能力 |
+|------|------|
+| **配置** | 流式开关 / **统一面板**（模型·推理·工具·上下文的全套开关，元数据默认由它承载）/ header / footer 等**白名单键**的表单化编辑 |
+| **预览** | 服务端**真实 builder** 渲染（与线上卡片同一代码路径，非前端模拟）：快捷回复 / 工作流交错 / 多表格压缩 / 超长截断 四场景 × 流式·完成·出错态 |
+| **状态** | hook 注入状态、verify 兼容性、飞书凭据、Hermes 环境一览 + 一键重启网关 |
+
+**写回安全五件套**：服务端严格校验（未知键/非法值 → 400）→ config.yaml 解析失败即拒写（409，保护凭证）→
+写前自动备份（`~/.hermes/backups/fry_studio/`，轮转保留 20 份）→ 只深合并白名单键（手写配置原样保留）→
+原子落盘（tmp + fsync + rename）。安全面：仅监听 `127.0.0.1`、Host 门防 DNS rebinding、无 CORS 头、
+body ≤1MB、`nosniff`。
+
+> ⚠️ 保存会重写整个 config.yaml，**YAML 注释会丢失**（UI 有显著提示）；结构类配置保存后仍需
+> `hermes gateway restart`（见下方热更新说明）。`display.*` 展示类键保存后免重启即时生效。
+
+---
+
 ## 🛡️ 群聊安全边界（modular Hermes 0.21+）
 
 群友 @ bot 时，回复默认会带输出边界：**不透露 API key / 密码 / 令牌 / 服务器内网 IP / 凭据 /
@@ -214,6 +239,7 @@ $HERMES_PYTHON -m hermes_fry_cards verify     # 验证兼容性
 $HERMES_PYTHON -m hermes_fry_cards install    # 注入 hook
 $HERMES_PYTHON -m hermes_fry_cards uninstall  # 移除 hook
 $HERMES_PYTHON -m hermes_fry_cards status     # 查看状态
+$HERMES_PYTHON -m hermes_fry_cards studio     # 可视化配置工作坊（127.0.0.1:8765）
 ```
 
 ---
@@ -289,7 +315,7 @@ $HERMES_PYTHON -m pip uninstall hermes-fry-cards
 
 ### ✅ 支持热更新（改 config.yaml 后下一条消息即生效）
 
-以下 `display` 显示 / 样式类配置项，每次渲染都会从磁盘重读，**无需重启**：
+以下 `display` 显示 / 样式类配置项，每次渲染都会从磁盘重读，**无需重启**（通过 Studio 保存这些键同样免重启）：
 
 | 配置项 | 说明 |
 |--------|------|
