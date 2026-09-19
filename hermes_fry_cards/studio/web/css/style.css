@@ -59,6 +59,12 @@ main { max-width: 960px; margin: 20px auto 60px; padding: 0 16px; }
 /* ---------- 表单 ---------- */
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+/* 宽屏：容器加宽 + 配置表单 3 列（5 组 → 3+2 排布）——必须在 .grid 基础规则之后，否则被级联覆盖 */
+@media (min-width: 1280px) {
+  main { max-width: 1380px; }
+  .grid { grid-template-columns: repeat(3, 1fr); }
+  .status-grid { grid-template-columns: repeat(4, 1fr); }
+}
 fieldset {
   border: 1px solid var(--border); border-radius: var(--radius);
   background: var(--card); margin: 0; padding: 14px 16px 16px;
