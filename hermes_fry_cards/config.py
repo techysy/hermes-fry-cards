@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +34,80 @@ def _get_secret(name: str) -> str:
 def _config_path(home: Path | None = None) -> Path:
     """Hermes 主配置路径，支持绑定到指定 profile home."""
     return (home or hermes_home()) / "config.yaml"
+
+
+# ---------------------------------------------------------------------------
+# 模型别名 · 时段人设解析（语义与 openclaw/claw-fry-cards 逐字对齐）
+# ---------------------------------------------------------------------------
+
+_CN_TZ = timezone(timedelta(hours=8))  # 固定北京时间（UTC+8），与宿主机时区无关
+
+
+def _in_time_range(hhmm: str, start: str, end: str) -> bool:
+    """HH:MM 是否在 [start, end) 内（支持跨午夜；缺省/相等 = 全天命中）."""
+    if not start or not end:
+        return True
+    if start == end:
+        return True
+    if start < end:
+        return start <= hhmm < end
+    return hhmm >= start or hhmm < end
+
+
+def _day_matches(day: int, spec: Any) -> bool:
+    """星期是否命中：数组 [1,2,3]（0=周日）或字符串 "1-5"、"0,6"、"1-5,0"；省略 = 每天."""
+    if spec is None:
+        return True
+    if isinstance(spec, (list, tuple)):
+        return day in spec
+    if not isinstance(spec, str):
+        return False
+    for part in spec.split(","):
+        part = part.strip()
+        if "-" in part:
+            try:
+                a_str, z_str = part.split("-", 1)
+                a, z = int(a_str), int(z_str)
+            except ValueError:
+                continue
+            if min(a, z) <= day <= max(a, z):
+                return True
+        else:
+            try:
+                if int(part) == day:
+                    return True
+            except ValueError:
+                continue
+    return False
+
+
+def _resolve_model_alias(entry: Any, now: datetime | None = None) -> str | None:
+    """解析单个别名条目为当前显示名（按北京时间 UTC+8 计算）.
+
+    - 字符串条目：原样返回；
+    - 对象条目 ``{name, timeAliases: [{days, start, end, name}]}``：按插入序取第一条
+      （days + 时间窗）命中的规则名；都不命中回落 ``name``；无名可回落返回 None。
+    """
+    if isinstance(entry, str):
+        return entry
+    if not isinstance(entry, dict):
+        return None
+    shifted = (now or datetime.now(UTC)).astimezone(_CN_TZ)
+    hhmm = shifted.strftime("%H:%M")
+    js_day = (shifted.weekday() + 1) % 7  # Python Mon=0..Sun=6 → JS getDay Sun=0
+    for rule in entry.get("timeAliases") or []:
+        if not isinstance(rule, dict):
+            continue
+        rule_name = rule.get("name")
+        if not rule_name:
+            continue  # 无名规则跳过（与 claw resolveModelAlias 一致）
+        if not _day_matches(js_day, rule.get("days")):
+            continue
+        if not _in_time_range(hhmm, str(rule.get("start") or "00:00"), str(rule.get("end") or "23:59")):
+            continue
+        return str(rule_name)
+    fallback = entry.get("name")
+    return str(fallback) if fallback else None
 
 
 class Config:
@@ -214,14 +289,37 @@ class Config:
         base = home if home is not None else (self._home or hermes_home())
         return base / "model_aliases.json"
 
+    @property
+    def model_aliases_enabled(self) -> bool:
+        """模型别名总开关（display.platforms.feishu.model_aliases_enabled，默认 True）.
+
+        关闭时整体忽略别名、回落 ⇲ 截断（配置本身保留）。每次从磁盘重读（热更新）。
+        """
+        display = self._reload().get("display")
+        if not isinstance(display, dict):
+            return True
+        platforms = display.get("platforms")
+        if isinstance(platforms, dict):
+            feishu = platforms.get("feishu")
+            if isinstance(feishu, dict) and "model_aliases_enabled" in feishu:
+                return bool(feishu["model_aliases_enabled"])
+        return bool(display.get("model_aliases_enabled", True))
+
     def model_aliases(self) -> dict[str, str]:
         """模型别名映射，从 ~/.hermes/model_aliases.json 惰性读取（每次渲染重读，热更新）.
 
-        JSON 格式（key 为模型名子串匹配、大小写不敏感）：
-            {"longcat": "哈基米", "gemini": "哈基米", "kimi-k3": "K3"}
+        JSON 值支持两种形态（与 openclaw/claw-fry-cards 的 modelAliases 配置格式兼容）：
+        - 字符串: ``{"longcat": "哈基米", "mimo": "小虾米"}``
+        - 时段人设对象（北京时间 UTC+8 自动切换，如 DeepSeek 峰谷价）::
 
-        匹配规则：模型名（小写）包含 key 即命中，取 JSON 中首个命中的条目；
-        未命中返回空字符串，调用方回落截断逻辑。
+            {"deepseek": {
+                "name": "梁文谷⚡️",
+                "timeAliases": [
+                    {"days": [1,2,3,4,5], "start": "09:00", "end": "12:00", "name": "梁文锋⚡️"},
+                    {"days": [1,2,3,4,5], "start": "14:00", "end": "18:00", "name": "梁文锋⚡️"}]}}
+
+        匹配规则不变：key 大小写不敏感子串、插入序首中即生效；对象条目读取时解析为
+        当前时段显示名；规则都不命中回落 name；无别名命中回落 ⇲ 截断。
         """
         path = self._aliases_path()
         if not path.exists():
@@ -232,7 +330,12 @@ class Config:
             return {}
         if not isinstance(data, dict):
             return {}
-        return {str(k).lower(): str(v) for k, v in data.items() if v}
+        out: dict[str, str] = {}
+        for k, v in data.items():
+            resolved = _resolve_model_alias(v)
+            if resolved:
+                out[str(k).lower()] = resolved
+        return out
 
     @property
     def context_display_mode(self) -> str:

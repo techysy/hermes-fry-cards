@@ -414,3 +414,95 @@ class TestRestartEndpoint:
         data = _post_ok(server, "/api/restart", {})
         assert data["ok"] is False
         assert "hermes" in data["error"]
+
+
+# ---------------------------------------------------------------------------
+# HTTP：模型别名（时段人设格式兼容 claw-fry-cards）
+# ---------------------------------------------------------------------------
+
+
+class TestAliasesEndpoint:
+    def test_get_missing_file_returns_empty(self, server: str) -> None:
+        data = _get_json(server, "/api/aliases")
+        assert data == {"ok": True, "entries": []}
+
+    def test_roundtrip_string_and_time_entries(self, server: str, home: Path) -> None:
+        # 预置旧别名文件 → 保存后备份的应是原件（首写无文件则无可备份）
+        (home / "model_aliases.json").write_text('{"old": "旧名"}', encoding="utf-8")
+        entries = [
+            {"key": "mimo", "value": "小虾米"},
+            {
+                "key": "deepseek",
+                "value": {
+                    "name": "梁文谷⚡️",
+                    "timeAliases": [
+                        {"days": [1, 2, 3, 4, 5], "start": "09:00", "end": "12:00", "name": "梁文锋⚡️"},
+                        {"days": "1-5,0", "start": "14:00", "end": "18:00", "name": "梁文锋⚡️"},
+                    ],
+                },
+            },
+        ]
+        data = _post_ok(server, "/api/aliases", {"entries": entries})
+        assert data["count"] == 2
+        assert data["keys"] == ["mimo", "deepseek"]
+        raw = json.loads((home / "model_aliases.json").read_text(encoding="utf-8"))
+        assert list(raw) == ["mimo", "deepseek"]  # 插入序保留
+        assert raw["deepseek"]["name"] == "梁文谷⚡️"
+        assert raw["deepseek"]["timeAliases"][1]["days"] == "1-5,0"  # legacy 形态原样保留
+        backups = sorted((home / "backups" / "fry_studio").glob("model_aliases.json.bak_*"))
+        assert len(backups) == 1
+        assert json.loads(backups[0].read_text(encoding="utf-8")) == {"old": "旧名"}  # 备份 = 写前原件
+        back = _get_json(server, "/api/aliases")
+        assert back["entries"] == entries
+
+    def test_clear_all_entries(self, server: str, home: Path) -> None:
+        _post_ok(server, "/api/aliases", {"entries": [{"key": "mimo", "value": "小虾米"}]})
+        data = _post_ok(server, "/api/aliases", {"entries": []})
+        assert data["count"] == 0
+        assert json.loads((home / "model_aliases.json").read_text(encoding="utf-8")) == {}
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {"entries": [{"key": "a", "value": "x"}, {"key": "A", "value": "y"}]},  # 大小写重复
+            {"entries": [{"key": "", "value": "x"}]},  # 空键
+            {"entries": [{"key": " k", "value": "x"}]},  # 首尾空白
+            {"entries": [{"key": "k", "value": 123}]},  # 值类型
+            {"entries": [{"key": "k"}]},  # 缺 value
+            {"entries": [{"k": "k", "value": "x"}]},  # 键名错
+            {"entries": [{"key": "k", "value": {"name": "n", "bogus": 1}}]},  # 对象未知字段
+            {"entries": [{"key": "k", "value": {"timeAliases": [{"days": [1]}]}}]},  # 规则缺 name
+            {"entries": [{"key": "k", "value": {"timeAliases": [{"name": "x", "start": "9:00"}]}}]},  # 非 HH:MM
+            {"entries": [{"key": "k", "value": {"timeAliases": [{"name": "x", "end": "24:00"}]}}]},  # 超界
+            {"entries": [{"key": "k", "value": {"timeAliases": [{"name": "x", "days": [7]}]}}]},  # days 越界
+            {"entries": [{"key": "k", "value": {"timeAliases": [{"name": "x", "days": "8-9"}]}}]},  # legacy days 越界
+            {"entries": "oops"},
+            {"entries": [], "extra": 1},
+        ],
+    )
+    def test_invalid_entries_rejected_untouched(self, server: str, home: Path, payload: dict) -> None:
+        code, body, _ = _req(server, "/api/aliases", payload)
+        assert code == 400, body
+        assert json.loads(body)["ok"] is False
+        assert not (home / "model_aliases.json").exists()  # 一字未写
+
+    def test_unparsable_aliases_file_refused(self, server: str, home: Path) -> None:
+        path = home / "model_aliases.json"
+        path.write_text("{broken", encoding="utf-8")
+        gcode, _gbody, _ = _req(server, "/api/aliases")
+        assert gcode == 409
+        pcode, pbody, _ = _req(server, "/api/aliases", {"entries": [{"key": "k", "value": "v"}]})
+        assert pcode == 409
+        assert json.loads(pbody)["ok"] is False
+        assert path.read_text(encoding="utf-8") == "{broken"
+
+    def test_enabled_switch_in_state_and_config_roundtrip(self, server: str, home: Path) -> None:
+        state = _get_json(server, "/api/state")
+        assert state["display"]["model_aliases_enabled"] is True  # 缺省开
+        _post_ok(server, "/api/config", {"display": {"model_aliases_enabled": False}})
+        state = _get_json(server, "/api/state")
+        assert state["display"]["model_aliases_enabled"] is False
+        conf = yaml.safe_load((home / "config.yaml").read_text(encoding="utf-8"))
+        assert conf["display"]["platforms"]["feishu"]["model_aliases_enabled"] is False
+        _post_ok(server, "/api/config", {"display": {"model_aliases_enabled": True}})
+        assert _get_json(server, "/api/state")["display"]["model_aliases_enabled"] is True

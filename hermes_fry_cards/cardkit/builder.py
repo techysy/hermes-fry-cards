@@ -39,21 +39,22 @@ def _truncate_model(name: str) -> str:
 
 
 def _display_model(name: str) -> str:
-    """模型显示名：别名优先（~/.hermes/model_aliases.json 子串匹配），未命中回落截断逻辑.
+    """模型显示名：别名优先（~/.hermes/model_aliases.json 子串匹配，支持时段人设），未命中回落截断.
 
-    别名文件由 Config().model_aliases() 每次重读（热更新）；命中即返回别名，
-    未命中且 truncate_model_name 开启时走 _truncate_model。
+    别名文件由 Config().model_aliases() 每次重读（热更新）；对象条目读取时按北京时间
+    解析为当前时段显示名。model_aliases_enabled 关闭时整体忽略别名回落截断。
     """
     if not name:
         return name
     from ..config import Config
 
     cfg = Config()
-    aliases = cfg.model_aliases()
-    lowered = name.lower()
-    for key, alias in aliases.items():
-        if key and key in lowered:
-            return alias
+    if cfg.model_aliases_enabled:
+        aliases = cfg.model_aliases()
+        lowered = name.lower()
+        for key, alias in aliases.items():
+            if key and key in lowered:
+                return alias
     if cfg.truncate_model_name:
         return _truncate_model(name)
     return name

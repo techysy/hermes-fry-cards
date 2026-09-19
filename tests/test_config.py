@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import json
 import os
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
 import pytest
 
-from hermes_fry_cards.config import Config
+from hermes_fry_cards.config import Config, _in_time_range, _resolve_model_alias
 
 
 def _make_config(raw: dict[str, Any]) -> Config:
@@ -415,3 +418,129 @@ class TestContentLang:
     def test_streaming_section_not_dict(self) -> None:
         cfg = _make_config({"streaming": "invalid"})
         assert cfg.content_lang == "zh"
+
+
+class TestModelAliasResolution:
+    """时段人设解析 — 语义与 openclaw/claw-fry-cards 逐字对齐（claw 测试同款时间锚点）."""
+
+    # 2026-09-14T04:00Z = 北京时间周一 12:00
+    MONDAY_NOON = datetime(2026, 9, 14, 4, 0, tzinfo=UTC)
+
+    def test_string_entry_passthrough(self) -> None:
+        assert _resolve_model_alias("小虾米", self.MONDAY_NOON) == "小虾米"
+
+    def test_peak_valley_half_open_interval(self) -> None:
+        entry = {
+            "name": "梁文谷⚡️",
+            "timeAliases": [
+                {"days": [1, 2, 3, 4, 5], "start": "09:00", "end": "12:00", "name": "梁文锋⚡️"},
+                {"days": [1, 2, 3, 4, 5], "start": "14:00", "end": "18:00", "name": "梁文锋⚡️"},
+            ],
+        }
+        # 北京 12:00 恰好是 [09:00,12:00) 右开边界 → 回落默认（谷段）
+        assert _resolve_model_alias(entry, self.MONDAY_NOON) == "梁文谷⚡️"
+        # 北京 15:00（UTC 07:00）命中下午峰段
+        now_15 = datetime(2026, 9, 14, 7, 0, tzinfo=UTC)
+        assert _resolve_model_alias(entry, now_15) == "梁文锋⚡️"
+
+    def test_days_array_match_and_miss(self) -> None:
+        entry = {"name": "默认", "timeAliases": [{"days": [1], "name": "周一"}]}
+        assert _resolve_model_alias(entry, self.MONDAY_NOON) == "周一"
+        entry_tue = {"name": "默认", "timeAliases": [{"days": [2], "name": "周二"}]}
+        assert _resolve_model_alias(entry_tue, self.MONDAY_NOON) == "默认"
+
+    def test_legacy_string_range_days(self) -> None:
+        entry = {"name": "默认", "timeAliases": [{"days": "1-5", "start": "11:00", "end": "13:00", "name": "工作日"}]}
+        assert _resolve_model_alias(entry, self.MONDAY_NOON) == "工作日"
+
+    def test_legacy_comma_days(self) -> None:
+        # 北京周一 = JS getDay 1
+        entry = {"name": "默认", "timeAliases": [{"days": "0,6", "name": "周末"}]}
+        assert _resolve_model_alias(entry, self.MONDAY_NOON) == "默认"
+        entry2 = {"name": "默认", "timeAliases": [{"days": "1-5,0", "name": "带周日"}]}
+        assert _resolve_model_alias(entry2, self.MONDAY_NOON) == "带周日"
+
+    def test_cross_midnight_window(self) -> None:
+        entry = {"name": "日", "timeAliases": [{"days": [1], "start": "18:00", "end": "09:00", "name": "夜"}]}
+        # 北京周一 12:00 不在 18:00–09:00 → 回落
+        assert _resolve_model_alias(entry, self.MONDAY_NOON) == "日"
+        # 北京周一 20:00（UTC 12:00）在窗内
+        now_20 = datetime(2026, 9, 14, 12, 0, tzinfo=UTC)
+        assert _resolve_model_alias(entry, now_20) == "夜"
+
+    def test_rule_without_name_skipped(self) -> None:
+        entry = {"name": "默认", "timeAliases": [{"days": [1], "name": ""}, {"days": [1], "name": "有效"}]}
+        assert _resolve_model_alias(entry, self.MONDAY_NOON) == "有效"
+
+    def test_default_missing_returns_none(self) -> None:
+        assert _resolve_model_alias({"timeAliases": [{"days": [0], "name": "周日"}]}, self.MONDAY_NOON) is None
+
+    def test_junk_entry_returns_none(self) -> None:
+        assert _resolve_model_alias(123, self.MONDAY_NOON) is None
+        assert _resolve_model_alias(["x"], self.MONDAY_NOON) is None
+
+    def test_beijing_fixed_regardless_of_host_tz(self) -> None:
+        # 北京周日 10:00 = UTC 周日 02:00；固定 +8 计算，与宿主机时区无关
+        sunday_10_bj = datetime(2026, 9, 13, 2, 0, tzinfo=UTC)
+        entry = {"name": "x", "timeAliases": [{"days": [0], "start": "09:00", "end": "11:00", "name": "周日上午"}]}
+        assert _resolve_model_alias(entry, sunday_10_bj) == "周日上午"
+
+    def test_in_time_range_boundaries(self) -> None:
+        assert _in_time_range("09:00", "09:00", "12:00") is True
+        assert _in_time_range("12:00", "09:00", "12:00") is False
+        assert _in_time_range("12:00", "12:00", "12:00") is True  # 起止相等 = 全天
+        assert _in_time_range("03:00", "18:00", "09:00") is True  # 跨午夜
+        assert _in_time_range("12:00", "18:00", "09:00") is False
+        assert _in_time_range("03:00", "", "") is True
+
+    def test_model_aliases_enabled_default_and_override(self, tmp_path: Path) -> None:
+        # _reload() 每次读磁盘（热更新），故用真实临时 config.yaml 而非内存 _raw
+        assert Config(home=tmp_path).model_aliases_enabled is True
+        conf = tmp_path / "config.yaml"
+        conf.write_text(
+            "display:\n  platforms:\n    feishu:\n      model_aliases_enabled: false\n",
+            encoding="utf-8",
+        )
+        assert Config(home=tmp_path).model_aliases_enabled is False
+        conf.write_text(
+            "display:\n  model_aliases_enabled: false\n"
+            "  platforms:\n    feishu:\n      model_aliases_enabled: true\n",
+            encoding="utf-8",
+        )
+        assert Config(home=tmp_path).model_aliases_enabled is True  # feishu 覆盖优先
+        conf.write_text("display:\n  model_aliases_enabled: false\n", encoding="utf-8")
+        assert Config(home=tmp_path).model_aliases_enabled is False  # 根键回落
+
+
+class TestModelAliasesFile:
+    def test_string_and_object_entries_resolved(self, tmp_path: Path) -> None:
+        cfg = Config(home=tmp_path)
+        (tmp_path / "model_aliases.json").write_text(
+            json.dumps(
+                {
+                    "mimo": "小虾米",
+                    "deepseek": {
+                        "name": "梁文谷⚡️",
+                        "timeAliases": [
+                        {"days": [0, 1, 2, 3, 4, 5, 6], "start": "00:00", "end": "23:59", "name": "梁文锋⚡️"}
+                    ],
+                    },
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        aliases = cfg.model_aliases()
+        assert aliases["mimo"] == "小虾米"
+        # 全天规则命中（除 23:59–24:00 尾分钟外）
+        assert aliases["deepseek"] in ("梁文锋⚡️", "梁文谷⚡️")
+
+    def test_unparsable_file_returns_empty(self, tmp_path: Path) -> None:
+        cfg = Config(home=tmp_path)
+        (tmp_path / "model_aliases.json").write_text("{broken", encoding="utf-8")
+        assert cfg.model_aliases() == {}
+
+    def test_key_lowercased(self, tmp_path: Path) -> None:
+        cfg = Config(home=tmp_path)
+        (tmp_path / "model_aliases.json").write_text(json.dumps({"MIMO": "小虾米"}), encoding="utf-8")
+        assert cfg.model_aliases() == {"mimo": "小虾米"}

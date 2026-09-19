@@ -19,6 +19,7 @@ import contextlib
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import threading
@@ -169,6 +170,7 @@ _DISPLAY_KEYS: dict[str, str] = {
     "show_tool_use": "bool",
     "show_context": "bool",
     "truncate_model_name": "bool",
+    "model_aliases_enabled": "bool",
     "max_reasoning_panels": "panels",
     "unified_panel_min_duration": "dur600",
     "context_display_mode": "context",
@@ -266,14 +268,27 @@ def read_full_config(conf_path: Path) -> dict[str, Any]:
     return raw
 
 
+def read_full_json(path: Path) -> dict[str, Any]:
+    """读取 JSON 配置（model_aliases.json）；读不出/解析失败 → 拒写."""
+    if not path.exists():
+        return {}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as e:
+        raise ConfigReadError(f"{path.name} 读取/解析失败，拒绝写入: {e}") from e
+    if not isinstance(raw, dict):
+        raise ConfigReadError(f"{path.name} 顶层不是映射，拒绝写入")
+    return raw
+
+
 def backup_config(conf_path: Path) -> Path | None:
     if not conf_path.exists():
         return None
     bk_dir = conf_path.parent / "backups" / "fry_studio"
     bk_dir.mkdir(parents=True, exist_ok=True)
-    target = bk_dir / f"config.yaml.bak_{time.time_ns()}"
+    target = bk_dir / f"{conf_path.name}.bak_{time.time_ns()}"
     shutil.copy2(conf_path, target)
-    backups = sorted(bk_dir.glob("config.yaml.bak_*"), key=lambda p: p.name)
+    backups = sorted(bk_dir.glob(f"{conf_path.name}.bak_*"), key=lambda p: p.name)
     for old in backups[:-_BACKUP_KEEP]:
         with contextlib.suppress(OSError):
             old.unlink()
@@ -367,6 +382,125 @@ def write_atomic(conf_path: Path, data: dict[str, Any]) -> None:
         f.flush()
         os.fsync(f.fileno())
     os.replace(tmp, conf_path)
+
+
+# ---------------------------------------------------------------------------
+# 模型别名（model_aliases.json）— 校验 / 读写（时段人设格式兼容 claw-fry-cards）
+# ---------------------------------------------------------------------------
+
+_ALIAS_HHMM_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+_MAX_ALIAS_ENTRIES = 200
+_MAX_TIME_RULES = 16
+
+
+def _validate_alias_key(v: Any, idx: int) -> str:
+    if not isinstance(v, str) or not v or v != v.strip() or len(v) > 64:
+        raise ValueError(f"别名第 {idx + 1} 行的键必须是 1~64 字符且不含首尾空白")
+    if any(ord(c) < 32 for c in v):
+        raise ValueError(f"别名第 {idx + 1} 行的键含控制字符")
+    return v
+
+
+def _validate_alias_name(v: Any, where: str) -> str:
+    if not isinstance(v, str) or not v or len(v) > 64:
+        raise ValueError(f"{where} 名称必须是 1~64 字符字符串")
+    return v
+
+
+def _validate_alias_days(v: Any, where: str) -> Any:
+    if isinstance(v, list):
+        if not v or len(v) > 7:
+            raise ValueError(f"{where} days 数组需 1~7 个星期值")
+        out: list[int] = []
+        for d in v:
+            if not isinstance(d, int) or isinstance(d, bool) or not 0 <= d <= 6:
+                raise ValueError(f"{where} days 数组每项必须是 0~6 的整数（0=周日）")
+            if d not in out:
+                out.append(d)
+        return out
+    if isinstance(v, str):
+        for part in v.split(","):
+            part = part.strip()
+            if "-" in part:
+                a, _, z = part.partition("-")
+                if not (a.isdigit() and z.isdigit() and 0 <= int(a) <= 6 and 0 <= int(z) <= 6):
+                    raise ValueError(f'{where} days 字符串需形如 "1-5"、"0,6"、"1-5,0"')
+            elif not (part.isdigit() and 0 <= int(part) <= 6):
+                raise ValueError(f'{where} days 字符串需形如 "1-5"、"0,6"、"1-5,0"')
+        return v
+    raise ValueError(f"{where} days 必须是数组或字符串")
+
+
+def _validate_alias_entry_value(value: Any, idx: int) -> Any:
+    if isinstance(value, str):
+        return _validate_alias_name(value, f"别名第 {idx + 1} 行")
+    if not isinstance(value, dict):
+        raise ValueError(f"别名第 {idx + 1} 行的值必须是字符串或时段人设对象")
+    unknown = set(value) - {"name", "timeAliases"}
+    if unknown:
+        raise ValueError(f"别名第 {idx + 1} 行对象含未知字段: {', '.join(sorted(unknown))}")
+    name = value.get("name")
+    if name is not None:
+        _validate_alias_name(name, f"别名第 {idx + 1} 行默认名")
+    rules = value.get("timeAliases")
+    if rules is not None and not isinstance(rules, list):
+        raise ValueError(f"别名第 {idx + 1} 行 timeAliases 必须是数组")
+    if rules:
+        if len(rules) > _MAX_TIME_RULES:
+            raise ValueError(f"别名第 {idx + 1} 行时段规则最多 {_MAX_TIME_RULES} 条")
+        cleaned_rules: list[dict[str, Any]] = []
+        for ri, rule in enumerate(rules):
+            where = f"别名第 {idx + 1} 行第 {ri + 1} 条时段规则"
+            if not isinstance(rule, dict):
+                raise ValueError(f"{where} 必须是对象")
+            r_unknown = set(rule) - {"days", "start", "end", "name"}
+            if r_unknown:
+                raise ValueError(f"{where} 含未知字段: {', '.join(sorted(r_unknown))}")
+            r_name = rule.get("name")
+            if not r_name:
+                raise ValueError(f"{where} 缺少 name")
+            _validate_alias_name(r_name, where)
+            cleaned: dict[str, Any] = {"name": r_name}
+            if "days" in rule:
+                cleaned["days"] = _validate_alias_days(rule["days"], where)
+            for tm in ("start", "end"):
+                if tm in rule:
+                    tv = rule[tm]
+                    if not isinstance(tv, str) or not _ALIAS_HHMM_RE.match(tv):
+                        raise ValueError(f"{where} 的 {tm} 必须是 HH:MM（00:00~23:59）")
+                    cleaned[tm] = tv
+            cleaned_rules.append(cleaned)
+        result: dict[str, Any] = dict(value)
+        result["timeAliases"] = cleaned_rules
+        if not result.get("name") and not cleaned_rules:
+            raise ValueError(f"别名第 {idx + 1} 行对象至少需要 name 或 timeAliases")
+        return result
+    if not name:
+        raise ValueError(f"别名第 {idx + 1} 行对象至少需要 name 或 timeAliases")
+    return {"name": name}
+
+
+def validate_alias_entries(payload: Any) -> list[tuple[str, Any]]:
+    """校验 POST /api/aliases — 返回有序 [(key, value), ...]；非法 → ValueError(400)."""
+    if not isinstance(payload, dict) or set(payload) != {"entries"}:
+        raise ValueError("payload 必须是 {\"entries\": [...]}")
+    entries = payload.get("entries")
+    if not isinstance(entries, list):
+        raise ValueError("entries 必须是数组")
+    if len(entries) > _MAX_ALIAS_ENTRIES:
+        raise ValueError(f"别名最多 {_MAX_ALIAS_ENTRIES} 条")
+    out: list[tuple[str, Any]] = []
+    seen: set[str] = set()
+    for idx, item in enumerate(entries):
+        if not isinstance(item, dict) or set(item) != {"key", "value"}:
+            raise ValueError(f"别名第 {idx + 1} 行必须是 {{key, value}} 对象")
+        key = _validate_alias_key(item.get("key"), idx)
+        lk = key.lower()
+        if lk in seen:
+            raise ValueError(f"别名键重复: {key}")
+        seen.add(lk)
+        out.append((key, _validate_alias_entry_value(item.get("value"), idx)))
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -483,6 +617,7 @@ def collect_state(home: Path | None = None) -> dict[str, Any]:
         "show_tool_use": cfg.show_tool_use,
         "show_context": cfg.show_context,
         "truncate_model_name": cfg.truncate_model_name,
+        "model_aliases_enabled": cfg.model_aliases_enabled,
         "max_reasoning_panels": cfg.max_reasoning_panels,
         "unified_panel_min_duration": cfg.unified_panel_min_duration,
         "context_display_mode": cfg.context_display_mode,
@@ -806,8 +941,15 @@ class StudioHandler(BaseHTTPRequestHandler):
                 self._static(path.lstrip("/"))
             elif path == "/api/state":
                 self._json(200, {"ok": True, **collect_state()})
+            elif path == "/api/aliases":
+                home = hermes_home()
+                raw = read_full_json(home / "model_aliases.json")  # 解析失败 → 409
+                entries = [{"key": str(k), "value": v} for k, v in raw.items()]
+                self._json(200, {"ok": True, "entries": entries})
             else:
                 self._err(404, "not found")
+        except ConfigReadError as e:
+            self._err(409, str(e))
         except Exception as e:
             _logger.exception("studio GET failed")
             self._err(500, f"internal error: {e}")
@@ -853,6 +995,8 @@ class StudioHandler(BaseHTTPRequestHandler):
                 self._handle_config(payload)
             elif path == "/api/preview":
                 self._handle_preview(payload)
+            elif path == "/api/aliases":
+                self._handle_aliases(payload)
             elif path == "/api/restart":
                 self._handle_restart(payload)
             else:
@@ -875,6 +1019,23 @@ class StudioHandler(BaseHTTPRequestHandler):
         write_atomic(conf_path, merged)
         _logger.info("studio config written: %s", ", ".join(changed) or "(no change)")
         self._json(200, {"ok": True, "changed": changed})
+
+    def _handle_aliases(self, payload: Any) -> None:
+        validated = validate_alias_entries(payload)
+        home = hermes_home()
+        path = home / "model_aliases.json"
+        read_full_json(path)  # 解析失败 → ConfigReadError(409) 拒写
+        backup_config(path)
+        data = {k: v for k, v in validated}
+        tmp = path.parent / (path.name + ".tmp")
+        with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+            f.write("\n")
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+        _logger.info("studio aliases written: %d entries", len(data))
+        self._json(200, {"ok": True, "count": len(data), "keys": list(data)})
 
     def _handle_preview(self, payload: Any) -> None:
         self._json(200, build_preview(payload))

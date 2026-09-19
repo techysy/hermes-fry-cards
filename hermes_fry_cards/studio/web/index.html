@@ -71,6 +71,18 @@
         </fieldset>
 
         <fieldset>
+          <legend>模型别名（统一面板 header 模型名）</legend>
+          <label class="row"><span class="lbl">启用别名（关闭则回落 ⇲ 截断）</span><input type="checkbox" id="f-alias-enabled"></label>
+          <div class="hint" style="margin-bottom: 8px;">
+            键 = 模型名子串（不区分大小写，按添加顺序首中即生效）；值填显示名，或点 🕐 加
+            <b>时段人设</b>——按北京时间 HH:MM + 星期自动切换（如 DeepSeek 峰谷：峰段梁文锋⚡️ / 谷段梁文谷⚡️）。
+            改完下一条消息即热生效。
+          </div>
+          <div id="alias-rows" class="alias-rows"></div>
+          <button type="button" class="btn ghost" id="btn-add-alias" style="margin-top: 8px;">＋ 添加别名</button>
+        </fieldset>
+
+        <fieldset>
           <legend>顶部状态栏 Header</legend>
           <label class="row"><span class="lbl">显示 header</span><input type="checkbox" id="f-header-enabled"></label>
           <label class="row"><span class="lbl">快捷回复去标题阈值（秒，0=始终显示）</span>

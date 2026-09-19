@@ -106,6 +106,7 @@
     setCheck("f-show-tool-use", d.show_tool_use);
     setCheck("f-show-context", d.show_context);
     setCheck("f-truncate-model", d.truncate_model_name);
+    setCheck("f-alias-enabled", d.model_aliases_enabled);
     setVal("f-max-panels", d.max_reasoning_panels);
     setVal("f-unified-min-duration", d.unified_panel_min_duration);
     setVal("f-context-mode", d.context_display_mode);
@@ -161,6 +162,7 @@
         show_tool_use: $("#f-show-tool-use").checked,
         show_context: $("#f-show-context").checked,
         truncate_model_name: $("#f-truncate-model").checked,
+        model_aliases_enabled: $("#f-alias-enabled").checked,
         max_reasoning_panels: int("#f-max-panels"),
         unified_panel_min_duration: num("#f-unified-min-duration"),
         context_display_mode: $("#f-context-mode").value,
@@ -185,8 +187,17 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      toast(data.changed && data.changed.length ? "已保存：" + data.changed.join("、") : "无配置变化", "ok");
+      var parts = [];
+      if (data.changed && data.changed.length) parts.push(data.changed.join("、"));
+      var aliasData = await api("/api/aliases", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entries: collectAliases() }),
+      });
+      parts.push("别名 " + aliasData.count + " 条");
+      toast(parts.length ? "已保存：" + parts.join("；") : "无配置变化", "ok");
       await loadState();
+      await loadAliases();
     } catch (err) {
       toast("保存失败：" + err.message, "err");
     } finally {
@@ -320,6 +331,183 @@
     }
   });
 
+  /* ---------- 模型别名编辑器 ---------- */
+  var DAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
+  var aliasEntries = []; // [{key, value: string | {name, timeAliases}}]
+
+  function aliasIsObject(entry) {
+    return entry.value !== null && typeof entry.value === "object";
+  }
+
+  function renderAliasRows() {
+    var host = $("#alias-rows");
+    host.innerHTML = "";
+    if (!aliasEntries.length) {
+      host.innerHTML = '<div class="alias-empty">暂无别名——模型名将按 ⇲ 截断显示。</div>';
+      return;
+    }
+    aliasEntries.forEach(function (entry, i) {
+      var isObj = aliasIsObject(entry);
+      var nameVal = isObj ? (entry.value.name || "") : (entry.value || "");
+      var div = document.createElement("div");
+      div.className = "alias-entry";
+      div.dataset.i = String(i);
+      var rulesHtml = "";
+      if (isObj) {
+        var rules = entry.value.timeAliases || [];
+        var rulesInner = rules
+          .map(function (rule, ri) {
+            var days = rule.days == null ? [0, 1, 2, 3, 4, 5, 6] : rule.days;
+            var dayChips = DAY_LABELS.map(function (lab, di) {
+              var on = days.indexOf(di) >= 0 ? " on" : "";
+              return '<button type="button" class="chip day-chip' + on + '" data-day="' + di + '">' + lab + "</button>";
+            }).join("");
+            return (
+              '<div class="alias-rule" data-r="' + ri + '">' +
+              '<span class="rule-days">' + dayChips + "</span>" +
+              '<input type="time" class="rule-start" value="' + (rule.start || "") + '">' +
+              "<span>–</span>" +
+              '<input type="time" class="rule-end" value="' + (rule.end || "") + '">' +
+              '<input type="text" class="rule-name" placeholder="该时段显示名" value="' + escAttr(rule.name) + '">' +
+              '<button type="button" class="chip rule-del">✕</button>' +
+              "</div>"
+            );
+          })
+          .join("");
+        rulesHtml =
+          '<div class="alias-rules">' +
+          '<div class="alias-default-row"><span>其他时间：</span>' +
+          '<input type="text" class="alias-default-name" placeholder="默认显示名（规则都不命中时）" value="' + escAttr(nameVal) + '"></div>' +
+          rulesInner +
+          '<div><button type="button" class="chip add-rule">＋ 时段规则</button></div>' +
+          "</div>";
+      }
+      div.innerHTML =
+        '<div class="alias-row">' +
+        '<input type="text" class="alias-key" placeholder="匹配子串，如 deepseek" value="' + escAttr(entry.key) + '">' +
+        (isObj ? "" : '<input type="text" class="alias-name" placeholder="显示名，如 梁文谷⚡️" value="' + escAttr(nameVal) + '">') +
+        '<button type="button" class="chip alias-time' + (isObj ? " on" : "") + '" title="时段人设">🕐</button>' +
+        '<button type="button" class="chip alias-del" title="删除">✕</button>' +
+        "</div>" +
+        rulesHtml;
+      host.appendChild(div);
+    });
+  }
+
+  function escAttr(s) {
+    return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+  }
+
+  async function loadAliases() {
+    try {
+      var data = await api("/api/aliases");
+      aliasEntries = (data.entries || []).map(function (e) {
+        return { key: e.key, value: e.value };
+      });
+    } catch (e) {
+      toast("读取别名失败：" + e.message, "err");
+      aliasEntries = [];
+    }
+    renderAliasRows();
+  }
+
+  function collectAliases() {
+    // 空键行视为未填完，跳过不提交；其余原样送服务端校验
+    return aliasEntries
+      .filter(function (e) { return e.key && e.key.trim(); })
+      .map(function (e) { return { key: e.key.trim(), value: e.value }; });
+  }
+
+  $("#btn-add-alias").addEventListener("click", function () {
+    aliasEntries.push({ key: "", value: "" });
+    renderAliasRows();
+  });
+
+  document.getElementById("alias-rows").addEventListener("click", function (ev) {
+    var t = ev.target;
+    if (!t.classList || !t.classList.contains("chip")) return;
+    var entryDiv = t.closest(".alias-entry");
+    if (!entryDiv) return;
+    var i = parseInt(entryDiv.dataset.i, 10);
+    var entry = aliasEntries[i];
+    if (!entry) return;
+
+    if (t.classList.contains("alias-del")) {
+      aliasEntries.splice(i, 1);
+      renderAliasRows();
+      return;
+    }
+    if (t.classList.contains("alias-time")) {
+      if (aliasIsObject(entry)) {
+        if (
+          (entry.value.timeAliases || []).length &&
+          !window.confirm("转回静态名称将丢弃全部时段规则，仅保留默认名。继续？")
+        ) {
+          return;
+        }
+        entry.value = entry.value.name || "";
+      } else {
+        entry.value = { name: entry.value || "", timeAliases: [] };
+      }
+      renderAliasRows();
+      return;
+    }
+    var ruleDiv = t.closest(".alias-rule");
+    if (t.classList.contains("add-rule")) {
+      entry.value.timeAliases = entry.value.timeAliases || [];
+      entry.value.timeAliases.push({ days: [1, 2, 3, 4, 5], name: "" });
+      renderAliasRows();
+      return;
+    }
+    if (!ruleDiv) return;
+    var ri = parseInt(ruleDiv.dataset.r, 10);
+    var rules = entry.value.timeAliases || [];
+    if (t.classList.contains("rule-del")) {
+      rules.splice(ri, 1);
+      renderAliasRows();
+      return;
+    }
+    if (t.classList.contains("day-chip")) {
+      var rule = rules[ri];
+      var day = parseInt(t.dataset.day, 10);
+      var cur = rule.days == null ? [0, 1, 2, 3, 4, 5, 6] : rule.days.slice();
+      var idx = cur.indexOf(day);
+      if (idx >= 0) {
+        if (cur.length === 1) return; // 至少保留一天
+        cur.splice(idx, 1);
+      } else {
+        cur.push(day);
+        cur.sort();
+      }
+      rule.days = cur;
+      renderAliasRows();
+    }
+  });
+
+  document.getElementById("alias-rows").addEventListener("input", function (ev) {
+    var t = ev.target;
+    var entryDiv = t.closest(".alias-entry");
+    if (!entryDiv) return;
+    var i = parseInt(entryDiv.dataset.i, 10);
+    var entry = aliasEntries[i];
+    if (!entry) return;
+
+    if (t.classList.contains("alias-key")) { entry.key = t.value; return; }
+    if (t.classList.contains("alias-name")) { entry.value = t.value; return; }
+    if (!aliasIsObject(entry)) return;
+    if (t.classList.contains("alias-default-name")) { entry.value.name = t.value; return; }
+    var ruleDiv = t.closest(".alias-rule");
+    if (!ruleDiv) return;
+    var ri = parseInt(ruleDiv.dataset.r, 10);
+    var rule = (entry.value.timeAliases || [])[ri];
+    if (!rule) return;
+    if (t.classList.contains("rule-start")) { if (t.value) rule.start = t.value; else delete rule.start; }
+    else if (t.classList.contains("rule-end")) { if (t.value) rule.end = t.value; else delete rule.end; }
+    else if (t.classList.contains("rule-name")) { rule.name = t.value; }
+  });
+
   /* ---------- 初始化 ---------- */
-  loadState().catch(function (e) { toast("读取配置失败：" + e.message, "err"); });
+  loadState()
+    .then(function () { return loadAliases(); })
+    .catch(function (e) { toast("读取配置失败：" + e.message, "err"); });
 })();

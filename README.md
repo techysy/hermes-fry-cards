@@ -142,24 +142,38 @@ display:
 | `max_reasoning_panels` | 最多保留的独立推理面板数（超出后合并，防元素溢出） | `3` |
 | `unified_panel_min_duration` | 统一面板最小展示耗时（秒）；无工具调用或耗时 ≤ 此值不显示统一面板 | `5` |
 | `truncate_model_name` | 截断模型名（`nvidia/moonshotai/kimi-k3` → `⇲kimi-k3`） | `true` |
+| `model_aliases_enabled` | 模型别名总开关；`false` 时忽略别名整体回落截断（配置保留） | `true` |
 
 ### 模型别名配置
 
-独立于 `config.yaml`，别名写在 `~/.hermes/model_aliases.json`：
+独立于 `config.yaml`，别名写在 `~/.hermes/model_aliases.json`（**Studio → 配置 → 模型别名** 可视化编辑，无需手写）：
 
 ```json
 {
   "longcat": "哈基米",
-  "gemini": "哈基米"
+  "mimo": "小虾米",
+  "deepseek": {
+    "name": "梁文谷⚡️",
+    "timeAliases": [
+      { "days": [1, 2, 3, 4, 5], "start": "09:00", "end": "12:00", "name": "梁文锋⚡️" },
+      { "days": [1, 2, 3, 4, 5], "start": "14:00", "end": "18:00", "name": "梁文锋⚡️" }
+    ]
+  }
 }
 ```
 
-- **匹配**：key 对完整模型名做大小写不敏感子串匹配（`longcat` → `or/lc/LongCat-2.0` 命中）
-- **优先级**：别名命中 → 显示别名；未命中 → 回落截断逻辑
-- **热更新**：每次渲染重读，改完文件即生效，无需重启网关
+- **匹配**：key 对完整模型名做大小写不敏感子串匹配，按插入顺序第一条命中（`longcat` → `or/lc/LongCat-2.0`）
+- **时段人设**：值可为对象，按**北京时间（UTC+8）** HH:MM + 星期自动切换显示名——典型用途是
+  DeepSeek **峰谷价标识**（峰段梁文锋⚡️ / 谷段梁文谷⚡️）。`days` 支持数组 `[1,2,3,4,5]`（0=周日）
+  或字符串 `"1-5"` / `"0,6"` / `"1-5,0"`；`start`/`end` 为 `[start, end)` 左闭右开、支持跨午夜、
+  起止相等 = 全天；规则都不命中回落 `name`（即"其他时间"）。**格式与 openclaw/claw-fry-cards 的
+  `modelAliases` 配置逐字兼容，同一份 JSON 两边通用**
+- **优先级**：别名命中 → 显示别名；未命中 → 回落截断逻辑；`display.model_aliases_enabled: false`
+  可整体关闭别名（回落截断，配置保留）
+- **热更新**：每次渲染重读，改文件或 Studio 保存即生效，无需重启网关
 
 > 完整路径：`~/.hermes/model_aliases.json`
-| [模型别名](#-与上游-hermes-lark-streaming-的差异) | `~/.hermes/model_aliases.json` 子串匹配，命中优先于截断 | 无 |
+| [模型别名](#-与上游-hermes-lark-streaming-的差异) | `~/.hermes/model_aliases.json` 子串匹配 + **时段人设（北京时间自动切换）**，命中优先于截断 | 无 |
 
 ### 样式效果示例
 
@@ -192,7 +206,7 @@ $HERMES_PYTHON -m hermes_fry_cards studio --port 9000 --no-browser
 
 | 页签 | 能力 |
 |------|------|
-| **配置** | 流式开关 / **统一面板**（模型·推理·工具·上下文的全套开关，元数据默认由它承载）/ header / footer 等**白名单键**的表单化编辑 |
+| **配置** | 流式开关 / **统一面板**（模型·推理·工具·上下文的全套开关，元数据默认由它承载）/ **模型别名**（含时段人设星期芯片编辑器 + 总开关）/ header / footer 等**白名单键**的表单化编辑 |
 | **预览** | 服务端**真实 builder** 渲染（与线上卡片同一代码路径，非前端模拟）：快捷回复 / 工作流交错 / 多表格压缩 / 超长截断 四场景 × 流式·完成·出错态 |
 | **状态** | hook 注入状态、verify 兼容性、飞书凭据、Hermes 环境一览 + 一键重启网关 |
 
@@ -326,6 +340,7 @@ $HERMES_PYTHON -m pip uninstall hermes-fry-cards
 | `max_reasoning_panels` | 最多独立推理面板数（防元素溢出） |
 | `unified_panel_min_duration` | 统一面板最小展示耗时（秒） |
 | `truncate_model_name` | 截断模型名 |
+| 模型别名总开关 | `display.model_aliases_enabled` 每次渲染重读 |
 | 模型别名 | `~/.hermes/model_aliases.json` 每次渲染重读，改文件即生效 |
 
 ### ⚠️ 需要重启网关（`hermes gateway restart`）
@@ -394,7 +409,7 @@ hermes gateway restart
 | **上下文进度条** | `show_context` 独立开关 + `context_display_mode` 三种模式（`text` / 渐变阴影 `bar` / `text_bar`），智能单位（<1M 用 k） | ❌ 仅 footer 纯文本百分比，无开关 |
 | **推理面板上限** | `max_reasoning_panels`（默认 3），超出合并进最后一个面板——兼容 deepseek-v4-flash 等不分段思考模型，防 300305 元素溢出 | ❌ 无限制，长思考必溢出 |
 | **模型名截断** | `truncate_model_name`：`nvidia/moonshotai/kimi-k3` → `⇲kimi-k3`，修复移动端换行 | ❌ 全称显示 |
-| **模型别名** | `~/.hermes/model_aliases.json` 独立 JSON 配置：`{"longcat": "哈基米", "gemini": "哈基米"}`，key 对模型名做大小写不敏感子串匹配，命中显示别名（如 LongCat → 哈基米），未命中回落截断逻辑；每次渲染重读，改文件即生效 | ❌ 无 |
+| **模型别名** | `~/.hermes/model_aliases.json` 独立 JSON 配置：`{"longcat": "哈基米"}` 子串匹配 + **时段人设对象**（北京时间 HH:MM + 星期自动切换，如峰谷 梁文锋⚡️/梁文谷⚡️，与 openclaw/claw-fry-cards 格式逐字兼容），带总开关；每次渲染重读，Studio 可视化编辑 | ❌ 无 |
 
 行为默认值：`show_reasoning` 默认 **true**（上游默认 false）。
 
