@@ -42,8 +42,8 @@
 ## 🏗️ Architecture
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/architecture.svg">
-  <img src="assets/architecture-light.svg" alt="hermes-fry-cards architecture: gateway events flow through the AST hook injection layer into StreamCardController, orchestrated by the streaming/ runtime with 100ms flush throttling; cardkit/ builds card JSON delivered via Feishu CardKit v2.0 API to streaming user cards; cron delivery and failure fallback paths are shown separately">
+  <source media="(prefers-color-scheme: dark)" srcset="assets/architecture-en.svg">
+  <img src="assets/architecture-light-en.svg" alt="hermes-fry-cards architecture: gateway events flow through the AST hook injection layer into StreamCardController, orchestrated by the streaming/ runtime with 100ms flush throttling; cardkit/ builds card JSON delivered via Feishu CardKit v2.0 API to streaming user cards; cron delivery and failure fallback paths are shown separately">
 </picture>
 
 ---
