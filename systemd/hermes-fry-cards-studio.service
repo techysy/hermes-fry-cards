@@ -1,0 +1,14 @@
+[Unit]
+Description=Hermes fry-cards Studio
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h
+ExecStart=%h/.hermes/hermes-agent/venv/bin/python3 -m hermes_fry_cards studio --host 127.0.0.1 --port 8765 --no-browser
+Restart=on-failure
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target

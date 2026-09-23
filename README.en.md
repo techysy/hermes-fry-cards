@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Hermes](https://img.shields.io/badge/Hermes-%E2%89%A50.14.0-2463eb)](https://github.com/NousResearch/hermes-agent)
 [![Python](https://img.shields.io/badge/Python-%E2%89%A53.11-blue)](https://www.python.org/)
-[![当前版本](https://img.shields.io/badge/Release-v0.4.0-2463eb?logo=github&logoColor=white)](https://github.com/techysy/hermes-fry-cards/releases)
+[![当前版本](https://img.shields.io/badge/Release-v0.4.1-2463eb?logo=github&logoColor=white)](https://github.com/techysy/hermes-fry-cards/releases)
 
 > 🍟 Hermes Gateway plugin for real-time streaming Feishu/Lark CardKit v2.0 cards
 
@@ -60,7 +60,7 @@ The script locates Hermes's venv Python, installs the package, runs `verify`, an
 
 ```bash
 # Pin a version (default: main)
-curl -fsSL .../install.sh | FRY_REF=v0.4.0 bash
+curl -fsSL .../install.sh | FRY_REF=v0.4.1 bash
 # Override the interpreter if auto-detection misses
 curl -fsSL .../install.sh | HERMES_PYTHON=/path/to/python3 bash
 ```
@@ -136,6 +136,26 @@ $HERMES_PYTHON -m hermes_fry_cards uninstall  # Remove hooks
 $HERMES_PYTHON -m hermes_fry_cards status     # Show status
 $HERMES_PYTHON -m hermes_fry_cards studio     # Visual config studio (127.0.0.1:8765)
 ```
+
+### 🔁 Studio autostart and keepalive (systemd)
+
+Running `studio` manually keeps it alive only while the terminal process exists. On Linux, install the user service shipped in this repository:
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp systemd/hermes-fry-cards-studio.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now hermes-fry-cards-studio.service
+```
+
+The service starts on login/boot, restarts after an unexpected exit with a 3-second delay, listens on `127.0.0.1:8765`, and does not open a browser. Inspect status and logs with:
+
+```bash
+systemctl --user status hermes-fry-cards-studio.service
+journalctl --user -u hermes-fry-cards-studio.service -f
+```
+
+> A server with user lingering enabled can keep the service running without an interactive login. If needed, run `loginctl enable-linger "$USER"` (no sudo; subject to local policy). Adjust the service file if your checkout or Hermes Python path differs.
 
 ---
 

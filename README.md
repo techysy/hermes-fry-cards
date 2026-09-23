@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Hermes](https://img.shields.io/badge/Hermes-%E2%89%A50.14.0-2463eb)](https://github.com/NousResearch/hermes-agent)
 [![Python](https://img.shields.io/badge/Python-%E2%89%A53.11-blue)](https://www.python.org/)
-[![当前版本](https://img.shields.io/badge/Release-v0.4.0-2463eb?logo=github&logoColor=white)](https://github.com/techysy/hermes-fry-cards/releases)
+[![当前版本](https://img.shields.io/badge/Release-v0.4.1-2463eb?logo=github&logoColor=white)](https://github.com/techysy/hermes-fry-cards/releases)
 
 > 🍟 Hermes Gateway 飞书流式卡片插件 — CardKit v2.0 实时流式消息
 
@@ -46,7 +46,8 @@
   <img src="assets/architecture-light.svg" alt="hermes-fry-cards 架构：Hermes Gateway 事件经 AST hook 注入层进入 StreamCardController，streaming/ 运行时节流编排，cardkit/ 构建卡片 JSON，经飞书 CardKit v2.0 API 交付用户端流式卡片；cron 推送与失败回落路径独立标注">
 </picture>
 
-> 🆕 v0.4.0：**Studio 可视化配置工作坊**（`studio` 命令，真 builder 预览/白名单安全写回/状态诊断）、
+> 🆕 v0.4.1：**Studio systemd 自启与保活**（登录/系统启动自动启动、异常退出自动重启、journalctl 日志）。
+> v0.4.0：**Studio 可视化配置工作坊**（`studio` 命令，真 builder 预览/白名单安全写回/状态诊断）、
 > **Markdown 防爆引擎**（无损表格压缩 + 字节级预算）、**模型别名时段人设**（openclaw 格式互通）、
 > **工作流交错渲染**（#10）与群聊安全边界可视化。架构图随 GitHub 明暗主题自动切换。
 
@@ -64,7 +65,7 @@ curl -fsSL https://raw.githubusercontent.com/techysy/hermes-fry-cards/main/insta
 
 ```bash
 # 指定版本（默认 main）
-curl -fsSL .../install.sh | FRY_REF=v0.4.0 bash
+curl -fsSL .../install.sh | FRY_REF=v0.4.1 bash
 # 自动探测失败时手动指定解释器
 curl -fsSL .../install.sh | HERMES_PYTHON=/path/to/python3 bash
 ```
@@ -214,6 +215,26 @@ display:
 $HERMES_PYTHON -m hermes_fry_cards studio                 # 默认 http://127.0.0.1:8765，自动开浏览器
 $HERMES_PYTHON -m hermes_fry_cards studio --port 9000 --no-browser
 ```
+
+### 🔁 Studio 自启与保活（systemd）
+
+手动运行 `studio` 只在当前终端存活，关闭终端或进程异常退出后不会自动恢复。Linux 用户可以安装仓库提供的 user service：
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp systemd/hermes-fry-cards-studio.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now hermes-fry-cards-studio.service
+```
+
+服务特性：登录/系统启动后自动启动、异常退出 3 秒后自动重启、默认监听 `127.0.0.1:8765`，且不会自动打开浏览器。检查状态和日志：
+
+```bash
+systemctl --user status hermes-fry-cards-studio.service
+journalctl --user -u hermes-fry-cards-studio.service -f
+```
+
+> 已启用 user lingering 的服务器可在未登录时保持服务运行；如果未启用，可执行 `loginctl enable-linger "$USER"`（无需 sudo，是否允许由系统策略决定）。修改仓库路径或 Hermes Python 路径后，请同步调整 service 文件。
 
 | 页签 | 能力 |
 |------|------|

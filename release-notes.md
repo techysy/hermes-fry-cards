@@ -1,3 +1,25 @@
+## 🍟 hermes-fry-cards v0.4.1（Studio 自启与保活）
+
+> 新增 systemd 用户服务模板，让 Studio 支持开机/登录自启、异常退出自动重启，并将运行日志交给 `journalctl` 管理。
+
+**⚙️ Studio 自启 / 保活**
+
+- 新增 `systemd/hermes-fry-cards-studio.service`
+- 默认使用 Hermes venv Python，以 `--no-browser` 常驻运行 `127.0.0.1:8765`
+- `Restart=on-failure` + 3 秒退避，Studio 异常退出后自动拉起
+- 文档补充安装、启用、状态检查和日志查看命令
+
+升级后执行：
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp systemd/hermes-fry-cards-studio.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now hermes-fry-cards-studio.service
+```
+
+---
+
 ## 🍟 hermes-fry-cards v0.4.0（算法与架构大改版）
 
 > 配置 schema **向后兼容**——升级无需改任何现有配置，装完 `hermes gateway restart` 即可。

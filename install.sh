@@ -15,7 +15,7 @@
 #
 # Env overrides:
 #   HERMES_PYTHON=/path/to/python3   skip auto-detection
-#   FRY_REF=v0.3.3                   install a specific tag/branch (default: main)
+#   FRY_REF=v0.4.1                   install a specific tag/branch (default: main)
 #   FRY_SKIP_HOOKS=1                 install the package only, skip patch/reverify
 set -euo pipefail
 

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.4.1] - 2026-09-23
+
+### 新增 / Added
+- **Studio systemd 用户服务模板** — 新增 `systemd/hermes-fry-cards-studio.service`，支持登录/系统启动后自动启动、异常退出自动重启和 `journalctl` 日志；默认监听 `127.0.0.1:8765`，不会自动打开浏览器。
+- **Studio 自启文档** — README 与英文文档补充安装、启用、状态检查和日志查看命令。
+
+### 验证 / Tests
+- 验证服务模板使用 Hermes venv Python、`--no-browser` 和 `Restart=on-failure`。
+
+---
+
 ## [0.4.0] - 2026-09-20
 
 > **算法与架构大改版**：渲染层引入 Markdown 防爆引擎（无损表格压缩 + 字节级内容预算），

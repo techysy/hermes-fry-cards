@@ -44,7 +44,7 @@ _WEB_ROOT = (Path(__file__).parent / "web").resolve()
 _MAX_BODY_BYTES = 1_000_000
 _MAX_DRAIN_BYTES = 4_000_000  # 413 时有界排空上限（防未读数据触发客户端写端 RST）
 _BACKUP_KEEP = 20
-_HOSTS_OK = ("127.0.0.1", "localhost", "::1")
+_HOSTS_OK = ("127.0.0.1", "localhost", "::1", "192.168.31.")
 
 _FOOTER_FIELDS = ("status", "elapsed", "model", "tokens", "context")
 _WIDTH_MODES = ("default", "compact", "fill")
@@ -935,6 +935,9 @@ def _host_ok(handler: BaseHTTPRequestHandler) -> bool:
         if base != "::1" and host == f"[{base}]":
             return True
         if host.startswith(f"[{base}]:"):
+            return True
+        # prefix entries (e.g. "192.168.31.") match any host starting with them
+        if base.endswith(".") and host.startswith(base):
             return True
     return host == "[::1]"
 
