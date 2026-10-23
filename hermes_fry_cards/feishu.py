@@ -92,7 +92,30 @@ CARDKIT_CONTENT_FAILED = 230099  # 卡片内容创建失败（通用码，需检
 CARDKIT_ELEMENT_LIMIT = 11310  # 子码: 卡片元素数量超限
 CARDKIT_ELEMENT_LIMIT_TOTAL = 300305  # 独立码: 卡片元素总数超限（总元素数 > 硬上限）
 CARDKIT_STREAMING_CLOSED = 300309  # 卡片流式模式已关闭
+CARDKIT_CARD_OVER_SIZE = 200860  # 卡片 JSON 超过最大尺寸
+CARDKIT_SEQUENCE_CONFLICT = 300317  # 序列号比较失败（客户端 sequence 与飞书侧不一致）
 MSG_NOT_FOUND = 1000023  # 消息不存在/已删除
+
+# 确定性内容错误：卡片内容本身超限/非法，重试不会改变结果。
+# 应直接进入 overflow fallback，而非重试消耗 sequence（否则触发 300317 序列冲突）。
+CARDKIT_CONTENT_OVERFLOW_CODES = frozenset(
+    {
+        CARDKIT_CONTENT_FAILED,
+        CARDKIT_ELEMENT_LIMIT,
+        CARDKIT_ELEMENT_LIMIT_TOTAL,
+        CARDKIT_CARD_OVER_SIZE,
+    }
+)
+
+
+def is_content_overflow_error(exc: FeishuAPIError) -> bool:
+    """卡片内容超限/非法类确定性错误（重试无法修复）。
+
+    覆盖顶层错误码与 msg 内嵌子码（``ErrCode: 11310`` 形式）。
+    """
+    if exc.code in CARDKIT_CONTENT_OVERFLOW_CODES:
+        return True
+    return exc.extract_sub_code() in CARDKIT_CONTENT_OVERFLOW_CODES
 
 
 @dataclass(frozen=True)

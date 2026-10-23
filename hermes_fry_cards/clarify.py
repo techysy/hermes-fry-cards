@@ -34,6 +34,7 @@ _CLARIFY_STATE: Dict[str, Dict[str, Any]] = {}
 _CLARIFY_SELECTIONS: Dict[str, List[int]] = {}
 _STATE_CAP = 100
 _TOAST_UNLOADED = object()
+_TOAST_MODULE = "lark_oapi.event.callback.model.p2_card_action_trigger"
 
 
 def _get_callback_toast(self: Any) -> Any:

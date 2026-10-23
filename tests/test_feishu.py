@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from hermes_fry_cards.feishu import FeishuAPIError, FeishuClient
+from hermes_fry_cards.feishu import FeishuAPIError, FeishuClient, is_content_overflow_error
 
 
 class _Resp:
@@ -166,3 +166,17 @@ async def test_cardkit_create_does_not_retry_non_transient_error() -> None:
         await client.cardkit_create({"schema": "2.0"})
 
     assert create.await_count == 1
+
+
+def test_is_content_overflow_error() -> None:
+    # 顶层错误码命中
+    assert is_content_overflow_error(FeishuAPIError("element exceeds the limit", code=300305))
+    assert is_content_overflow_error(FeishuAPIError("card over max size", code=200860))
+    assert is_content_overflow_error(FeishuAPIError("content failed", code=230099))
+    # msg 内嵌子码命中（ErrCode: 11310）
+    assert is_content_overflow_error(
+        FeishuAPIError("Failed to create card content, ext=ErrCode: 11310; detail", code=230099)
+    )
+    # 非内容错误不命中
+    assert not is_content_overflow_error(FeishuAPIError("rate limited", code=230020))
+    assert not is_content_overflow_error(FeishuAPIError("sequence number compare failed", code=300317))

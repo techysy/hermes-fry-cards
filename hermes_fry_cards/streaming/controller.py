@@ -28,6 +28,7 @@ from ..feishu import (
     CARDKIT_RATE_LIMITED,
     CARDKIT_STREAMING_CLOSED,
     FeishuAPIError,
+    is_content_overflow_error,
 )
 from .diagnostics import compact_ids, extract_missing_element_id, segment_state_for_log, summarize_actions
 from .flush import CARDKIT_MS
@@ -1021,6 +1022,10 @@ class StreamingController:
                 )
                 if session.guard.terminate("_do_complete_card", e):
                     return False
+                # 内容超限是确定性错误：重试不会改变卡片内容，直接进入 overflow
+                # fallback，避免无谓递增 sequence 使 fallback 阶段撞 300317 序列冲突。
+                if is_content_overflow_error(e):
+                    break
                 if attempt < 2:
                     await asyncio.sleep(2**attempt)
                 continue
@@ -1061,7 +1066,10 @@ class StreamingController:
                     session.card_id[:12],
                     exc_info=True,
                 )
-            await self._remove_loading_icon(session.card_id, session.sequence + 1)
+            # 正确递增 sequence 后再删 loading 图标，避免与后续 overflow 更新
+            # 复用同一 sequence 触发 300317 序列冲突。
+            session.sequence += 1
+            await self._remove_loading_icon(session.card_id, session.sequence)
             # #22：封卡失败后失控的流式卡会留在聊天里、正文又经纯文本重发一遍——
             # 用一张小降级卡整卡替换，提示用户内容在下方，避免两张内容重叠的实体。
             try:

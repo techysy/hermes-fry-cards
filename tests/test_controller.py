@@ -883,6 +883,39 @@ def _setup_ctrl() -> StreamCardController:
     return ctrl
 
 
+@pytest.mark.asyncio
+async def test_complete_card_skips_retry_on_content_overflow() -> None:
+    """回归：300305 是确定性内容错误，complete 不应重试消耗 sequence。
+
+    修复前 complete 对 300305 重试 3 次（sequence 712→716 无谓递增），且 fallback 里
+    _remove_loading_icon 复用同一 sequence，触发 300317 序列冲突、卡片在用户侧消失。
+    修复后应直接进入 overflow fallback，且 sequence 全程严格递增。
+    """
+    ctrl = _setup_ctrl()
+    session = CardSession("msg_overflow", "oc_test", asyncio.get_running_loop())
+    session.state = SessionState.STREAMING
+    session.set_card(card_id="card_overflow", card_msg_id="msg_card")
+    session.sequence = 10
+
+    # 第 1 次 cardkit_update 抛 300305（重试循环），第 2 次成功（overflow 替换）
+    ctrl._client.cardkit_update = AsyncMock(
+        side_effect=[FeishuAPIError("element exceeds the limit", code=300305), None]
+    )
+
+    result = await ctrl._do_complete_card_inner(session)
+
+    assert result is False
+    assert session.state == SessionState.FAILED
+
+    # 内容错误不重试：update 只调 2 次（1 失败 + 1 overflow），而非 4 次（3 重试 + 1 overflow）
+    assert ctrl._client.cardkit_update.await_count == 2
+
+    # sequence 全程严格递增：重试循环 update < remove_loading < overflow update
+    update_seqs = [c.kwargs["sequence"] for c in ctrl._client.cardkit_update.await_args_list]
+    batch_seq = ctrl._client.cardkit_batch_update.await_args.kwargs["sequence"]
+    assert update_seqs[0] < batch_seq < update_seqs[1]
+
+
 class TestAwaitedCompletion:
     @pytest.mark.asyncio
     async def test_waits_for_queued_card_creation_before_success(self) -> None:
@@ -2578,7 +2611,7 @@ def test_missing_duration_treated_as_quick_when_threshold_set() -> None:
 
 
 class TestOverflowFallbackReplace:
-    """#22 请求 3：封卡失败 3 次后整卡替换为降级提示卡."""
+    """#22 请求 3：封卡 transient 错误重试耗尽后整卡替换为降级提示卡."""
 
     @pytest.mark.asyncio
     async def test_replaces_card_after_retries_exhausted(self) -> None:
@@ -2590,7 +2623,9 @@ class TestOverflowFallbackReplace:
         async def fail_update(card_id: str, card: dict, **kwargs: object) -> None:
             attempts.append(card)
             if len(attempts) <= 3:
-                raise FeishuAPIError("element exceeds the limit", code=300305)
+                # transient 频控错误：可重试。内容错误（300305 等）则直接降级，
+                # 见 test_complete_card_skips_retry_on_content_overflow。
+                raise FeishuAPIError("rate limited", code=230020)
 
         client.cardkit_update = fail_update
 
@@ -2602,7 +2637,7 @@ class TestOverflowFallbackReplace:
         with patch("asyncio.sleep", new_callable=AsyncMock):
             assert await ctrl._do_complete_card(session) is False
         assert session.state == SessionState.FAILED
-        # 3 次全量重建失败 + 第 4 次降级替换成功
+        # 3 次 transient 重试失败 + 第 4 次降级替换成功
         assert len(attempts) == 4
         fallback = attempts[-1]
         assert fallback["header"]["template"] == "red"
