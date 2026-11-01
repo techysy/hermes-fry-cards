@@ -1120,6 +1120,23 @@ def build_background_card(preview: str, content: str) -> dict[str, Any]:
     return card
 
 
+def count_elements_recursive(value: Any) -> int:
+    """递归统计卡片树里的元素节点数（#56 诊断）.
+
+    飞书 300305 校验的是全树递归节点总数，``len(body.elements)`` 只看顶层会严重
+    低估——统一面板里嵌的工具组/思考面板每个都带一串子元素。含 ``tag`` 键的
+    dict 记一个元素，容器内的嵌套元素全部计入。
+    """
+    if isinstance(value, dict):
+        count = 1 if "tag" in value else 0
+        for child in value.values():
+            count += count_elements_recursive(child)
+        return count
+    if isinstance(value, list):
+        return sum(count_elements_recursive(child) for child in value)
+    return 0
+
+
 def strip_unified_panel(card: dict[str, Any]) -> int:
     """去掉完成态卡片的统一面板（思考 + 工具过程），就地修改，返回剥离的元素数（#53）.
 

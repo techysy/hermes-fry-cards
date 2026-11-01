@@ -18,6 +18,7 @@ from ..cardkit.builder import (
     build_overflow_fallback_card,
     build_streaming_card_v2,
     build_streaming_notice_element,
+    count_elements_recursive,
     strip_unified_panel,
 )
 from ..cardkit.markdown import (
@@ -1273,6 +1274,9 @@ class StreamingController:
         # #22：重建卡片的真实元素数（含完成态长文切块二次膨胀）与流式期估算
         # tracked 对照打出，用于定位 300305 的低谷来自流式估算还是完成态重建。
         card_elements = len(card.get("body", {}).get("elements", []))
+        # #56：飞书 300305 校验的是全树递归节点数，顶层 len 看不出来——统一面板里
+        # 嵌的工具组/思考面板每个都带一串子元素。诊断日志同时打两个数。
+        card_elements_recursive = count_elements_recursive(card)
         for attempt in range(3):
             try:
                 assert self._client is not None
@@ -1295,13 +1299,14 @@ class StreamingController:
             except FeishuAPIError as e:
                 _logger.warning(
                     "CardKit complete attempt %d failed: code=%s msg=%s card_id=%s seq=%d "
-                    "card_elements=%d tracked=%d",
+                    "card_elements=%d recursive=%d tracked=%d",
                     attempt,
                     e.code,
                     e,
                     session.card_id,
                     session.sequence,
                     card_elements,
+                    card_elements_recursive,
                     session.element_count,
                     exc_info=True,
                 )
@@ -1314,10 +1319,13 @@ class StreamingController:
                     panel_dropped = True
                     if strip_unified_panel(card):
                         card_elements = len(card.get("body", {}).get("elements", []))
+                        card_elements_recursive = count_elements_recursive(card)
                         _logger.warning(
-                            "CardKit complete retry without unified panel: msg=%s card_elements=%d",
+                            "CardKit complete retry without unified panel: msg=%s "
+                            "card_elements=%d recursive=%d",
                             session.message_id[:12],
                             card_elements,
+                            card_elements_recursive,
                         )
                 if attempt < 2:
                     await asyncio.sleep(2**attempt)
@@ -1325,13 +1333,14 @@ class StreamingController:
             except Exception as e:
                 _logger.warning(
                     "CardKit complete attempt %d failed: %s: %s card_id=%s seq=%d "
-                    "card_elements=%d tracked=%d",
+                    "card_elements=%d recursive=%d tracked=%d",
                     attempt,
                     type(e).__name__,
                     e,
                     session.card_id,
                     session.sequence,
                     card_elements,
+                    card_elements_recursive,
                     session.element_count,
                     exc_info=True,
                 )
