@@ -1,59 +1,71 @@
-## 🍟 hermes-fry-cards v0.6.1
+## 🍟 hermes-fry-cards v0.6.2
 
-> 小版本：委派（子任务）完成回执不再上屏网关内部标记行（#54）；重建缺失的
-> `tools/clarify_gateway.py`，修复测试套件在任意新 checkout 上收集即失败的问题。
+> 安全专项：群聊非管理员工具隔离（#55）——群友的 Prompt 诱导再强，也调不到没下发的
+> 写入/执行类工具；附带 #56 的封卡诊断改进（全树递归元素数）。
 
-### 🧾 委派完成回执的兜底文案（#54）
+### 🛡️ 群聊非管理员工具隔离（#55）
 
-委派类后台完成事件（`delegate_task` 子任务批次完成）走 `BG_COMPLETION` 通道时，
-`command` / `started_at` / `exit_code` / `session_id` 四个字段全空，
-`background_completion_text` 落到兜底分支：去包裹取首行。但委派通知不是
-`[IMPORTANT: …]` 形态，拆完首行仍是网关内部标记 `[ASYNC DELEGATION BATCH COMPLETE — …]`；
-回执卡按设计不带 header，客户端点开就只有这行内部文案：
+飞书群聊里，普通群友通过自然语言 Prompt 驱动 Agent 时，此前依然拿到宿主机的全量
+工具集——群友发个链接加一句「去抄吧」就能诱导连续 8 次 `execute_code` 跑 2 分钟
+（#55 的踩坑现场）。斜杠命令有 `allow_admin_from` 分权，自然语言工具调用没有。
+本版补上这道硬边界：
 
-- **内部标记不上屏**：兜底首行形如 `[大写标记 …]`（`[ASYNC …]`、`[BG_JOB]` 这类，
-  标记词全大写、可带 `_`/数字；`[2026-10-30 …]` 时间戳以数字开头不会命中）或含
-  `BATCH COMPLETE` 时，改给通用句 `✅ 后台任务已完成`
-- **既有兜底不变**：shell 后台任务的 `[IMPORTANT: …]` 拆包裹首行照旧透传
-  （那条 `Background process proc_x completed normally …`）
-- 方案 2（`BG_COMPLETION` 注入点给委派事件补面向用户的字段）留作后续，需要展示
-  子任务名 / 条数 / 耗时再动注入点
+- **查询类可用、写入/执行类默认禁**：边界开了（`enabled: true`）即生效，非管理员
+  群聊轮次默认剔除 `execute_code` / `terminal` / `file` / `computer_use`，查询类
+  （web_search、memory、clarify …）照常
+- **黑名单永远优先于白名单**：`non_admin_allowed_toolsets` 是严格白名单，
+  `non_admin_disabled_toolsets` 在默认黑名单之上追加；显式写进白名单的写入类
+  工具集也会被剔除，配置笔误打不开边界
+- **一处注入，两条路径全覆盖**：挂在 `gateway/run_turn.py` 的
+  `_resolve_turn_toolsets` 返回前（可选注入点 `TOOL_GATING`，modular 专用）——
+  前台轮次与后台任务的工具集都从这一个解析口出去，高危工具集根本不进
+  function calling 注册表
+- **管理员判定不另设名单**：复用 Hermes 斜杠命令的同一套 `allow_admin_from`
+  （`gateway.slash_access`）；判不了（旧版无模块 / scope 未配置 / 异常）一律不
+  隔离——宁可漏防，不把群里所有人（含机主）锁死
+- **豁免群共用** `allow_chats`（开发/协作群不受影响）；过滤结果同步并入
+  `agent.disabled_toolsets`，agent 侧双保险
+- Studio 校验白名单与状态采集接通；注入块缺失锚点时自动跳过（可选注入点）
 
-### 🧪 测试套件修复：重建 tools/clarify_gateway.py
+配置示例：
 
-`tests/test_clarify_buttons.py` 随 0f3bf76 入库，但它依赖的 `tools/clarify_gateway.py`
-从未提交——任何新 checkout 上全量 pytest 收集即失败（`No module named 'tools'`）。
-按 `tests/samples/` 归档的真实 Hermes 源码用法（`run_turn_runner.py` / 单文件
-`run.py`）+ 插件侧 `clarify.py` 调用点反推 API 契约重建：`register` /
-`wait_for_response` / `resolve_gateway_clarify` / `get_pending_for_session` /
-`resolve_text_response_for_session` / `mark_awaiting_text` / `clear_session` /
-`get_clarify_timeout` 与 `CANCELLED` / `SKIPPED` 哨兵，及插件直接访问的 `_lock` /
-`_entries`。模块注明为随仓参考实现：部署环境由 Hermes 自带 tools 包提供，插件缺失时
-整体降级。`conftest.py` 把仓库根加入 sys.path，裸 pytest 也能跑。
+```yaml
+gateway:
+  group_security_boundary:
+    enabled: true                      # 开了即生效：非管理员默认只给查询类工具
+    allow_chats: ["oc_dev_group"]      # 豁免群，可选
+    non_admin_allowed_toolsets: []     # 可选：严格白名单
+    non_admin_disabled_toolsets: []    # 可选：追加禁用项
+```
+
+**两点注意**：
+
+1. 管理员判定要求为群聊 scope 配好 `allow_admin_from`（未配置 = Hermes 口径全员
+   无限制，工具隔离随之不生效）；
+2. 已建会话的 agent 按构建时工具集缓存（Hermes 自身设计），启用后需**重启网关**
+   （或对群聊会话 `/new`）才收紧存量会话。
+
+### 🔍 封卡诊断：全树递归元素数（#56）
+
+飞书 300305 校验的是**全树递归节点总数**，此前日志的 `card_elements` 只统计顶层
+`len(body.elements)`——统一面板里嵌的工具组/思考面板每个都带一串子元素，现场
+`card_elements=2` 实际全树超 200，一直误导排查。封卡失败与剥离面板重发的日志现带
+`recursive=` 字段（`count_elements_recursive`）。
 
 ### ⚙️ 其他
 
-- 全量 **1062 passed**，ruff / mypy 相对 v0.6.0 零新增
+- 全量 **1079 passed**，ruff / mypy 相对 v0.6.1 零新增
 
 ### 📦 升级
 
-本版**无新增注入点、无配置变更**，只升级包 + 重启网关即可；重跑 `uninstall + install`
-亦无副作用。
-
-**PyPI（推荐）**：
+**本版新增注入点（`TOOL_GATING`），必须重跑 `uninstall + install`**；启用工具隔离
+后重启网关使缓存 agent 收紧。
 
 ```bash
 HERMES_PYTHON=~/.hermes/hermes-agent/venv/bin/python3
-$HERMES_PYTHON -m pip install -U hermes-fry-cards
-hermes gateway restart
-```
-
-**源码方式**：
-
-```bash
-cd ~/projects/hermes-fry-cards && git pull
-HERMES_PYTHON=~/.hermes/hermes-agent/venv/bin/python3
-$HERMES_PYTHON -m pip install -U .
+$HERMES_PYTHON -m pip install -U hermes-fry-cards     # PyPI，或源码方式 git pull + pip install -U .
+$HERMES_PYTHON -m hermes_fry_cards uninstall
+$HERMES_PYTHON -m hermes_fry_cards install
 hermes gateway restart
 ```
 
@@ -61,11 +73,14 @@ hermes gateway restart
 
 | 现象 | 含义 |
 | --- | --- |
-| 派一个后台子任务、不打断，等它完成 | 回执卡正文是 `✅ 后台任务已完成`（shell 后台任务仍是 `✅ 后台任务已完成 — \`命令\` (Ns)`），不再是 `[ASYNC DELEGATION BATCH COMPLETE — …]` |
-| 开发机全量测试 | 干净 checkout 上 `python -m pytest tests/ -q` 能正常收集并跑通（1062 passed），不再 `No module named 'tools'` |
+| `$HERMES_PYTHON -m hermes_fry_cards status` | `tool_gating: installed` 即落位（0.21 以下 modular 缺解析口时为 skipped，功能降级） |
+| 非管理员群账号发诱导执行的消息 | 日志 `group tool gating applied: chat=… toolsets=[…]`，Agent 侧无 execute_code/terminal/file 可调 |
+| 管理员群账号 / 私聊 | 工具集原样，不受影响 |
+| 群聊 scope 未配 `allow_admin_from` | 隔离不生效（Hermes 口径全员无限制），需先配管理员名单 |
+| 工具密集长轮次封卡失败（若有） | 日志 `card_elements=… recursive=…` 两个数都有，`recursive` 才是贴近 300305 阈值的那个 |
 
 ---
 
 完整明细见 [CHANGELOG.md](https://github.com/techysy/hermes-fry-cards/blob/main/CHANGELOG.md)。
 
-**Full Changelog**: [v0.6.0...v0.6.1](https://github.com/techysy/hermes-fry-cards/compare/v0.6.0...v0.6.1)
+**Full Changelog**: [v0.6.1...v0.6.2](https://github.com/techysy/hermes-fry-cards/compare/v0.6.1...v0.6.2)

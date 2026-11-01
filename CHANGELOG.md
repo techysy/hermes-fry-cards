@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.2] - 2026-11-02
+
+### 新增 / Added
+- **群聊非管理员工具隔离**（#55）：群聊里非管理员的轮次直接不下发写入/执行类工具集，
+  Prompt 诱导再强也调不到不存在的 function calling（硬防御，与边界提示的软防御互补）。
+  `gateway.group_security_boundary.enabled: true` 即生效：默认黑名单剔除
+  `execute_code` / `terminal` / `file` / `computer_use`，查询类（web_search、memory、
+  clarify …）默认可用；`non_admin_allowed_toolsets` 为严格白名单、
+  `non_admin_disabled_toolsets` 在默认黑名单之上追加，**黑名单永远优先于白名单**
+  （配置笔误打不开边界）；过滤结果同步并入 `agent.disabled_toolsets` 双保险。管理员
+  判定复用 Hermes 斜杠命令的同一套 `allow_admin_from`（`gateway.slash_access`），
+  判不了（旧版无模块 / scope 未配置 / 异常）一律不隔离，宁可漏防不可误伤。注入在
+  `gateway/run_turn.py` 的 `_resolve_turn_toolsets` 返回前（可选注入点 `TOOL_GATING`，
+  modular 专用），前台轮次与后台任务两条路径全覆盖。豁免群沿用 `allow_chats`；
+  Config 暴露两个新名单，Studio 校验白名单与状态采集接通。**注意**：已建会话的 agent
+  按构建时工具集缓存，启用后需重启网关（或对群聊 `/new`）才收紧存量会话；本版新增
+  注入点，升级必须重跑 `uninstall + install`。
+
+### 修复 / Fixed
+- **完成态诊断日志补全树递归元素数**（#56）：新增 `count_elements_recursive`——飞书
+  300305 校验的是全树递归节点总数，此前日志的 `card_elements` 只统计顶层
+  （`len(body.elements)`），统一面板嵌套工具组/思考面板时严重低估（现场
+  `card_elements=2` 实际全树超 200），一直误导排查。封卡失败与剥离面板重发的日志
+  现带 `recursive=` 字段。
+
+---
+
 ## [0.6.1] - 2026-10-31
 
 ### 修复 / Fixed
