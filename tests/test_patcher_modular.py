@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import textwrap
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -18,6 +19,8 @@ from hermes_fry_cards.patcher import (
     MK_FOLLOWUP_DONE,
     MK_GROUP_BOUNDARY,
     MK_GROUP_BOUNDARY_END,
+    MK_TOOL_GATING,
+    MK_TOOL_GATING_END,
     OPTIONAL_HOOKS,
     CronPatcher,
     Patcher,
@@ -163,6 +166,11 @@ MODULAR_022_OVERRIDES = {
             _footer_line = self._hmwa_runtime_footer_line(agent_result)
             return response
 
+        def _resolve_turn_toolsets(self, user_config, source, platform_key):
+            enabled = list(user_config.get("enabled_toolsets") or [])
+            disabled = list(user_config.get("disabled_toolsets") or [])
+            return enabled, disabled
+
         async def _run_agent_queued_followup(self, turn_ctx, result, response):
             if not result.get("interrupted"):
                 response = result
@@ -269,7 +277,12 @@ def test_modular_022_apply_installs_tool_hook_in_progress_module(modular_022_cop
     assert "HERMES_LARK_REDIRECT_BEGIN" in contents["busy"]
     assert "HERMES_LARK_REDIRECT_RESOLVED_BEGIN" in contents["busy"]
     assert "HERMES_LARK_BG_COMPLETION_BEGIN" in contents["notifications"]
-    for begin, _end in [*MARKERS, (MK_GROUP_BOUNDARY, MK_GROUP_BOUNDARY_END)]:
+    assert "HERMES_LARK_TOOL_GATING_BEGIN" in contents["turn"]
+    for begin, _end in [
+        *MARKERS,
+        (MK_GROUP_BOUNDARY, MK_GROUP_BOUNDARY_END),
+        (MK_TOOL_GATING, MK_TOOL_GATING_END),
+    ]:
         total = sum(content.count(begin) for content in contents.values())
         assert total == 1, f"{begin} installed {total}x"
     for path in modular_022_copy.values():
@@ -658,3 +671,60 @@ def test_bg_busy_suppress_block_skips_plain_receipt_at_runtime(modular_copy: dic
         assert sent == [], "命中时必须跳过纯文本回执"
     finally:
         patch_module.suppress_busy_receipt = original
+
+
+def test_tool_gating_block_filters_turn_toolsets_at_runtime(
+    modular_022_copy: dict[str, Path], monkeypatch
+) -> None:
+    """注入块的端到端行为：非管理员群聊轮次的工具集被过滤，管理员/私聊原样（#55）."""
+    import sys
+    import types
+
+    from hermes_fry_cards.patcher import Patcher as _P
+
+    _P(modular_paths=modular_022_copy).apply()
+    source = modular_022_copy["turn"].read_text(encoding="utf-8")
+    assert "HERMES_LARK_TOOL_GATING_BEGIN" in source
+    namespace: dict = {}
+    exec(compile(source, "<tool-gating>", "exec"), namespace)
+    resolve = namespace["_resolve_turn_toolsets"]
+
+    module = types.ModuleType("gateway.slash_access")
+    module.policy_for_source = lambda cfg, src: SimpleNamespace(
+        enabled=True, is_admin=lambda uid: uid == "ou_admin"
+    )
+    parent = types.ModuleType("gateway")
+    parent.slash_access = module
+    monkeypatch.setitem(sys.modules, "gateway", parent)
+    monkeypatch.setitem(sys.modules, "gateway.slash_access", module)
+
+    gsb = {
+        "enabled": True,
+        "non_admin_allowed_toolsets": ["web", "terminal"],
+        "non_admin_disabled_toolsets": ["terminal"],
+    }
+    user_config = {
+        "gateway": {"group_security_boundary": gsb},
+        "enabled_toolsets": ["terminal", "file", "web"],
+        "disabled_toolsets": ["memory"],
+    }
+
+    class Runner:
+        config = SimpleNamespace()
+
+    def _src(chat_type="group", user_id="ou_user"):
+        return SimpleNamespace(chat_type=chat_type, chat_id="oc_g", user_id=user_id)
+
+    # 非管理员群聊：白名单交集 + 黑名单剔除，denied 并入 disabled
+    enabled, disabled = resolve(Runner(), user_config, _src(), "feishu")
+    assert enabled == ["web"]
+    assert "terminal" in disabled and "memory" in disabled
+
+    # 管理员：原样下发
+    enabled, disabled = resolve(Runner(), user_config, _src(user_id="ou_admin"), "feishu")
+    assert enabled == ["terminal", "file", "web"]
+    assert disabled == ["memory"]
+
+    # 私聊：原样下发
+    enabled, disabled = resolve(Runner(), user_config, _src(chat_type="dm"), "feishu")
+    assert enabled == ["terminal", "file", "web"]

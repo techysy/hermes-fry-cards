@@ -67,6 +67,109 @@ def apply_group_security_boundary(combined: str, user_config: Any, source: Any) 
     return (combined + "\n\n" + note).strip()
 
 
+# ── 群聊非管理员工具隔离（#55） ────────────────────────────────────────────
+# 上面的边界提示是软防御（模型自觉），这条是硬防御：群聊里非管理员的轮次直接不下发
+# 写入/执行类工具集，Prompt 诱导再强也调不到不存在的 function calling。挂在
+# gateway/run_turn.py 的 _resolve_turn_toolsets 返回前——前台轮次
+# （_run_agent_display_settings → TurnContext）与后台任务（_run_background_task_inner）
+# 的工具集都从这一个解析口出去，一处注入两条路径全覆盖。
+#
+# 边界（与提示边界同区，gateway.group_security_boundary，enabled 即生效）：
+#   enabled: true                      # 边界总开关：群聊非管理员默认只给查询类工具
+#   allow_chats: [...]                 # 豁免群（开发/协作群），与提示边界共用
+#   non_admin_allowed_toolsets: [...]  # 可选：非管理员只保留这些（严格白名单）
+#   non_admin_disabled_toolsets: [...] # 可选：在默认黑名单之上追加禁用项
+#
+# 默认黑名单 = 写入/执行类（跑代码、控制终端、本地文件、控制电脑）；查询类
+# （web_search、memory、clarify …）默认可用。黑名单永远优先于白名单：显式写进
+# 白名单的写入类工具集也会被剔除，边界不因配置笔误被打开。
+#
+# 管理员判定复用 Hermes 斜杠命令的同一套名单（gateway.slash_access 的
+# allow_admin_from per scope），插件不另设管理员表：判不了（旧版无模块 / 该 scope
+# 未配置 allow_admin_from → policy 未启用 / 解析异常）一律不隔离——宁可漏防，不可
+# 把群里所有人（含机主）的工具全锁死。已建会话的 agent 按构建时工具集缓存，
+# 启用后重启网关（或对群聊 /new）才收紧存量会话。
+
+# 非管理员默认禁用的写入/执行类工具集（名字按 Hermes 实际命名；命中的剔除、
+# 没命中的无副作用，名单外的新工具集默认放行）。
+_DEFAULT_NON_ADMIN_DENY_TOOLSETS = ("execute_code", "terminal", "file", "computer_use")
+
+
+def apply_group_tool_gating(
+    enabled_toolsets: Any,
+    disabled_toolsets: Any,
+    runner_config: Any,
+    user_config: Any,
+    source: Any,
+) -> tuple[Any, Any] | None:
+    """群聊非管理员工具隔离：返回过滤后的 ``(enabled, disabled)``，不适用时返回 ``None``.
+
+    注入在 ``_resolve_turn_toolsets`` 的 ``return`` 之前；``None`` 表示保持原值。
+    """
+    try:
+        gsb = (user_config.get("gateway") or {}).get("group_security_boundary") or {}
+        enabled_flag = bool(gsb.get("enabled"))
+        allow_chats = set(gsb.get("allow_chats") or [])
+        allowed = _clean_toolset_list(gsb.get("non_admin_allowed_toolsets"))
+        extra_denied = _clean_toolset_list(gsb.get("non_admin_disabled_toolsets"))
+    except Exception:
+        return None
+    if not enabled_flag:
+        return None
+    chat_type = str(getattr(source, "chat_type", "") or "")
+    chat_id = str(getattr(source, "chat_id", "") or "")
+    if chat_type != "group" or chat_id in allow_chats:
+        return None
+
+    user_id = str(getattr(source, "user_id", "") or "")
+    is_admin: bool | None = None
+    try:
+        from gateway.slash_access import policy_for_source  # type: ignore[import-not-found]
+
+        policy = policy_for_source(runner_config, source)
+        is_admin_callable = getattr(policy, "is_admin", None)
+        if bool(getattr(policy, "enabled", False)) and callable(is_admin_callable):
+            is_admin = bool(is_admin_callable(user_id))
+    except Exception:
+        _logger.debug("group tool gating: admin resolution failed", exc_info=True)
+        return None
+    # 只有「确认是非管理员」才隔离：policy 未启用（该 scope 没配 allow_admin_from，
+    # Hermes 口径 = 全员无限制）或判定失败时 is_admin 为 None，一律不隔离——宁可
+    # 漏防，不可把群里所有人（含机主）的工具全锁死。
+    if is_admin is not False:
+        return None
+
+    # 最终黑名单 = 默认写入/执行类 + 配置追加，去重保序；黑名单优先于白名单。
+    denied = list(dict.fromkeys([*_DEFAULT_NON_ADMIN_DENY_TOOLSETS, *extra_denied]))
+    denied_ci = {d.lower() for d in denied}
+    allowed_ci = {a.lower() for a in allowed}
+
+    toolsets = [str(t) for t in (enabled_toolsets or [])]
+    new_enabled = [t for t in toolsets if t.lower() not in denied_ci]
+    if allowed_ci:
+        new_enabled = [t for t in new_enabled if t.lower() in allowed_ci]
+    merged = [str(x) for x in (disabled_toolsets or [])]
+    merged.extend(d for d in denied if d.lower() not in {x.lower() for x in merged})
+    if new_enabled != toolsets or allowed_ci:
+        _logger.info(
+            "group tool gating applied: chat=%s user=%s toolsets=%s",
+            chat_id, user_id or "<unknown>", new_enabled,
+        )
+    return new_enabled, merged
+
+
+def _clean_toolset_list(raw: Any) -> list[str]:
+    """工具集名单清洗：仅保留非空字符串，去空白去重保序（与 Config 读取口径一致）."""
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    for item in raw:
+        name = str(item).strip() if isinstance(item, str) else ""
+        if name and name not in out:
+            out.append(name)
+    return out
+
+
 
 def _safe_hook(
     default_return: Any = None,

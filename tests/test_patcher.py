@@ -1160,6 +1160,180 @@ class TestGroupSecurityBoundary:
         assert apply_group_security_boundary("hi", None, source) == "hi"
 
 
+class TestGroupToolGating:
+    """apply_group_tool_gating — 群聊非管理员工具隔离的纯逻辑（#55，独立于 AST 注入）."""
+
+    @staticmethod
+    def _stub_slash_access(monkeypatch, *, policy_enabled: bool, admin: bool) -> None:
+        import sys
+        import types
+
+        module = types.ModuleType("gateway.slash_access")
+        module.policy_for_source = lambda cfg, src: SimpleNamespace(
+            enabled=policy_enabled, is_admin=lambda uid: admin
+        )
+        parent = types.ModuleType("gateway")
+        parent.slash_access = module
+        monkeypatch.setitem(sys.modules, "gateway", parent)
+        monkeypatch.setitem(sys.modules, "gateway.slash_access", module)
+
+    @staticmethod
+    def _cfg(**gsb) -> dict:
+        return {"gateway": {"group_security_boundary": {"enabled": True, **gsb}}}
+
+    @staticmethod
+    def _source(chat_type="group", chat_id="oc_g", user_id="ou_user") -> SimpleNamespace:
+        return SimpleNamespace(chat_type=chat_type, chat_id=chat_id, user_id=user_id)
+
+    def _apply(self, monkeypatch, cfg, source, *, enabled=None, disabled=None):
+        from hermes_fry_cards.patch import apply_group_tool_gating
+
+        return apply_group_tool_gating(
+            ["terminal", "file", "web"] if enabled is None else enabled,
+            disabled,
+            SimpleNamespace(),  # runner config（stub 场景下不被读取）
+            cfg,
+            source,
+        )
+
+    def test_feature_disabled_returns_none(self, monkeypatch):
+        self._stub_slash_access(monkeypatch, policy_enabled=True, admin=False)
+        cfg = {"gateway": {"group_security_boundary": {"enabled": False, "non_admin_disabled_toolsets": ["terminal"]}}}
+        assert self._apply(monkeypatch, cfg, self._source()) is None
+
+    def test_default_deny_strips_write_class_keeps_query_class(self, monkeypatch):
+        """边界开了即可用（无需配名单）：默认黑名单剔除写入/执行类，查询类保留."""
+        from hermes_fry_cards.patch import _DEFAULT_NON_ADMIN_DENY_TOOLSETS
+
+        self._stub_slash_access(monkeypatch, policy_enabled=True, admin=False)
+        out = self._apply(monkeypatch, self._cfg(), self._source())
+        assert out is not None
+        new_enabled, new_disabled = out
+        assert new_enabled == ["web"]
+        for name in _DEFAULT_NON_ADMIN_DENY_TOOLSETS:
+            assert name in new_disabled
+
+    def test_dm_not_gated(self, monkeypatch):
+        self._stub_slash_access(monkeypatch, policy_enabled=True, admin=False)
+        cfg = self._cfg(non_admin_disabled_toolsets=["terminal"])
+        out = self._apply(monkeypatch, cfg, self._source(chat_type="dm"))
+        assert out is None
+
+    def test_exempt_chat_not_gated(self, monkeypatch):
+        self._stub_slash_access(monkeypatch, policy_enabled=True, admin=False)
+        out = self._apply(
+            monkeypatch,
+            self._cfg(allow_chats=["oc_g"], non_admin_disabled_toolsets=["terminal"]),
+            self._source(),
+        )
+        assert out is None
+
+    def test_admin_not_gated(self, monkeypatch):
+        self._stub_slash_access(monkeypatch, policy_enabled=True, admin=True)
+        out = self._apply(monkeypatch, self._cfg(non_admin_disabled_toolsets=["terminal"]), self._source())
+        assert out is None
+
+    def test_policy_not_enabled_fails_open(self, monkeypatch):
+        """该 scope 没配 allow_admin_from（policy 未启用）= 全员无限制，不隔离."""
+        self._stub_slash_access(monkeypatch, policy_enabled=False, admin=False)
+        out = self._apply(monkeypatch, self._cfg(non_admin_disabled_toolsets=["terminal"]), self._source())
+        assert out is None
+
+    def test_slash_access_missing_fails_open(self, monkeypatch):
+        """旧版 Hermes 没有 gateway.slash_access → 判不了管理员，宁可不隔离."""
+        import sys
+
+        monkeypatch.delitem(sys.modules, "gateway", raising=False)
+        monkeypatch.delitem(sys.modules, "gateway.slash_access", raising=False)
+        # 兜底：让 import gateway.slash_access 必然失败
+        monkeypatch.setitem(sys.modules, "gateway", None)
+        out = self._apply(monkeypatch, self._cfg(non_admin_disabled_toolsets=["terminal"]), self._source())
+        assert out is None
+
+    def test_extra_denylist_extends_default(self, monkeypatch):
+        self._stub_slash_access(monkeypatch, policy_enabled=True, admin=False)
+        out = self._apply(
+            monkeypatch,
+            self._cfg(non_admin_disabled_toolsets=["terminal", "web_search"]),
+            self._source(),
+            enabled=["terminal", "file", "web", "web_search"],
+            disabled=["memory"],
+        )
+        assert out is not None
+        new_enabled, new_disabled = out
+        assert new_enabled == ["web"]
+        assert "web_search" in new_disabled and "memory" in new_disabled
+
+    def test_non_admin_allowlist_intersects(self, monkeypatch):
+        self._stub_slash_access(monkeypatch, policy_enabled=True, admin=False)
+        out = self._apply(
+            monkeypatch,
+            self._cfg(non_admin_allowed_toolsets=["web", "memory"]),
+            self._source(),
+        )
+        assert out is not None
+        new_enabled, new_disabled = out
+        assert new_enabled == ["web"]
+        assert "terminal" in new_disabled
+
+    def test_denylist_wins_over_allowlist(self, monkeypatch):
+        """黑名单优先：显式写进白名单的写入类工具集也被剔除（边界不被笔误打开）."""
+        self._stub_slash_access(monkeypatch, policy_enabled=True, admin=False)
+        out = self._apply(
+            monkeypatch,
+            self._cfg(
+                non_admin_allowed_toolsets=["terminal", "web"],
+                non_admin_disabled_toolsets=["terminal"],
+            ),
+            self._source(),
+        )
+        assert out is not None
+        new_enabled, new_disabled = out
+        assert new_enabled == ["web"]
+        assert "terminal" in new_disabled
+
+    def test_matching_is_case_insensitive(self, monkeypatch):
+        self._stub_slash_access(monkeypatch, policy_enabled=True, admin=False)
+        out = self._apply(
+            monkeypatch,
+            self._cfg(non_admin_disabled_toolsets=["WEB_SEARCH"]),
+            self._source(),
+            enabled=["web", "web_search"],
+        )
+        assert out is not None
+        assert out[0] == ["web"]
+
+    def test_original_disabled_preserved_and_merged(self, monkeypatch):
+        self._stub_slash_access(monkeypatch, policy_enabled=True, admin=False)
+        out = self._apply(
+            monkeypatch,
+            self._cfg(non_admin_allowed_toolsets=["web"]),
+            self._source(),
+            disabled=["memory"],
+        )
+        assert out is not None
+        new_enabled, new_disabled = out
+        assert new_enabled == ["web"]
+        assert "memory" in new_disabled and "terminal" in new_disabled
+
+    def test_empty_toolsets_still_merges_disabled(self, monkeypatch):
+        """enabled 列表为空的轮次也并入默认黑名单，agent 侧双保险."""
+        from hermes_fry_cards.patch import _DEFAULT_NON_ADMIN_DENY_TOOLSETS
+
+        self._stub_slash_access(monkeypatch, policy_enabled=True, admin=False)
+        out = self._apply(
+            monkeypatch,
+            self._cfg(),
+            self._source(),
+            enabled=[],
+        )
+        assert out is not None
+        new_enabled, new_disabled = out
+        assert new_enabled == []
+        for name in _DEFAULT_NON_ADMIN_DENY_TOOLSETS:
+            assert name in new_disabled
+
+
 class TestCodeRoots:
     """#20: _code_roots 追加从已安装 gateway 包位置反推的代码根（官方镜像 /opt/hermes）."""
 

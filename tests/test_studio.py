@@ -616,7 +616,12 @@ class TestGroupSecurityBoundary:
     def test_state_default(self, server: str) -> None:
         state = _get_json(server, "/api/state")
         gsb = state["gateway"]["group_security_boundary"]
-        assert gsb == {"enabled": False, "allow_chats": []}
+        assert gsb == {
+            "enabled": False,
+            "allow_chats": [],
+            "non_admin_allowed_toolsets": [],
+            "non_admin_disabled_toolsets": [],
+        }
 
     def test_enable_and_roundtrip_with_dedupe(self, server: str, home: Path) -> None:
         payload = {
@@ -627,9 +632,34 @@ class TestGroupSecurityBoundary:
         data = _post_ok(server, "/api/config", payload)
         assert "gateway.group_security_boundary.enabled" in data["changed"]
         gsb = _get_json(server, "/api/state")["gateway"]["group_security_boundary"]
-        assert gsb == {"enabled": True, "allow_chats": ["oc_dev1", "oc_team2"]}
+        assert gsb["enabled"] is True
+        assert gsb["allow_chats"] == ["oc_dev1", "oc_team2"]
         conf = yaml.safe_load((home / "config.yaml").read_text(encoding="utf-8"))
         assert conf["gateway"]["group_security_boundary"]["enabled"] is True
+
+    def test_toolset_lists_roundtrip_and_reject_junk(self, server: str, home: Path) -> None:
+        """#55 工具隔离名单：数组清洗入库；非数组 / 带空白的项被 409 拒绝."""
+        payload = {
+            "gateway": {
+                "group_security_boundary": {
+                    "non_admin_allowed_toolsets": ["web", "web", "clarify"],
+                    "non_admin_disabled_toolsets": ["terminal"],
+                }
+            }
+        }
+        data = _post_ok(server, "/api/config", payload)
+        assert "gateway.group_security_boundary.non_admin_allowed_toolsets" in data["changed"]
+        gsb = _get_json(server, "/api/state")["gateway"]["group_security_boundary"]
+        assert gsb["non_admin_allowed_toolsets"] == ["web", "clarify"]
+        assert gsb["non_admin_disabled_toolsets"] == ["terminal"]
+
+        bad = {
+            "gateway": {
+                "group_security_boundary": {"non_admin_allowed_toolsets": "terminal"}
+            }
+        }
+        code, _body, _headers = _req(server, "/api/config", bad)
+        assert code == 400
 
     def test_sibling_gateway_keys_and_custom_text_preserved(self, server: str, home: Path) -> None:
         # 预置 gateway 段：兄弟键 + 未纳管的自定义 text 必须在保存后存活

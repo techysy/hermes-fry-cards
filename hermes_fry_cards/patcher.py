@@ -73,7 +73,7 @@ MK_BG_BUSY_SUPPRESS, MK_BG_BUSY_SUPPRESS_END = MARKERS[21]
 # 可选注入点：锚点不存在时跳过而不让整次安装失败（#43 提示入卡与压缩封卡）。
 # 旧版 Hermes 或精简布局可能缺失部分回调，缺失时插件退回既有行为。
 OPTIONAL_HOOKS: frozenset[str] = frozenset(
-    {"busy_ack", "redirect", "compression", "redirect_resolved", "bg_completion", "bg_busy_suppress"}
+    {"busy_ack", "redirect", "compression", "redirect_resolved", "bg_completion", "bg_busy_suppress", "tool_gating"}
 )
 _OPTIONAL_MARKERS: frozenset[str] = frozenset(
     f"# {PREFIX}_{name.upper()}_BEGIN" for name in OPTIONAL_HOOKS
@@ -85,6 +85,12 @@ _OPTIONAL_MARKERS: frozenset[str] = frozenset(
 # their tests are unaffected.
 MK_GROUP_BOUNDARY = f"# {PREFIX}_GROUP_BOUNDARY_BEGIN"
 MK_GROUP_BOUNDARY_END = f"# {PREFIX}_GROUP_BOUNDARY_END"
+
+# Group tool gating (#55) is MODULAR-ONLY the same way: it targets
+# ``_resolve_turn_toolsets`` in gateway/run_turn.py. OPTIONAL (like busy_ack): older
+# modular layouts without that method skip injection instead of failing install.
+MK_TOOL_GATING = f"# {PREFIX}_TOOL_GATING_BEGIN"
+MK_TOOL_GATING_END = f"# {PREFIX}_TOOL_GATING_END"
 
 _BACKUP_SUFFIX = ".hermes_lark.bak"
 
@@ -1056,6 +1062,24 @@ def _group_boundary_hook(indent: str) -> str:
     )
 
 
+def _tool_gating_hook(indent: str) -> str:
+    return _make_hook(
+        indent,
+        MK_TOOL_GATING,
+        MK_TOOL_GATING_END,
+        [
+            "try:",
+            "    from hermes_fry_cards.patch import apply_group_tool_gating",
+            "    _lark_tg = apply_group_tool_gating(",
+            "        enabled, disabled, getattr(self, 'config', None), user_config, source,",
+            "    )",
+            "    if _lark_tg is not None:",
+            "        enabled, disabled = _lark_tg",
+            *_hook_exception_lines("tool_gating"),
+        ],
+    )
+
+
 _HOOK_FNS = {
     "normalize": _feishu_normalize_hook,
     "start": _start_hook,
@@ -1080,6 +1104,7 @@ _HOOK_FNS = {
     "bg_busy_suppress": _bg_busy_suppress_hook,
     "compression": _compression_hook,
     "group_boundary": _group_boundary_hook,
+    "tool_gating": _tool_gating_hook,
 }
 
 
@@ -1177,7 +1202,10 @@ class Patcher:
         # Modular layout additionally hosts the group-security-boundary hook (in
         # gateway/run_turn_runner.py), so removal / status must know its markers.
         if self._modular_paths is not None:
-            self.MARKERS = list(MARKERS) + [(MK_GROUP_BOUNDARY, MK_GROUP_BOUNDARY_END)]
+            self.MARKERS = list(MARKERS) + [
+                (MK_GROUP_BOUNDARY, MK_GROUP_BOUNDARY_END),
+                (MK_TOOL_GATING, MK_TOOL_GATING_END),
+            ]
 
     def _source_paths(self) -> list[Path]:
         if self._modular_paths is not None:
@@ -1388,6 +1416,9 @@ class Patcher:
         specs: dict[str, list[tuple[str, str, Callable[[ast.Module, list[str]], tuple[int, str] | None]]]] = {
             "inbound": [("normalize", "normalize", _find_handle_message_source_site)],
             "turn": [
+                # #55 可选锚点：旧 modular 布局没有 _resolve_turn_toolsets 时跳过注入，
+                # 功能降级为无工具隔离（与 busy_ack 等可选锚点同一处理）。
+                ("tool_gating", "turn toolsets", _find_turn_toolsets_return),
                 (
                     "start",
                     "start",
@@ -1622,6 +1653,29 @@ def _find_ephemeral_prompt_return(tree: ast.Module, lines: list[str]) -> tuple[i
         if target is not None and target.lineno is not None:
             lineno = target.lineno - 1
             return lineno, _safe_indent(lines, lineno)
+    return None
+
+
+def _find_turn_toolsets_return(tree: ast.Module, lines: list[str]) -> tuple[int, str] | None:
+    """Locate the ``return enabled, disabled`` inside ``_resolve_turn_toolsets``.
+
+    The group tool gating hook (#55) is injected immediately before this return so it can
+    reassign both values in place — foreground turns (_run_agent_display_settings →
+    TurnContext) and background tasks funnel their toolsets through this one resolver.
+    """
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef) or node.name != "_resolve_turn_toolsets":
+            continue
+        for stmt in node.body:
+            if not isinstance(stmt, ast.Return) or not isinstance(stmt.value, ast.Tuple):
+                continue
+            elts = stmt.value.elts
+            if len(elts) != 2 or not all(isinstance(e, ast.Name) for e in elts):
+                continue
+            names = {str(getattr(e, "id", "")) for e in elts}
+            if names == {"enabled", "disabled"}:
+                lineno = stmt.lineno - 1
+                return lineno, _safe_indent(lines, lineno)
     return None
 
 

@@ -206,6 +206,23 @@ def _validate_chat_list(v: Any, name: str) -> list[str]:
     return out
 
 
+def _validate_str_list(v: Any, name: str) -> list[str]:
+    """通用字符串名单(如 #55 的工具集白/黑名单): 非空字符串数组，去重保序."""
+    if not isinstance(v, list):
+        raise ValueError(f"{name} 必须是数组(一行一个名称)")
+    if len(v) > 50:
+        raise ValueError(f"{name} 最多 50 个")
+    out: list[str] = []
+    for item in v:
+        if not isinstance(item, str) or not item or len(item) > 48:
+            raise ValueError(f"{name} 每项必须是 1~48 字符的字符串")
+        if item != item.strip() or any(c.isspace() or ord(c) < 32 for c in item):
+            raise ValueError(f"{name} 含空白或控制字符: {item!r}")
+        if item not in out:
+            out.append(item)
+    return out
+
+
 _STREAMING_SCALARS: dict[str, str] = {
     "enabled": "bool",
     "completion_notice": "bool",
@@ -236,7 +253,12 @@ _DISPLAY_KEYS: dict[str, str] = {
     "panel_fields": "panel_fields",
     "panel_text_size": "textsize",
 }
-_GATEWAY_KEYS = {"enabled": "bool", "allow_chats": "chatlist"}
+_GATEWAY_KEYS = {
+    "enabled": "bool",
+    "allow_chats": "chatlist",
+    "non_admin_allowed_toolsets": "strlist",
+    "non_admin_disabled_toolsets": "strlist",
+}
 
 
 def _validate_scalar(v: Any, name: str, kind: str) -> Any:
@@ -254,6 +276,8 @@ def _validate_scalar(v: Any, name: str, kind: str) -> Any:
         return _validate_chat_types(v, name)
     if kind == "chatlist":
         return _validate_chat_list(v, name)
+    if kind == "strlist":
+        return _validate_str_list(v, name)
     if kind == "fields":
         return _validate_fields(v, name)
     if kind == "panel_fields":

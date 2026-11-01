@@ -334,26 +334,51 @@ class Config:
 
     @property
     def group_security_boundary(self) -> dict[str, Any]:
-        """群聊安全边界配置 {enabled, allow_chats}（gateway.group_security_boundary）.
+        """群聊安全边界配置（gateway.group_security_boundary）.
 
-        与 patch.apply_group_security_boundary 的读取口径一致：enabled 默认 False；
-        allow_chats 容错清洗（仅保留非空字符串）。自定义 ``text`` 键不在此暴露——
-        Studio 白名单只写 enabled/allow_chats，手写的 text 原样保留。
-        每次从磁盘重读（随每轮 ephemeral prompt 注入生效）。
+        与 patch.apply_group_security_boundary / apply_group_tool_gating 的读取口径
+        一致：enabled 默认 False；allow_chats 容错清洗（仅保留非空字符串）；
+        non_admin_allowed_toolsets / non_admin_disabled_toolsets（#55 工具隔离，
+        任一非空即对非管理员群聊轮次生效）同样容错清洗。自定义 ``text`` 键不在此
+        暴露——Studio 白名单只写 enabled/allow_chats/两个工具集名单，手写的 text
+        原样保留。每次从磁盘重读（随每轮 ephemeral prompt / 工具集解析生效）。
         """
         gw = self._reload().get("gateway")
+        empty = {
+            "enabled": False,
+            "allow_chats": [],
+            "non_admin_allowed_toolsets": [],
+            "non_admin_disabled_toolsets": [],
+        }
         if not isinstance(gw, dict):
-            return {"enabled": False, "allow_chats": []}
+            return dict(empty)
         gsb = gw.get("group_security_boundary")
         if not isinstance(gsb, dict):
-            return {"enabled": False, "allow_chats": []}
+            return dict(empty)
         allow = gsb.get("allow_chats")
         chats = (
             [str(c).strip() for c in allow if isinstance(c, str) and str(c).strip()]
             if isinstance(allow, list)
             else []
         )
-        return {"enabled": bool(gsb.get("enabled")), "allow_chats": chats}
+
+        def _toolsets(key: str) -> list[str]:
+            raw = gsb.get(key)
+            if not isinstance(raw, list):
+                return []
+            out: list[str] = []
+            for item in raw:
+                name = str(item).strip() if isinstance(item, str) else ""
+                if name and name not in out:
+                    out.append(name)
+            return out
+
+        return {
+            "enabled": bool(gsb.get("enabled")),
+            "allow_chats": chats,
+            "non_admin_allowed_toolsets": _toolsets("non_admin_allowed_toolsets"),
+            "non_admin_disabled_toolsets": _toolsets("non_admin_disabled_toolsets"),
+        }
 
     @property
     def model_aliases_enabled(self) -> bool:

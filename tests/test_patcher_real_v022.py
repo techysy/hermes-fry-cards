@@ -29,6 +29,8 @@ from hermes_fry_cards.patcher import (
     MK_FOLLOWUP_COMPLETE_END,
     MK_FOLLOWUP_DONE,
     MK_FOLLOWUP_RESULT,
+    MK_TOOL_GATING,
+    MK_TOOL_GATING_END,
     OPTIONAL_HOOKS,
     Patcher,
 )
@@ -427,3 +429,42 @@ def test_bg_busy_suppress_anchors_on_real_notifications_module(tmp_path: Path) -
     assert patched.index(MK_BG_BUSY_SUPPRESS) < patched.index(
         "await self._send_watcher_message(platform_name, chat_id, thread_id, message_text, watcher)"
     )
+
+
+# ── #55 群聊工具隔离：真实 run_turn.py 的 _resolve_turn_toolsets 锚点 ─────────
+
+def test_tool_gating_anchors_before_toolsets_return_v022(real_v022: dict[str, Path]) -> None:
+    patcher = Patcher(modular_paths=real_v022)
+    patcher.verify_target()
+    patcher.apply()
+    lines = real_v022["turn"].read_text(encoding="utf-8").splitlines()
+
+    host = next(
+        i for i, line in enumerate(lines)
+        if line.strip().startswith("def _resolve_turn_toolsets(")
+    )
+    begin = next(i for i, line in enumerate(lines) if MK_TOOL_GATING in line)
+    end = next(i for i, line in enumerate(lines) if MK_TOOL_GATING_END in line)
+    ret = next(
+        i for i, line in enumerate(lines)
+        if i > end and line.strip() == "return enabled, disabled"
+    )
+    assert host < begin < end < ret, "tool_gating hook must live inside _resolve_turn_toolsets, before the return"
+    body = "\n".join(lines[begin:end])
+    assert "apply_group_tool_gating(" in body
+    assert "enabled, disabled = _lark_tg" in body
+    assert patcher.is_fully_patched()
+
+
+def test_tool_gating_anchors_before_toolsets_return_v0225(real_v0225: dict[str, Path]) -> None:
+    patcher = Patcher(modular_paths=real_v0225)
+    patcher.apply()
+    lines = real_v0225["turn"].read_text(encoding="utf-8").splitlines()
+    host = next(
+        i for i, line in enumerate(lines)
+        if line.strip().startswith("def _resolve_turn_toolsets(")
+    )
+    begin = next(i for i, line in enumerate(lines) if MK_TOOL_GATING in line)
+    end = next(i for i, line in enumerate(lines) if MK_TOOL_GATING_END in line)
+    assert host < begin < end, "tool_gating hook must land inside _resolve_turn_toolsets"
+    assert patcher.is_fully_patched()
