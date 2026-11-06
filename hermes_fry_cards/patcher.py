@@ -254,6 +254,12 @@ def _default_modular_paths() -> dict[str, Path]:
     if notifications.exists():
         # 0.22+ 的 watch/completion 通知宿主（#47 可选注入点 bg_completion）
         paths["notifications"] = notifications
+    # Hermes 0.22.7+ 把 background deliver 从 run_turn.py 拆到了独立的 run_background.py，
+    # 锚点 "images, text_content = adapter.extract_images(response)" 随之迁移。
+    # 存在时优先使用，缺失时回退 turn（保持对 0.22.7 之前版本的兼容）。
+    background = _resolve_module_path("gateway.run_background", roots)
+    if background.exists():
+        paths["background"] = background
     return paths
 
 
@@ -1175,9 +1181,11 @@ class Patcher:
                 raise PatcherError(
                     "modular_paths must contain at least: " + ", ".join(sorted(required))
                 )
-            # 可选模块（0.22+ 的 progress / persistence / notifications）只接受已知名字，
-            # 防止拼写错误让锚点静默回退到旧模块。
-            unknown = set(modular_paths) - required - {"progress", "persistence", "notifications"}
+            # 可选模块（0.22+ 的 progress / persistence / notifications / background）
+            # 只接受已知名字，防止拼写错误让锚点静默回退到旧模块。
+            unknown = set(modular_paths) - required - {
+                "progress", "persistence", "notifications", "background"
+            }
             if unknown:
                 raise PatcherError(
                     "modular_paths contains unknown modules: " + ", ".join(sorted(unknown))
@@ -1305,6 +1313,11 @@ class Patcher:
         _, turn_tree, turn_lines = parsed["turn"]
         _, runner_tree, runner_lines = parsed["runner"]
         _, busy_tree, busy_lines = parsed["busy"]
+        # 0.22.7+: background deliver 从 turn 迁到独立 run_background.py，缺失时回退 turn。
+        if "background" in parsed:
+            _, bg_tree, bg_lines = parsed["background"]
+        else:
+            bg_tree, bg_lines = turn_tree, turn_lines
         # 0.22+ 微模块重构：progress_callback 可能在独立 progress 模块（优先），
         # 否则回退 runner；两侧与 _inject_modular 的解析顺序保持一致。
         tool_tree, tool_lines = self._tool_anchor_source(parsed)
@@ -1317,7 +1330,7 @@ class Patcher:
             (_find_followup_done_site(turn_tree, turn_lines), "queued follow-up completion"),
             (_find_handler_abort(turn_tree, turn_lines), "abort"),
             (_find_interrupt_site(turn_tree, turn_lines), "interrupt"),
-            (_find_bg_deliver_site(turn_tree, turn_lines), "background deliver"),
+            (_find_bg_deliver_site(bg_tree, bg_lines), "background deliver"),
             (_find_stop_site(busy_tree, busy_lines), "stop"),
             (_find_func_body(tool_tree, tool_lines, "progress_callback"), "tool"),
             (_find_func_body(runner_tree, runner_lines, "interim_assistant_cb"), "thinking"),
@@ -1430,7 +1443,6 @@ class Patcher:
                 ("followup_done", "queued follow-up completion", _find_followup_done_site),
                 ("abort", "abort", _find_handler_abort),
                 ("interrupt", "interrupt", _find_interrupt_site),
-                ("bg_deliver", "bg_deliver", _find_bg_deliver_site),
             ],
             "runner": [
                 (
@@ -1463,6 +1475,12 @@ class Patcher:
                 ("bg_busy_suppress", "background busy receipt suppress", _find_bg_busy_suppress_site),
             ],
         }
+        # 0.22.7+: bg_deliver 锚点迁到独立 run_background.py；无该模块时回退 turn。
+        _bg_host = "background" if "background" in contents else "turn"
+        specs[_bg_host] = [
+            *specs.get(_bg_host, []),
+            ("bg_deliver", "bg_deliver", _find_bg_deliver_site),
+        ]
         # tool 锚点宿主：与 _verify_modular_target 的解析顺序一致（progress 优先，回退 runner）。
         tool_host = "runner"
         if "progress" in contents:
