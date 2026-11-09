@@ -254,6 +254,10 @@ def _default_modular_paths() -> dict[str, Path]:
     if notifications.exists():
         # 0.22+ 的 watch/completion 通知宿主（#47 可选注入点 bg_completion）
         paths["notifications"] = notifications
+    background = _resolve_module_path("gateway.run_background", roots)
+    if background.exists():
+        # 0.22.6+ / 0.23+ 独立 background 模块（承载 _run_background_task / bg_deliver 锚点）
+        paths["background"] = background
     return paths
 
 
@@ -1175,9 +1179,9 @@ class Patcher:
                 raise PatcherError(
                     "modular_paths must contain at least: " + ", ".join(sorted(required))
                 )
-            # 可选模块（0.22+ 的 progress / persistence / notifications）只接受已知名字，
+            # 可选模块（0.22+ 的 progress / persistence / notifications，0.23+ 的 background）只接受已知名字，
             # 防止拼写错误让锚点静默回退到旧模块。
-            unknown = set(modular_paths) - required - {"progress", "persistence", "notifications"}
+            unknown = set(modular_paths) - required - {"progress", "persistence", "notifications", "background"}
             if unknown:
                 raise PatcherError(
                     "modular_paths contains unknown modules: " + ", ".join(sorted(unknown))
@@ -1308,6 +1312,7 @@ class Patcher:
         # 0.22+ 微模块重构：progress_callback 可能在独立 progress 模块（优先），
         # 否则回退 runner；两侧与 _inject_modular 的解析顺序保持一致。
         tool_tree, tool_lines = self._tool_anchor_source(parsed)
+        bg_tree, bg_lines = self._bg_deliver_anchor_source(parsed)
         checks = [
             (_find_handle_message_source_site(inbound_tree, inbound_lines), "normalize"),
             (_find_func_body(turn_tree, turn_lines, "_handle_message_with_agent"), "start"),
@@ -1317,7 +1322,7 @@ class Patcher:
             (_find_followup_done_site(turn_tree, turn_lines), "queued follow-up completion"),
             (_find_handler_abort(turn_tree, turn_lines), "abort"),
             (_find_interrupt_site(turn_tree, turn_lines), "interrupt"),
-            (_find_bg_deliver_site(turn_tree, turn_lines), "background deliver"),
+            (_find_bg_deliver_site(bg_tree, bg_lines), "background deliver"),
             (_find_stop_site(busy_tree, busy_lines), "stop"),
             (_find_func_body(tool_tree, tool_lines, "progress_callback"), "tool"),
             (_find_func_body(runner_tree, runner_lines, "interim_assistant_cb"), "thinking"),
@@ -1340,6 +1345,19 @@ class Patcher:
             searched = " / ".join(f"gateway/run_turn_{n}.py" if n != "turn" else "gateway/run_turn.py"
                                   for n in agent_end_hosts)
             raise PatcherError(f"Cannot find hooks.emit('agent:end', ...) in {searched}")
+
+    @staticmethod
+    def _bg_deliver_anchor_source(
+        parsed: dict[str, tuple[str, ast.Module, list[str]]],
+    ) -> tuple[ast.Module, list[str]]:
+        """bg_deliver 钩子的宿主模块：独立 background 模块（0.22.6+ / 0.23+）优先，否则 turn."""
+        for name in ("background", "turn"):
+            if name not in parsed:
+                continue
+            _, tree, lines = parsed[name]
+            if _find_bg_deliver_site(tree, lines) is not None:
+                return tree, lines
+        return parsed["turn"][1], parsed["turn"][2]
 
     @staticmethod
     def _tool_anchor_source(
@@ -1430,7 +1448,6 @@ class Patcher:
                 ("followup_done", "queued follow-up completion", _find_followup_done_site),
                 ("abort", "abort", _find_handler_abort),
                 ("interrupt", "interrupt", _find_interrupt_site),
-                ("bg_deliver", "bg_deliver", _find_bg_deliver_site),
             ],
             "runner": [
                 (
@@ -1462,6 +1479,8 @@ class Patcher:
                 ("bg_completion", "background completion", _find_bg_completion_site),
                 ("bg_busy_suppress", "background busy receipt suppress", _find_bg_busy_suppress_site),
             ],
+            # 0.22.6+ / 0.23+ 独立 background 模块（bg_deliver 注入点按归属动态挂载）。
+            "background": [],
         }
         # tool 锚点宿主：与 _verify_modular_target 的解析顺序一致（progress 优先，回退 runner）。
         tool_host = "runner"
@@ -1476,6 +1495,16 @@ class Patcher:
                 lambda tree, lines: _find_func_body(tree, lines, "progress_callback"),
             ),
             *specs[tool_host],
+        ]
+        # bg_deliver 锚点宿主：与 _verify_modular_target 的解析顺序一致（background 优先，回退 turn）。
+        bg_host = "turn"
+        if "background" in contents:
+            bg_lines = contents["background"].splitlines(keepends=True)
+            if _find_bg_deliver_site(ast.parse(contents["background"]), bg_lines) is not None:
+                bg_host = "background"
+        specs[bg_host] = [
+            ("bg_deliver", "bg_deliver", _find_bg_deliver_site),
+            *specs[bg_host],
         ]
         result: dict[str, str] = {}
         for name, content in contents.items():

@@ -299,20 +299,58 @@ def test_modular_022_apply_installs_tool_hook_in_progress_module(modular_022_cop
 
 
 def test_modular_paths_accepts_optional_and_rejects_unknown(tmp_path: Path) -> None:
-    """modular_paths 允许可选模块（progress/persistence），拒绝拼写错误的模块名。"""
+    """modular_paths 允许可选模块（progress/persistence/background），拒绝拼写错误的模块名。"""
     base = {
         name: tmp_path / f"run_{name}.py"
         for name in ("inbound", "turn", "runner", "busy")
     }
     for path in base.values():
         path.write_text("# stub\n", encoding="utf-8")
-    # 缺 progress/persistence 的 0.21 布局仍合法
+    # 缺 progress/persistence/background 的 0.21 布局仍合法
     Patcher(modular_paths=dict(base))
+    # 允许包含 background 可选模块
+    Patcher(modular_paths={**base, "background": tmp_path / "run_background.py"})
     with pytest.raises(PatcherError, match="unknown modules"):
         Patcher(modular_paths={**base, "presistense": tmp_path / "typo.py"})
     with pytest.raises(PatcherError, match="at least"):
         missing = {k: v for k, v in base.items() if k != "busy"}
         Patcher(modular_paths=missing)
+
+
+def test_modular_023_apply_installs_bg_deliver_in_background_module(tmp_path: Path) -> None:
+    """0.23 微模块：当 background 模块存在时，bg_deliver 钩子安装在 background 而非 turn。"""
+    copied: dict[str, Path] = {}
+    sources = dict(MODULAR_SOURCES)
+    # turn 中移除 extract_images
+    turn_no_bg = sources["turn"].replace("images, text_content = adapter.extract_images(response)", "# moved to run_background")
+    sources["turn"] = turn_no_bg
+    for name, content in sources.items():
+        destination = tmp_path / f"run_{name}.py"
+        destination.write_text(textwrap.dedent(content), encoding="utf-8")
+        copied[name] = destination
+
+    bg = tmp_path / "run_background.py"
+    bg.write_text(textwrap.dedent("""
+        class GatewayBackgroundMixin:
+            async def _run_background_task_inner(self, prompt, source, task_id, response, adapter):
+                images, text_content = adapter.extract_images(response)
+                return response
+    """), encoding="utf-8")
+    copied["background"] = bg
+
+    patcher = Patcher(modular_paths=copied)
+    patcher.verify_target()
+    patcher.apply()
+
+    assert patcher.is_fully_patched()
+    turn_text = copied["turn"].read_text(encoding="utf-8")
+    bg_text = copied["background"].read_text(encoding="utf-8")
+    assert "HERMES_LARK_BG_DELIVER_BEGIN" not in turn_text
+    assert "HERMES_LARK_BG_DELIVER_BEGIN" in bg_text
+    assert "on_background_deliver" in bg_text
+
+    patcher.remove()
+    assert "HERMES_LARK_BG_DELIVER_BEGIN" not in copied["background"].read_text(encoding="utf-8")
 
 
 CRON_SOURCE = """
