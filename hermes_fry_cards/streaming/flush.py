@@ -155,8 +155,17 @@ class FlushController:
     def _create_flush_task(self, do_flush: Callable[[], Awaitable[None]]) -> asyncio.Task[None]:
         task = self._loop.create_task(self._do_flush(do_flush))
         self._pending_flush_tasks.add(task)
-        task.add_done_callback(self._pending_flush_tasks.discard)
+        task.add_done_callback(self._on_flush_task_done)
         return task
+
+    def _on_flush_task_done(self, task: asyncio.Task[None]) -> None:
+        self._pending_flush_tasks.discard(task)
+        if not self._flush_in_progress and not self._pending_flush_tasks:
+            resolvers = self._flush_resolvers
+            self._flush_resolvers = []
+            for r in resolvers:
+                if not r.done():
+                    r.set_result(None)
 
     def _do_flush_task(self, do_flush: Callable[[], Awaitable[None]]) -> None:
         self._pending_timer = None

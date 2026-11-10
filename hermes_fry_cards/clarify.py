@@ -277,7 +277,22 @@ async def send_clarify(
 
 
 def _empty_trigger_response(self: Any) -> Any:
-    P2 = self._hl_P2CardActionTriggerResponse
+    if (
+        getattr(self, "_hl_P2CardActionTriggerResponse", None) is None
+        or getattr(self, "_hl_CallBackCard", None) is None
+    ):
+        try:
+            from lark_oapi.event.callback.model.p2_card_action_trigger import (
+                CallBackCard,
+                P2CardActionTriggerResponse,
+            )
+            if getattr(self, "_hl_P2CardActionTriggerResponse", None) is None:
+                self._hl_P2CardActionTriggerResponse = P2CardActionTriggerResponse
+            if getattr(self, "_hl_CallBackCard", None) is None:
+                self._hl_CallBackCard = CallBackCard
+        except Exception:
+            _logger.debug("[fry-cards] lazy load callback SDK models failed", exc_info=True)
+    P2 = getattr(self, "_hl_P2CardActionTriggerResponse", None)
     return P2() if P2 else None
 
 

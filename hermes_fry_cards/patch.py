@@ -384,6 +384,7 @@ async def on_message_completed_wait(
     message_id: str,
     answer: str = "",
     is_error: bool = False,
+    is_interrupted: bool = False,
     duration: float = 0.0,
     model: str = "",
     tokens: dict[str, Any] | None = None,
@@ -401,6 +402,7 @@ async def on_message_completed_wait(
             message_id=message_id,
             answer=answer,
             is_error=is_error,
+            is_interrupted=is_interrupted,
             duration=duration,
             model=model,
             tokens=tokens,
@@ -643,6 +645,7 @@ def on_message_interrupted(
         chat_type=chat_type,
         anchor_id=anchor_id,
         session_key=session_key,
+        map_completion=False,
     )
 
 
@@ -710,6 +713,7 @@ def on_turn_redirected(
                 chat_type=chat_type,
                 anchor_id=anchor_id,
                 session_key=session_key,
+                map_completion=True,
             )
             if text.strip():
                 ctrl.on_redirected_notice(text=text, message_id=new_msg, session_key=session_key)
@@ -812,7 +816,7 @@ async def on_background_completion(
         ctrl = ctrl or get_controller()
         if not ctrl.enabled:
             return False
-        return bool(await ctrl.on_background_completion(
+        await ctrl.on_background_completion(
             chat_id=chat_id,
             session_key=session_key,
             text=text,
@@ -820,7 +824,10 @@ async def on_background_completion(
             started_at=started_at,
             exit_code=exit_code,
             session_id=session_id,
-        ))
+        )
+        # #58: 始终返回 False，避免网关 _inject_watch_notification 提前 return True
+        # 而跳过内部消息注入与父会话唤醒逻辑
+        return False
     except Exception as exc:
         _logger.warning("on_background_completion error: %s", exc, exc_info=True)
         return False

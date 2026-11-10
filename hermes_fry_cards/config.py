@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
+import threading
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+_logger = logging.getLogger("hermes_fry_cards")
 
 DEFAULT_DOMAIN = "https://open.feishu.cn"  # SDK 根域名，Larksuite 用 https://open.larksuite.com
 LARK_DOMAIN = "https://open.larksuite.com"
@@ -118,6 +122,7 @@ class Config:
         self._raw: dict[str, Any] | None = None
         self._reload_key: tuple[int, int] | None = None
         self._reload_raw: dict[str, Any] | None = None
+        self._reload_lock = threading.RLock()
 
     @property
     def enabled(self) -> bool:
@@ -692,16 +697,27 @@ class Config:
 
         以 ``(mtime_ns, size)`` 为键缓存解析结果：配置真被改（如 /reasoning
         运行时改写）才重解析，稳态下每个流式 delta 不再重复 ``yaml.safe_load``.
+        持有 RLock 防并发乱序提交；解析失败时保留上一次有效配置并告警（#66）。
         """
         path = _config_path(self._home)
-        try:
-            st = path.stat()
-        except OSError:
-            return {}
-        key = (st.st_mtime_ns, st.st_size)
-        if self._reload_key == key and self._reload_raw is not None:
+        with self._reload_lock:
+            try:
+                st = path.stat()
+            except OSError:
+                return {}
+            key = (st.st_mtime_ns, st.st_size)
+            if self._reload_key == key and self._reload_raw is not None:
+                return self._reload_raw
+            try:
+                text = path.read_text(encoding="utf-8")
+                parsed = yaml.safe_load(text)
+                if isinstance(parsed, dict):
+                    self._reload_raw = parsed
+                elif parsed is None:
+                    self._reload_raw = {}
+                self._reload_key = key
+            except Exception as e:
+                _logger.warning("Failed to reload config from %s: %s (keeping previous config)", path, e)
+                if self._reload_raw is None:
+                    self._reload_raw = {}
             return self._reload_raw
-        text = path.read_text(encoding="utf-8")
-        self._reload_raw = yaml.safe_load(text) or {}
-        self._reload_key = key
-        return self._reload_raw

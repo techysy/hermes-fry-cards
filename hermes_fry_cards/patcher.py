@@ -378,13 +378,11 @@ def _redirect_resolved_hook(indent: str) -> str:
 
 
 def _bg_completion_hook(indent: str) -> str:
-    """后台完成通知接管：活跃卡并入通知区，无卡走静态卡（#47）.
+    """后台完成通知接管：活跃卡并入通知区，无卡走静态卡，不截断父会话唤醒（#47 / #58）.
 
-    ``_inject_watch_notification`` 把完成通知合成内部消息注入——纯文本气泡
-    直达，不经过卡片管线（无 START 钩子可拦）。这个锚点挂在内部标记处理
-    之前：fry 按会话活跃卡并入通知区，或独立静态卡直接投聊天；返回 True
-    时注入点 ``return True`` 跳过 Hermes 注入（外层语义同「adapter 已接受」，
-    不会重试/重排队）。False 时 Hermes 照常注入，无损降级。
+    ``_inject_watch_notification`` 把完成通知合成内部消息注入唤醒父会话。
+    挂在此处由 fry 把回执并入活跃卡或发独立卡，但不提前 return True，确保后续完整结果
+    注入与父会话唤醒正常流转（#58）。
     """
     return _make_hook(
         indent,
@@ -536,6 +534,7 @@ def _complete_hook(indent: str) -> str:
             "        message_id=_lark_completion_id,",
             "        answer=response,",
             "        is_error=bool(agent_result.get('failed')),",
+            "        is_interrupted=bool(agent_result.get('interrupted')),",
             "        answer_rewritten=_lark_answer_rewritten,",
             "        duration=locals().get('_response_time', locals().get('_turn_seconds')),",
             "        model=agent_result.get('model', ''),",
@@ -1021,7 +1020,7 @@ def _clarify_hook(indent: str) -> str:
             "try:",
             "    from hermes_fry_cards.patch import on_clarify_enter, on_clarify_exit",
             "    _lark_clarify_orig = agent.clarify_callback",
-            "    def _lark_clarify_wrapper(question, choices, multi_select=False):",
+            "    def _lark_clarify_wrapper(*args, **kwargs):",
             "        try:",
             "            _lark_clarify_msg_id = ctx.event_message_id",
             "            _lark_clarify_chat_id = ctx._status_chat_id",
@@ -1036,7 +1035,7 @@ def _clarify_hook(indent: str) -> str:
             "            session_key=_lark_clarify_sk,",
             "        )",
             "        try:",
-            "            return _lark_clarify_orig(question, choices, multi_select)",
+            "            return _lark_clarify_orig(*args, **kwargs)",
             "        finally:",
             "            on_clarify_exit(",
             "                message_id=_lark_clarify_msg_id,",

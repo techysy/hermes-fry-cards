@@ -233,6 +233,8 @@ class StreamCardController(StreamingController):
         self._sessions: dict[str, CardSession] = {}
         self._session_keys: dict[str, CardSession] = {}
         self._interrupt_map: dict[str, str] = {}
+        # 丢弃的旧回合尾部：防止旧回合迟到的完成事件落到新卡上（#65）
+        self._interrupted_tails: dict[str, float] = {}
         # 同一次打断的重复注入去重：(old_message_id, new_message_id) → monotonic 时刻。
         # REDIRECT 与 REDIRECT_RESOLVED 两个注入点对同一事件各调一次，间隔只有几毫秒；
         # 两次调用的 old_message_id 可能都指向刚建好的新会话（同 id），幂等判据分不出来。
@@ -590,31 +592,8 @@ class StreamCardController(StreamingController):
         session_key: str | None = None,
         message_id: str | None = None,
     ) -> bool:
-        """会话触发上下文压缩时封卡.
-
-        当触发上下文压缩（例如会话分裂、in-place compaction 或手动压缩），
-        之前的上下文历史已缩减/重写。旧卡片必须立即封印，确保卡片停止转圈、
-        渲染完成态，后续消息或新轮次从新卡开始。
-        """
-        if not self.enabled:
-            return False
-        session = self._resolve_session(message_id, session_key)
-        if session is None or session.state.is_terminal:
-            return False
-
-        session.state = SessionState.COMPLETED
-        session.flush.mark_completed()
-        _logger.info(
-            "session_compressed: msg=%s key=%s card=%s sealing",
-            session.message_id[:12],
-            session_key or "",
-            (session.card_id or "")[:12],
-        )
-        if session.has_card:
-            return await self._complete_session_after_creation(session)
-        else:
-            self._cleanup_session(session)
-            return True
+        """上下文压缩事件：保留当前轮活跃卡片，由正常完成钩子完成封卡（#59）."""
+        return self.on_compression(session_key=session_key, message_id=message_id)
 
     def on_compression(
         self,
@@ -622,21 +601,23 @@ class StreamCardController(StreamingController):
         session_key: str | None = None,
         message_id: str | None = None,
     ) -> bool:
-        """同步入口：触发压缩封卡."""
+        """同步入口：观测上下文压缩，不提前封卡（#59）.
+
+        网关在压缩时检测到会话 ID 变更，但当前轮次的回复仍在流式输出或等待定稿。
+        保留卡片处于流式活跃状态，避免提前封卡导致正常完成时找不到会话而重复发送纯文本。
+        """
         if not self.enabled:
             return False
         session = self._resolve_session(message_id, session_key)
         if session is None or session.state.is_terminal:
             return False
-        session.state = SessionState.COMPLETED
-        session.flush.mark_completed()
         _logger.info(
-            "session_compressed_sync: msg=%s key=%s card=%s sealing",
+            "session_compressed_retained: msg=%s key=%s card=%s state=%s",
             session.message_id[:12],
             session_key or "",
             (session.card_id or "")[:12],
+            session.state,
         )
-        self._complete_session(session)
         return True
 
     def _fire_and_forget(
@@ -1000,8 +981,14 @@ class StreamCardController(StreamingController):
         chat_type: str = "",
         anchor_id: str | None = None,
         session_key: str | None = None,
+        map_completion: bool = True,
     ) -> None:
-        """用户发送新消息导致前一条消息被中断 — abort A + create B（幂等）."""
+        """用户发送新消息导致前一条消息被中断 — abort A + create B（幂等）.
+
+        ``map_completion`` 仅在 Hermes 确定将正在跑的回合重定向到新消息时有效（run_busy
+        的 ``redirected=True``）；普通打断（run_turn 的 was_interrupted）新消息自己成一轮，
+        旧回合迟到的完成事件直接丢弃，不映射到新卡上（#65）。
+        """
         if not self.enabled:
             return
 
@@ -1097,10 +1084,13 @@ class StreamCardController(StreamingController):
                     new_message_id[:12],
                 )
 
-        self._interrupt_map[old_message_id] = new_message_id
-        for key, val in list(self._interrupt_map.items()):
-            if val == old_message_id and key != old_message_id:
-                self._interrupt_map[key] = new_message_id
+        if map_completion:
+            self._interrupt_map[old_message_id] = new_message_id
+            for key, val in list(self._interrupt_map.items()):
+                if val == old_message_id and key != old_message_id:
+                    self._interrupt_map[key] = new_message_id
+        else:
+            self._interrupted_tails[old_message_id] = time.monotonic()
 
     def _reuse_interrupted_session(
         self,
@@ -1177,6 +1167,7 @@ class StreamCardController(StreamingController):
         message_id: str,
         answer: str = "",
         is_error: bool = False,
+        is_interrupted: bool = False,
         duration: float = 0.0,
         model: str = "",
         tokens: dict | None = None,
@@ -1206,10 +1197,11 @@ class StreamCardController(StreamingController):
             return False
 
         _logger.info(
-            "on_completed_wait: msg=%s has_card=%s state=%s",
+            "on_completed_wait: msg=%s has_card=%s state=%s interrupted=%s",
             message_id[:12],
             session.has_card,
             session.state,
+            is_interrupted,
         )
 
         self._apply_completion_payload(
@@ -1223,11 +1215,20 @@ class StreamCardController(StreamingController):
         )
         if is_error:
             session.mark_failed(reason="agent_returned_error")
+        elif is_interrupted:
+            session.state = SessionState.ABORTED
+            _logger.info("completion interrupted: msg=%s", message_id[:12])
 
         completed = await self._complete_session_wait(session)
-        if completed:
+        if completed and is_interrupted and not is_error:
+            session.state = SessionState.ABORTED
+        _logger.info(
+            "complete_session_wait: msg=%s completed=%s state=%s",
+            message_id[:12], completed, session.state,
+        )
+        if completed and (is_error or not is_interrupted):
             self._maybe_send_completion_notice(session, is_error=is_error)
-        else:
+        elif not completed:
             # 封卡失败（重试 3 次后仍不成）：标记文本回退，撤销 already_sent，
             # 让网关把最终回复按纯文本补发——流式抑制标记可能已把 already_sent
             # 置位（见 mark_stream_delivered），不撤销用户就什么都收不到。
@@ -1506,6 +1507,13 @@ class StreamCardController(StreamingController):
             redirected = self._sessions.get(redirected_id)
             if redirected is not None and not redirected.state.is_terminal:
                 return redirected
+
+        # 普通打断的旧尾巴：直接丢弃，不回退到 session_key 避免污染新卡（#65）
+        if message_id and message_id in self._interrupted_tails:
+            _logger.info("on_completed: dropping discarded interrupted tail msg=%s", message_id[:12])
+            self._interrupted_tails.pop(message_id, None)
+            return None
+
         if session_key:
             fallback = self._session_keys.get(session_key)
             if fallback is not None and fallback.state not in (

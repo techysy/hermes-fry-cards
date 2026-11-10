@@ -510,6 +510,7 @@ class StreamingController:
                 continue
             try:
                 if seg.type == SegmentType.REASONING:
+                    snapshot = seg.text
                     content = optimize_markdown_style(seg.text) or " "
                     # 尾部窗口钳制（#52）：stream_element 是覆盖语义全文重发，
                     # reasoning 无上限时每秒重写 20–28KB、单轮累计 1.3MB，
@@ -527,14 +528,15 @@ class StreamingController:
                         session.sequence,
                         len(content),
                     )
-                    await self._client.cardkit_stream_element(
-                        session.card_id,
+                    await self._stream_or_update(
+                        session,
                         seg.text_el_id,
                         content,
-                        sequence=session.sequence,
+                        kind="reasoning",
                     )
-                    seg.dirty = False
+                    seg.dirty = (seg.text != snapshot)
                 elif seg.type == SegmentType.ANSWER:
+                    snapshot = seg.text
                     content = seg.text
                     if session.image_resolver:
                         content = session.image_resolver.resolve_images(content)
@@ -550,19 +552,112 @@ class StreamingController:
                         session.sequence,
                         len(content),
                     )
-                    await self._client.cardkit_stream_element(
-                        session.card_id,
+                    await self._stream_or_update(
+                        session,
                         seg.el_id,
                         content,
-                        sequence=session.sequence,
+                        kind="answer",
                     )
-                    seg.dirty = False
+                    seg.dirty = (seg.text != snapshot)
             except Exception as e:
+                if (
+                    isinstance(e, FeishuAPIError)
+                    and e.code == 300313
+                    and seg.type == SegmentType.REASONING
+                    and extract_missing_element_id(e) == seg.text_el_id
+                ):
+                    try:
+                        await self._restore_reasoning_body(session, seg, content)
+                        seg.dirty = (seg.text != snapshot)
+                        continue
+                    except Exception as recovery_error:
+                        e = recovery_error
                 _logger.debug("CardKit stream element failed: %s el=%s", e, seg.el_id, exc_info=True)
 
         # 载荷自适应降频（#46/#52）：按本 flush 实际推送量 + 最大单元素全文
         # 调整下一轮节流窗口；元素级档位优先（客户端重绘量由最大单元素决定）。
         session.flush.adapt_payload_size(payload_bytes, max_element_bytes=max_element_bytes)
+
+    async def _restore_reasoning_body(
+        self, session: CardSession, seg: Any, content: str,
+    ) -> None:
+        """300313 缺失思考正文时的自愈补建（#67）."""
+        assert self._client is not None
+        assert session.card_id is not None
+        body = {
+            "tag": "markdown",
+            "element_id": seg.text_el_id,
+            "content": content,
+            "text_size": "notation",
+        }
+        action = {
+            "action": "partial_update_element",
+            "params": {
+                "element_id": seg.el_id,
+                "partial_element": {"elements": [body]},
+            },
+        }
+        session.sequence += 1
+        try:
+            await self._client.cardkit_batch_update(
+                session.card_id, [action], sequence=session.sequence,
+            )
+        except FeishuAPIError as error:
+            if extract_duplicate_element_id(error) != seg.text_el_id:
+                raise
+        session.sequence += 1
+        await self._stream_or_update(session, seg.text_el_id, content, kind="reasoning")
+        _logger.info(
+            "CardKit reasoning body restored: msg=%s card=%s el=%s chars=%d",
+            session.message_id[:12],
+            session.card_id[:12],
+            seg.text_el_id,
+            len(content),
+        )
+
+    async def _stream_or_update(
+        self, session: CardSession, element_id: str, content: str, *, kind: str = "",
+    ) -> None:
+        """流式写入；若服务端关闭流式模式（300309）则平滑降级为 partial update（#69）.
+
+        CardKit 的流式会话约十分钟后由服务端关闭，关闭后 stream_element 报错 300309。
+        发生时切到 partial_update_element 继续上屏，防止卡片整轮冻结。
+        """
+        assert self._client is not None
+        assert session.card_id is not None
+        if not getattr(session, "stream_closed", False):
+            try:
+                await self._client.cardkit_stream_element(
+                    session.card_id,
+                    element_id,
+                    content,
+                    sequence=session.sequence,
+                )
+                return
+            except Exception as exc:
+                if (
+                    (isinstance(exc, FeishuAPIError) and exc.code == CARDKIT_STREAMING_CLOSED)
+                    or str(CARDKIT_STREAMING_CLOSED) in str(exc)
+                ):
+                    session.stream_closed = True
+                    _logger.info(
+                        "CardKit streaming closed by server (300309): msg=%s kind=%s seq=%d - "
+                        "switching to element updates",
+                        session.message_id[:12],
+                        kind,
+                        session.sequence,
+                    )
+                else:
+                    raise
+        session.sequence += 1
+        await self._client.cardkit_batch_update(
+            session.card_id,
+            [{
+                "action": "partial_update_element",
+                "params": {"element_id": element_id, "partial_element": {"content": content}},
+            }],
+            sequence=session.sequence,
+        )
 
     async def _sync_notice_slot(self, session: CardSession, segment_state: SegmentState) -> int:
         """把最新一条提示画到卡片通知槽，返回本次推送的载荷字节数.
@@ -991,7 +1086,7 @@ class StreamingController:
         try:
             await self._client.cardkit_batch_update(
                 card_id,
-                [{"type": "delete", "element_id": LOADING_ELEMENT_ID}],
+                [{"action": "delete_elements", "params": {"element_ids": [LOADING_ELEMENT_ID]}}],
                 sequence=sequence,
             )
         except Exception:
@@ -1269,7 +1364,7 @@ class StreamingController:
             progress_notices=progress_notices,
         )
 
-        streaming_closed = False
+        streaming_closed = getattr(session, "stream_closed", False)
         panel_dropped = False
         # #22：重建卡片的真实元素数（含完成态长文切块二次膨胀）与流式期估算
         # tracked 对照打出，用于定位 300305 的低谷来自流式估算还是完成态重建。
