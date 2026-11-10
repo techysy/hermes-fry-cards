@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.3] - 2026-11-10
+
+### 兼容 / Compatibility
+- **适配 Hermes 0.23 后台任务模块拆分**（#57）：Hermes 0.22.6+ / 0.23.0 将 `/bg`
+  后台任务投递逻辑 `_run_background_task` 从 `gateway/run_turn.py` 拆解到独立微模块
+  `gateway/run_background.py`（`GatewayBackgroundMixin`）。补丁器现在动态探测
+  `run_background.py`，并将 `bg_deliver` 锚点优先挂载到独立后台模块中（老版本自动平滑回退
+  至 `run_turn.py`）。修复了在 Hermes 0.23+ 环境下安装后 `bg_deliver` 显示为 `missing` 的缺陷。
+
+### 测试 / Tests
+- **新增 Hermes v0.23.0 真实源码回归测试**（`tests/test_patcher_real_v023.py`）：
+  对 Hermes 官方发布的 `v0.23.0` release 标签源码进行全量微模块注入、有效性、幂等性与可逆性验证。
+
+---
+
 ## [0.6.2] - 2026-11-02
 
 ### 新增 / Added
