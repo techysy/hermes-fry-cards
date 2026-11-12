@@ -544,6 +544,28 @@ async def test_generated_complete_hook_suppresses_native_error_after_error_card(
 
 
 @pytest.mark.asyncio
+async def test_generated_complete_hook_pops_last_reasoning_to_prevent_duplicate_post() -> None:
+    complete = _build_complete_hook_runner()
+    agent_result = {"last_reasoning": "step by step thought"}
+    event = SimpleNamespace(message_id="message")
+
+    with (
+        patch(
+            "hermes_fry_cards.patch.on_message_completed_wait",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+        patch("hermes_fry_cards.patch.on_message_needs_text_fallback", return_value=False),
+    ):
+        result, _response, _footer = await complete(
+            agent_result, event, "answer", 1.0, "",
+        )
+
+    assert result["already_sent"] is True
+    assert "last_reasoning" not in result
+
+
+@pytest.mark.asyncio
 async def test_generated_followup_hook_handles_distinct_delivery_result() -> None:
     complete = _build_followup_complete_hook_runner()
     raw_result = {"final_response": "raw answer"}

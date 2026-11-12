@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.5] - 2026-11-13
+
+### 修复 / Fixed
+- **消除 Hermes 核心补发的重复独立 reasoning post 消息**：Hermes 0.23+（#7251）在流式结束后会把 reasoning 作为独立消息补发到聊天；补丁器在卡片投递完成时自动清除 `agent_result["last_reasoning"]`，彻底避免卡外多一条重复的纯文本思考消息。
+- **卡片样式配置热重载（#71）**：`_streaming_sec` 接入 `_reload()` 结合 `(mtime_ns, size)` 动态重载，修改 `config.yaml` 样式配置后下一张新建卡片立刻按新样式渲染，无需重启网关。
+- **无色带标题栏与过程框折叠控制（#71）**：支持配置 `streaming.header.template: default` 关掉彩色标题栏，呈现干净清爽外观；支持 `streaming.process_expanded` 自由设定思考/工具过程框默认展开或折叠。
+
+---
+
 ## [0.6.4] - 2026-11-10
 
 ### 修复 / Fixed

@@ -125,17 +125,18 @@ _HEADER_STATES: dict[str, dict[str, str]] = {
 }
 
 
-def _build_header(status: str) -> dict[str, Any]:
-    """构建卡片级 header — 流式蓝 / 完成绿 / 停止红."""
+def _build_header(status: str, *, template_override: str | None = None) -> dict[str, Any]:
+    """构建卡片级 header — 流式蓝 / 完成绿 / 停止红；支持 template_override 设为 default 等（#71）."""
     cfg = _HEADER_STATES.get(status, _HEADER_STATES["completed"])
     en_text, zh_text = _T[cfg["i18n_key"]]
+    template = template_override if template_override is not None else cfg["template"]
     return {
         "title": {
             "tag": "plain_text",
             "content": en_text,
             "i18n_content": _i18n(en_text, zh_text),
         },
-        "template": cfg["template"],
+        "template": template,
     }
 
 
@@ -791,6 +792,7 @@ def build_streaming_card_v2(
     show_reasoning: bool = False,
     show_streaming_element: bool = True,
     header_enabled: bool = False,
+    header_template: str | None = None,
     text_size: str = "normal_v2",
     width_mode: str = "default",
     notice: str | None = None,
@@ -845,7 +847,7 @@ def build_streaming_card_v2(
         "body": {"elements": elements},
     }
     if header_enabled:
-        card["header"] = _build_header("streaming")
+        card["header"] = _build_header("streaming", template_override=header_template)
     return card
 
 
@@ -864,6 +866,7 @@ def build_complete_card(
     panel_expanded: bool = False,
     panel_text_size: str = "notation",
     header_enabled: bool = False,
+    header_template: str | None = None,
     body_text_size: str = "normal_v2",
     show_tool_use: bool = True,
     width_mode: str = "default",
@@ -1061,7 +1064,7 @@ def build_complete_card(
     card["body"] = {"elements": build_notice_elements(notices) + elements}
     if header_enabled:
         header_status = "error" if is_error else "stopped" if is_aborted else "completed"
-        card["header"] = _build_header(header_status)
+        card["header"] = _build_header(header_status, template_override=header_template)
     return card
 
 

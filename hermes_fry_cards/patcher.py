@@ -554,6 +554,7 @@ def _complete_hook(indent: str) -> str:
             "    )",
             "    if _lark_card_sent:",
             "        agent_result['already_sent'] = True",
+            "        agent_result.pop('last_reasoning', None)",
             "        _footer_line = ''",
             "        if agent_result.get('failed'):",
             "            response = ''",

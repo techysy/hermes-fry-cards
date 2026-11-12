@@ -727,6 +727,11 @@ class TestBuildStreamingCardV2:
         card = build_streaming_card_v2(width_mode="compact")
         assert card["config"]["width_mode"] == "compact"
 
+    def test_header_template_override_default(self) -> None:
+        """#71: 支持 header_template 设为 default 关掉彩色标题栏."""
+        card = build_streaming_card_v2(header_enabled=True, header_template="default")
+        assert card["header"]["template"] == "default"
+
 
 # --- 分段完成态卡片 ---
 
@@ -880,6 +885,16 @@ class TestBuildSegmentCompleteCard:
         ]
         assert len(t_panels[0]["elements"]) == 2  # steps[0:2]
         assert len(t_panels[1]["elements"]) == 1  # steps[2:3]
+
+    def test_complete_card_header_template_override_default(self) -> None:
+        """#71: 完成态卡片同样支持 header_template 设为 default."""
+        card = build_complete_card(
+            segments=[_seg("answer", "done")],
+            all_tool_steps=[],
+            header_enabled=True,
+            header_template="default",
+        )
+        assert card["header"]["template"] == "default"
 
     def test_workflow_interleaving_tool_only_after_reasoning(self) -> None:
         """只有工具、无思考时，统一面板内仍含一个 🔧 面板（不回归平铺）."""

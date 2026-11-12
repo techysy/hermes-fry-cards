@@ -1,33 +1,24 @@
-## 🍟 hermes-fry-cards v0.6.4
+## 🍟 hermes-fry-cards v0.6.5
 
-> 综合稳定性升级：修复后台回执、上下文压缩、Clarify 批量签名、流式写入丢字、卡片删除动作格式等系列核心缺陷。
+> 体验与热重载升级：消灭 Hermes 核心独立 reasoning 补发重复消息；支持样式配置免重启热重载与无色带清爽标题栏（#71）。
 
 ### 🚀 重点修复与改进
 
-1. **后台完成回执不截断父会话唤醒（#58）**：
-   - 修复 `on_background_completion` 在呈现回执卡后避免过早 `return True`，确保网关继续注入内部消息并顺利唤醒父会话 Agent 继续工作。
-2. **上下文压缩期间保留流式卡片（#59）**：
-   - 修复 `on_compression` 在压缩发生时不强行提前关闭卡片，避免本轮正常完成事件因卡片已关闭而被迫降级纯文本重复投递。
-3. **Clarify 回调批量问题签名与冷启动韧性（#62）**：
-   - `_clarify_hook` 支持通用形参透传 `(*args, **kwargs)`，完美适配 Hermes 0.23 的批量问题签名；冷启动时按需懒加载回调 SDK 类。
-4. **流式写入并发安全与防丢字（#63）**：
-   - 写入前记录文本快照并在写完后对比更新 `seg.dirty`，彻底杜绝 await 网络等待期间到达的增量被静默丢弃的问题。
-5. **降级路径 CardKit loading 图标删除格式修复（#64）**：
-   - 将 `_remove_loading_icon` 改为 CardKit 标准动作 `delete_elements`。
-6. **打断状态保留与旧回合完成事件隔离（#65）**：
-   - 封卡钩子透传 `interrupted`，被打断的轮次封卡显示为停止状态并保留已有文本；普通打断丢弃旧回合尾巴，防止迟到的完成事件错误覆盖新卡。
-7. **配置并发安全重载与坏 YAML 容错（#66）**：
-   - `Config._reload` 加入 `RLock` 保护防并发乱序，并在文件正在保存或语法错误时安全回退保留上次有效配置。
-8. **300313 思考正文缺失自愈补建（#67）**：
-   - 捕获 300313 且定位到正文元素缺失时自动执行 `_restore_reasoning_body` 重建元素并写回文本。
-9. **收尾等待唤醒机制加固（#68）**：
-   - `FlushController` 在刷新任务完成回调中统一触发等待中的 future，根治特定时序下收尾挂死超时的问题。
-10. **流式模式超时关闭降级（#69）**：
-    - 捕获 CardKit 约 10 分钟后的服务端关闭码（300309），平滑降级为 `partial_update_element` 增量更新，卡片不再卡死。
+1. **消除 Hermes 核心补发的重复独立 reasoning post 消息**：
+   - Hermes 0.23+（commit `67664e2`，#7251）在流式结束后会自动将 reasoning 作为独立 post 消息补发到聊天。
+   - 由于卡片内已完整流式渲染 💭 思考折叠面板，此补发会导致同一份思考双显且卡外多一条消息。
+   - 补丁器在卡片完成收尾时自动清除 `agent_result["last_reasoning"]`，彻底杜绝卡外多余的独立思考消息。
+2. **卡片样式配置热重载（#71）**：
+   - `_streaming_sec` 全面接入 `_reload()` 结合 `(mtime_ns, size)` 动态重载体系，在 `config.yaml` 中修改任何 `streaming.*` 样式配置后，**无需重启网关进程**，下一张新建的卡片立刻按新配置渲染。
+   - 正在运行的卡片在生命周期内使用自己的配置快照，流式更新到封卡始终保持风格一致，杜绝跑一半突变。
+3. **无色带标题栏支持（#71）**：
+   - 支持配置 `streaming.header.template: default`，关掉彩色彩条标题栏（blue/green/red），仅保留状态图标与文字，视觉清爽高级。
+4. **过程框默认展开控制（#71）**：
+   - 支持通过 `streaming.process_expanded: true/false` 自由指定思考/工具过程框默认是展开还是收起。
 
 ### ⚙️ 其他
 
-- 全量 **1091 passed**，新增专项目标回归测试集 `tests/test_issues_fixes.py`
+- 全量 **1096 passed**，ruff / mypy 零新增
 
 ### 📦 升级
 
@@ -43,4 +34,4 @@ systemctl --user restart hermes-gateway
 
 完整明细见 [CHANGELOG.md](https://github.com/techysy/hermes-fry-cards/blob/main/CHANGELOG.md)。
 
-**Full Changelog**: [v0.6.3...v0.6.4](https://github.com/techysy/hermes-fry-cards/compare/v0.6.3...v0.6.4)
+**Full Changelog**: [v0.6.4...v0.6.5](https://github.com/techysy/hermes-fry-cards/compare/v0.6.4...v0.6.5)

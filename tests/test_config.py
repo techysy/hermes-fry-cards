@@ -747,6 +747,25 @@ class TestReloadCache:
         assert cfg._reload() == {}
 
 
+def test_header_template_reads_and_reloads(tmp_path: Path) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_text("streaming:\n  header:\n    template: default\n", encoding="utf-8")
+    cfg = Config(home=tmp_path)
+    assert cfg.header_template == "default"
+    path.write_text("streaming:\n  header:\n    template: blue\n", encoding="utf-8")
+    assert cfg.header_template == "blue"
+
+
+def test_process_expanded_hot_reload(tmp_path: Path) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_text("streaming:\n  process_expanded: true\n", encoding="utf-8")
+    cfg = Config(home=tmp_path)
+    assert cfg.panel_expanded is True
+    path.write_text("streaming:\n  process_expanded: false\n", encoding="utf-8")
+    assert cfg.panel_expanded is False
+
+
+
 class TestFlushIntervalMs:
     def test_default_500(self) -> None:
         cfg = _make_config({"streaming": {}})

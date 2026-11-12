@@ -539,6 +539,24 @@ class Config:
         return bool(header.get("enabled", True))
 
     @property
+    def header_template(self) -> str | None:
+        """Header 模板颜色（如 blue / green / default 等，设为 default 关掉彩色标题栏，#71）."""
+        sec = self._streaming_sec()
+        header = sec.get("header", {})
+        if not isinstance(header, dict):
+            return None
+        val = header.get("template")
+        return str(val).strip().lower() if val is not None else None
+
+    @property
+    def panel_expanded(self) -> bool:
+        """思考过程/工具面板是否默认展开（优先读 streaming.process_expanded，#71）."""
+        sec = self._streaming_sec()
+        if "process_expanded" in sec:
+            return bool(sec["process_expanded"])
+        return bool(sec.get("panel_expanded", False))
+
+    @property
     def header_min_duration(self) -> float:
         """快捷回复去 header 阈值(秒). 完成态卡片耗时 < 此值且无工具调用时不显示顶部状态栏.
         默认 0 = 不启用(始终显示 header)."""
@@ -636,7 +654,7 @@ class Config:
         return _get_secret("FEISHU_APP_SECRET") or _get_secret("LARK_APP_SECRET")
 
     def _streaming_sec(self) -> dict[str, Any]:
-        raw = self._load()
+        raw = self._reload()
         sec = raw.get("streaming") or {}
         if isinstance(sec, dict):
             return sec
@@ -699,6 +717,8 @@ class Config:
         运行时改写）才重解析，稳态下每个流式 delta 不再重复 ``yaml.safe_load``.
         持有 RLock 防并发乱序提交；解析失败时保留上一次有效配置并告警（#66）。
         """
+        if self._raw is not None:
+            return self._raw
         path = _config_path(self._home)
         with self._reload_lock:
             try:
