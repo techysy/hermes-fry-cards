@@ -126,6 +126,10 @@ class CardSession:
         return bool(self.card_id or self.card_msg_id)
 
     def set_card(self, *, card_id: str, card_msg_id: str) -> None:
+        if self.card_id != card_id:
+            # 换卡（拆卡/clarify 切卡/重定向新卡）：新卡是新的 CardKit 流式会话，
+            # 旧卡上服务端关闭流式（300309）的标记不能带过来（#69 换卡边界）。
+            self.stream_closed = False
         self.card_id = card_id
         self.card_msg_id = card_msg_id
 

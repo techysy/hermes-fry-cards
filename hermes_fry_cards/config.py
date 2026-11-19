@@ -120,6 +120,7 @@ class Config:
     def __init__(self, home: Path | None = None) -> None:
         self._home = Path(home) if home is not None else None
         self._raw: dict[str, Any] | None = None
+        self._raw_is_disk = False  # _raw 来自磁盘（_load），而非测试直接注入
         self._reload_key: tuple[int, int] | None = None
         self._reload_raw: dict[str, Any] | None = None
         self._reload_lock = threading.RLock()
@@ -177,8 +178,10 @@ class Config:
 
     @property
     def panel_expanded(self) -> bool:
-        """完成态卡片中面板（工具、推理）是否保持展开."""
+        """思考/工具面板是否默认展开（优先读 streaming.process_expanded，#71）."""
         sec = self._streaming_sec()
+        if "process_expanded" in sec:
+            return bool(sec["process_expanded"])
         return bool(sec.get("panel_expanded", False))
 
     @property
@@ -549,14 +552,6 @@ class Config:
         return str(val).strip().lower() if val is not None else None
 
     @property
-    def panel_expanded(self) -> bool:
-        """思考过程/工具面板是否默认展开（优先读 streaming.process_expanded，#71）."""
-        sec = self._streaming_sec()
-        if "process_expanded" in sec:
-            return bool(sec["process_expanded"])
-        return bool(sec.get("panel_expanded", False))
-
-    @property
     def header_min_duration(self) -> float:
         """快捷回复去 header 阈值(秒). 完成态卡片耗时 < 此值且无工具调用时不显示顶部状态栏.
         默认 0 = 不启用(始终显示 header)."""
@@ -708,6 +703,7 @@ class Config:
             self._raw = yaml.safe_load(text) or {}
         else:
             self._raw = {}
+        self._raw_is_disk = True
         return self._raw
 
     def _reload(self) -> dict[str, Any]:
@@ -716,28 +712,32 @@ class Config:
         以 ``(mtime_ns, size)`` 为键缓存解析结果：配置真被改（如 /reasoning
         运行时改写）才重解析，稳态下每个流式 delta 不再重复 ``yaml.safe_load``.
         持有 RLock 防并发乱序提交；解析失败时保留上一次有效配置并告警（#66）。
+
+        ``_raw`` 仅在测试直接注入（未经 ``_load`` 落盘）时短路返回；生产路径
+        ``_load`` 会置 ``_raw_is_disk``，此后一律走磁盘 mtime 热重载，否则
+        ``_platform_cfg`` 读过一次凭据就会把 ``_raw`` 固化、热重载永久失效。
         """
-        if self._raw is not None:
+        if self._raw is not None and not self._raw_is_disk:
             return self._raw
         path = _config_path(self._home)
         with self._reload_lock:
             try:
                 st = path.stat()
             except OSError:
-                return {}
+                # 文件暂时不可见（编辑器原子替换窗口）：保留上次有效配置
+                return self._reload_raw if isinstance(self._reload_raw, dict) else {}
             key = (st.st_mtime_ns, st.st_size)
             if self._reload_key == key and self._reload_raw is not None:
                 return self._reload_raw
             try:
                 text = path.read_text(encoding="utf-8")
                 parsed = yaml.safe_load(text)
-                if isinstance(parsed, dict):
-                    self._reload_raw = parsed
-                elif parsed is None:
-                    self._reload_raw = {}
-                self._reload_key = key
+                self._reload_raw = parsed if isinstance(parsed, dict) else {}
             except Exception as e:
                 _logger.warning("Failed to reload config from %s: %s (keeping previous config)", path, e)
                 if self._reload_raw is None:
                     self._reload_raw = {}
+            # 无论解析成败都记下 key：坏 YAML 不反复重解析刷日志；用户保存完成后
+            # mtime/size 变化自然触发重读。
+            self._reload_key = key
             return self._reload_raw

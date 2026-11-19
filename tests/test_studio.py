@@ -9,7 +9,7 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError
-from urllib.request import Request, urlopen
+from urllib.request import ProxyHandler, Request, build_opener
 
 import pytest
 import yaml
@@ -43,6 +43,12 @@ def server(home: Path):
     httpd.server_close()
 
 
+# loopback 直连 opener：环境里若有 HTTP_PROXY（如局域网代理），urllib 默认会把
+# 127.0.0.1 请求发给代理，代理连不到「它自己的」loopback → 全部 502。测试的
+# studio 服务起在本机，必须绕过代理直连。
+_LOOPBACK_OPENER = build_opener(ProxyHandler({}))
+
+
 def _req(
     base: str,
     path: str,
@@ -54,7 +60,7 @@ def _req(
     headers = {"Content-Type": "application/json"} if payload is not None and raw is None else {}
     req = Request(base + path, data=data, headers=headers, method="POST" if data is not None else "GET")
     try:
-        with urlopen(req, timeout=10) as resp:
+        with _LOOPBACK_OPENER.open(req, timeout=10) as resp:
             return resp.status, resp.read(), resp.headers
     except HTTPError as e:
         return e.code, e.read(), e.headers

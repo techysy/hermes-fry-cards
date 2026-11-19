@@ -56,12 +56,16 @@ gateway/run.py (Hermes)
        ├─ on_turn_redirected (REDIRECT_RESOLVED, optional) → same, injected after the _steer unpack BEFORE the 30s busy-ack debounce so a second consecutive interrupt still switches cards (#43)
        ├─ on_background_completion (BG_COMPLETION, optional) → controller.on_background_completion() in
        │    gateway/run_notifications.py's _inject_watch_notification — watch/completion notices merge into
-       │    the live card (session_key resolution) or go out as a standalone static card; True skips the
-       │    plain-text synthetic injection (#47). Delegation-type completion events carry no
+       │    the live card (session_key resolution) or go out as a standalone static card. The patch entry
+       │    ALWAYS returns False (#58): the gateway must proceed with its internal-message injection so the
+       │    parent session receives the full result and wakes; the turn_busy plain-text duplicate is still
+       │    suppressed separately by BG_BUSY_SUPPRESS. Delegation-type completion events carry no
        │    command/started_at fields, so background_completion_text's fallback must not render the
        │    gateway's internal marker line ([ASYNC DELEGATION BATCH COMPLETE …], #54) — bracketed
        │    uppercase-marker first lines fall back to the generic ✅ 后台任务已完成
-       └─ on_session_compressed → controller.on_compression() (optional, seal card on context compaction)
+       └─ on_session_compressed → controller.on_compression() (optional; OBSERVATION-ONLY since #59:
+            compression no longer seals the card — the session stays streaming so the normal completion
+            hook seals it on the same card; sealing here duplicated delivery as plain text)
 
 cron/scheduler.py (Hermes)
   └─ CronPatcher (patcher.py) injects on_cron_deliver into _deliver_result
@@ -129,7 +133,7 @@ Studio (studio/ — visual config workbench, stdlib http.server + native JS only
 ## Key Constraints
 
 - Hermes `>= 0.14.0` (2026.5.16) required. `patcher.py` targets specific function names in Hermes's `gateway/run.py` (`_handle_message_with_agent`, `progress_callback`, `_stream_delta_cb`, `_interim_assistant_cb`) and `cron/scheduler.py` (`_deliver_result`). If Hermes changes these, `verify` will catch it.
-- The interrupt hook is injected at the `"Restart typing indicator"` comment in `_run_agent`. It fires when `was_interrupted and next_message_id` are both truthy. The `_interrupt_map` redirects completion from `old_id` to the new session, handling nested interrupts (A→B→C).
+- The interrupt hook is injected at the `"Restart typing indicator"` comment in `_run_agent`. It fires when `was_interrupted and next_message_id` are both truthy. `on_interrupted` takes `map_completion` (#65): the busy-REDIRECT entry passes `map_completion=True` so `_interrupt_map` redirects the redirected turn's completion to the new card; the plain message.interrupted entry passes `map_completion=False` — a user's new message starts its own turn, the old turn's tail is recorded in `_interrupted_tails` (FIFO-capped) and its late completion is dropped instead of leaking onto the new card.
 - The completion hook installed into `gateway/run.py` is async: `on_message_completed_wait` awaits queued CardKit creation/finalization before setting `already_sent`. Upgrades must rerun `uninstall` + `install` so older sync completion hooks are removed from Hermes gateway.
 - The `_thinking_hook` has a `not already_streamed` guard (patcher.py:103) — thinking deltas are skipped once answer streaming has begun.
 - Tool panel renders only the last `MAX_TOOL_PANEL_STEPS` (30) steps (#46): header keeps the total count, older steps collapse into a one-line summary. `estimate_tool_elements` applies the same cap so split/rollover accounting stays consistent — light-step panels become bounded and stop splitting; heavy-step panels still split via the (uncapped-below-30) threshold math.
@@ -141,7 +145,8 @@ Studio (studio/ — visual config workbench, stdlib http.server + native JS only
 - CardKit v2.0 elements (collapsible_panel, streaming_mode) only work with `"schema": "2.0"` cards.
 - Streaming cards use a single CardKit card for the message lifecycle: elements are dynamically created in event arrival order. When CardKit creation fails, the plugin yields to the Hermes Gateway default reply.
 - The follow-up drain hooks manage card lifecycle for Hermes's queued follow-up messages (triggered when `busy_text_mode: queue` or `busy_input_mode: queue`). `on_queued_followup_boundary` is injected at `was_interrupted = result.get("interrupted")` in `_run_agent` — it finalizes the current card and sets `response_previewed`/`already_sent` on the result dict before the drain loop processes the queued message. `on_queued_followup_result` is injected at `return _preserve_queued_followup_history_offset(...)` and uses `setdefault` to carry the deepest `_hermes_lark_completion_id` back through the recursive merge chain.
-- The COMPLETE hook uses `_lark_completion_id = agent_result.get('_hermes_lark_completion_id') or event.message_id` — in follow-up scenarios the deepest message_id propagates up via `on_queued_followup_result`, ensuring the correct card session is finalized. Non-follow-up scenarios fall back to `event.message_id`.
+- The COMPLETE hook uses `_lark_completion_id = agent_result.get('_hermes_lark_completion_id') or event.message_id` — in follow-up scenarios the deepest message_id propagates up via `on_queued_followup_result`, ensuring the correct card session is finalized. Non-follow-up scenarios fall back to `event.message_id`. On card-sent it also passes `is_interrupted=bool(agent_result.get('interrupted'))` (#65: the card seals as stopped, keeping streamed body) and pops `last_reasoning` — Hermes 0.23.1+ (#7251) would otherwise re-post the reasoning block as a standalone message after the card already rendered the 💭 panel.
+- Config hot reload (#71): `_streaming_sec()` reads through `_reload()` (mtime_ns+size guard, RLock, corrupt-YAML keeps last-good, non-dict YAML → `{}`); changing any `streaming.*` style key applies to the NEXT created card without a gateway restart. `_raw` short-circuits `_reload` only for test injection — `_load()` marks `_raw_is_disk` so production reads (e.g. `_platform_cfg` credential fallback) can never freeze the hot cache. Running cards keep the style they were created with.
 - The background deliver hook (`on_background_deliver`) is injected in `_run_background_task` (in `gateway/run_turn.py` on older Hermes, or `gateway/run_background.py` on Hermes >= 0.22.6 / 0.23+) after `adapter.extract_images(response)`. It uses `ReplyMessage` API with `event_message_id` as anchor, so cards land in the correct topic. On success, `text_content` is cleared to avoid duplicate text delivery, while images and media files continue through the original Hermes loops. On failure, the original Hermes delivery logic runs as fallback.
 - Notices (#43) render Hermes's text raw — no `💡 提示` label. Zones: in-progress notices (kind `busy`/`redirect`) go to the card BOTTOM (streaming: before loading; completed: before footer), post-turn receipts (kind `background`) stay at the TOP. `on_interrupted` clears the old card's progress notices on redirect so the sentence is not rendered twice.
 - Synthetic turn ids (background completion receipts, e.g. `["completion", <task>, <ts>]`) are detected in `on_message_started` (`_is_synthetic_turn_id`) and treated like `syn-*` turns: the card is sent via `send_card_to_chat` instead of `reply_card_by_id` (which would fail 99992354); the id is kept as the session key.

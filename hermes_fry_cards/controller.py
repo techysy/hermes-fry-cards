@@ -1091,6 +1091,13 @@ class StreamCardController(StreamingController):
                     self._interrupt_map[key] = new_message_id
         else:
             self._interrupted_tails[old_message_id] = time.monotonic()
+            # 容量上限：迟到的完成事件通常在秒级内到达并消费掉条目；
+            # 未消费的旧条目按时间淘汰，防长期运行下无界增长。
+            if len(self._interrupted_tails) > 64:
+                cutoff = sorted(self._interrupted_tails.values())[-64]
+                self._interrupted_tails = {
+                    k: v for k, v in self._interrupted_tails.items() if v >= cutoff
+                }
 
     def _reuse_interrupted_session(
         self,

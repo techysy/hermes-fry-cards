@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -9,10 +10,159 @@ import pytest
 
 from hermes_fry_cards.config import Config
 from hermes_fry_cards.controller import StreamCardController
+from hermes_fry_cards.feishu import FeishuAPIError
 from hermes_fry_cards.patcher import _complete_hook
 from hermes_fry_cards.streaming.flush import FlushController
 from hermes_fry_cards.streaming.segments import SegmentType
 from hermes_fry_cards.streaming.session import CardSession, SessionState
+
+# ── 健壮性复查：配置热重载生产语义 ──────────────────────────────────────────
+
+
+def test_robustness_reload_works_after_load_populated_raw(tmp_path: Path) -> None:
+    """生产回归：_load() 读过一次凭据后，streaming 样式配置仍必须热重载（#71）.
+
+    _platform_cfg 的磁盘回退会调 _load() 并固化 _raw；_reload() 若无条件短路到
+    _raw，热重载（含既有的 show_reasoning #17）在生产上永久失效。
+    """
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        "streaming:\n  width_mode: fill\nfeishu:\n  app_id: a\n  app_secret: b\n",
+        encoding="utf-8",
+    )
+    cfg = Config(home=tmp_path)
+    assert cfg.width_mode == "fill"
+    # _platform_cfg 走磁盘回退触发 _load()（屏蔽环境变量里的凭据，避免 env 优先）
+    with patch.dict(
+        os.environ,
+        {"FEISHU_APP_ID": "", "FEISHU_APP_SECRET": "", "LARK_APP_ID": "", "LARK_APP_SECRET": ""},
+    ):
+        assert cfg.feishu_app_id == "a"
+    # 此后改配置必须仍然生效
+    path.write_text(
+        "streaming:\n  width_mode: compact\nfeishu:\n  app_id: a\n  app_secret: b\n",
+        encoding="utf-8",
+    )
+    assert cfg.width_mode == "compact"
+
+
+def test_robustness_reload_non_dict_yaml_returns_empty(tmp_path: Path) -> None:
+    """顶层是非 dict YAML（列表/标量）时必须返回 {}，不得把 None 抛给调用方."""
+    (tmp_path / "config.yaml").write_text("- just\n- a list\n", encoding="utf-8")
+    cfg = Config(home=tmp_path)
+    assert cfg._reload() == {}
+    (tmp_path / "config.yaml").write_text("just a scalar\n", encoding="utf-8")
+    assert cfg._reload() == {}
+
+
+def test_robustness_reload_corrupt_yaml_keeps_last_good_and_marks_key(tmp_path: Path) -> None:
+    """坏 YAML：保留上次有效配置 + 记录 key，不逐 delta 重解析刷日志（#66 加固）."""
+    path = tmp_path / "config.yaml"
+    path.write_text("streaming:\n  content_lang: en\n", encoding="utf-8")
+    cfg = Config(home=tmp_path)
+    assert cfg.content_lang == "en"
+
+    path.write_text("streaming:\n  content_lang: [broken\n", encoding="utf-8")
+    assert cfg.content_lang == "en"
+
+    # key 已记录：稳态读取不再触碰 safe_load
+    with patch("hermes_fry_cards.config.yaml.safe_load", side_effect=AssertionError("reparsed")):
+        assert cfg.content_lang == "en"
+
+    # 用户保存完成后 mtime/size 变化 → 重新解析生效
+    path.write_text("streaming:\n  content_lang: zh\n", encoding="utf-8")
+    assert cfg.content_lang == "zh"
+
+
+def test_robustness_reload_missing_file_keeps_last_good(tmp_path: Path) -> None:
+    """stat 失败（编辑器原子替换窗口）时回落上次有效配置，而非清空为默认."""
+    path = tmp_path / "config.yaml"
+    path.write_text("streaming:\n  content_lang: en\n", encoding="utf-8")
+    cfg = Config(home=tmp_path)
+    assert cfg.content_lang == "en"
+
+    with patch("hermes_fry_cards.config._config_path", return_value=tmp_path / "missing.yaml"):
+        assert cfg.content_lang == "en"
+
+
+# ── 健壮性复查：换卡边界与流式降级 ──────────────────────────────────────────
+
+
+def test_robustness_set_card_resets_stream_closed_on_new_card() -> None:
+    """换卡（拆卡/切卡）时 stream_closed 必须重置：新卡是新的流式会话（#69 换卡边界）."""
+    loop = asyncio.new_event_loop()
+    try:
+        session = CardSession("msg_rollover", "chat", loop)
+        session.set_card(card_id="card_a", card_msg_id="msg_a")
+        session.stream_closed = True
+
+        session.set_card(card_id="card_b", card_msg_id="msg_b")
+        assert session.stream_closed is False
+
+        # 同卡重复登记（幂等重注册）不清标记
+        session.stream_closed = True
+        session.set_card(card_id="card_b", card_msg_id="msg_b")
+        assert session.stream_closed is True
+    finally:
+        loop.close()
+
+
+@pytest.mark.asyncio
+async def test_robustness_stream_or_update_downgrades_on_300309() -> None:
+    """#69: 命中 300309 置位 stream_closed 并降级 partial_update_element，后续不再试流式."""
+    ctrl = StreamCardController()
+    ctrl._cfg._raw = {"streaming": {"enabled": True}}
+    ctrl._client = MagicMock()
+    ctrl._client.cardkit_stream_element = AsyncMock(
+        side_effect=FeishuAPIError("streaming mode is closed", 300309)
+    )
+    ctrl._client.cardkit_batch_update = AsyncMock()
+    session = CardSession("msg_309", "chat", asyncio.get_running_loop())
+    session.card_id = "card_309"
+
+    await ctrl._stream_or_update(session, "answer_0", "text", kind="answer")
+    assert session.stream_closed is True
+    ctrl._client.cardkit_batch_update.assert_awaited_once()
+
+    # 后续写入直接走批量更新，不再尝试流式
+    await ctrl._stream_or_update(session, "answer_0", "text2", kind="answer")
+    assert ctrl._client.cardkit_stream_element.await_count == 1
+    assert ctrl._client.cardkit_batch_update.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_robustness_300313_missing_reasoning_body_restored() -> None:
+    """#67: 300313 且缺失元素正好是该段正文 id 时，补建正文元素并写回内容."""
+    ctrl = StreamCardController()
+    ctrl._cfg._raw = {"streaming": {"enabled": True}}
+    ctrl._client = MagicMock()
+    session = CardSession("msg_313", "chat", asyncio.get_running_loop())
+    session.card_id = "card_313"
+    session.state = SessionState.STREAMING
+    ctrl._sessions["msg_313"] = session
+    session.segment_state.on_reasoning_delta("thought text")
+    seg = session.segment_state.segments[-1]
+    seg.created = True
+
+    # 第一次流式写入报 300313 缺正文；补建后的写入成功
+    ctrl._client.cardkit_stream_element = AsyncMock(
+        side_effect=[
+            FeishuAPIError(f"300313 not find elementID : {seg.text_el_id}", 300313),
+            None,
+        ]
+    )
+    ctrl._client.cardkit_batch_update = AsyncMock()
+
+    await ctrl._do_flush(session)
+
+    # 补建动作：partial_update_element 挂到面板 el_id
+    action = ctrl._client.cardkit_batch_update.await_args.args[1][0]
+    assert action["action"] == "partial_update_element"
+    assert action["params"]["element_id"] == seg.el_id
+    assert action["params"]["partial_element"]["elements"][0]["element_id"] == seg.text_el_id
+    assert "thought text" in action["params"]["partial_element"]["elements"][0]["content"]
+    # 写入成功后 dirty 清零
+    assert seg.dirty is False
 
 
 @pytest.mark.asyncio
