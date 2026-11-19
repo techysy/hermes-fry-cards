@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.6] - 2026-11-19
+
+### 修复 / Fixed
+- **热重载生产回归修复（健壮性复查 P1）**：v0.6.5 的 `_reload()` 无条件短路返回 `_raw`，而生产中
+  `_platform_cfg()` 读凭据会经 `_load()` 把磁盘配置固化进 `_raw`，导致样式热重载（#71）与既有
+  `show_reasoning` 热重载（#17）在生产上永久失效。现 `_load()` 落盘时标记 `_raw_is_disk`，
+  `_raw` 短路仅保留给测试注入。
+- **`_reload` 边缘加固**：顶层非 dict 的 YAML（列表/标量）回落 `{}`，不再把 `None` 抛给调用方；
+  坏 YAML 解析失败后记录 key，防流式期间逐 delta 重解析刷告警；`stat` 失败（编辑器原子替换
+  窗口）回落上次有效配置而非清空成默认值。
+- **换卡重置 `stream_closed`**（#69 换卡边界）：拆卡 / clarify 切卡 / 重定向建新卡时，
+  新卡不再继承旧卡的 300309 降级标记，避免新流式会话被白白放弃。
+- **`_interrupted_tails` 容量上限**（#65）：打断尾巴记录加 64 条 FIFO 上限，防长期运行无界增长。
+- **合并重复的 `panel_expanded` 定义**：v0.6.5 在 `config.py` 中新增的属性与既有定义重名，
+  Python 静默用后者覆盖；现合并为单一定义（`process_expanded` 优先）。
+
+### 测试 / Tests
+- **`test_studio` 对代理环境免疫**：`_req` 改用 loopback 无代理 opener——部署机设有
+  `HTTP_PROXY` 时，`127.0.0.1` 请求不再被转发到代理导致全量 502。
+- 新增 7 项健壮性回归测试（热重载生产语义 / 坏 YAML 三态 / 300309 降级 / 300313 补建 /
+  换卡重置），全量 **1103 passed**，ruff / mypy 零新增。
+
+---
+
 ## [0.6.5] - 2026-11-13
 
 ### 修复 / Fixed
