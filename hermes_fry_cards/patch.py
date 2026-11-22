@@ -413,8 +413,116 @@ def _locate_agent(gateway: Any, session_key: str | None) -> Any:
     return None
 
 
+def _capture_served_model(obj: Any, agent: Any) -> None:
+    """响应对象 / 流式 chunk 的 ``model`` 字段 → ``agent.last_served_model``（body 捕获）."""
+    model = obj.get("model") if isinstance(obj, dict) else getattr(obj, "model", None)
+    if isinstance(model, str) and model.strip():
+        agent.last_served_model = model.strip()
+
+
+def _wrap_stream_capture(stream: Any, agent: Any) -> Any:
+    """薄委托层：透传全部属性（.response 等），每个 chunk 捕获后原样转发."""
+    if not hasattr(stream, "__anext__"):
+        return stream  # 同步流或未知对象：不包装，fail-open
+
+    class _StreamCapture:
+        def __getattr__(self, name: str) -> Any:
+            return getattr(stream, name)
+
+        def __aiter__(self) -> _StreamCapture:
+            return self
+
+        async def __anext__(self) -> Any:
+            chunk = await stream.__anext__()
+            with contextlib.suppress(Exception):
+                _capture_served_model(chunk, agent)
+            return chunk
+
+    return _StreamCapture()
+
+
+def _wrap_completions_create(completions: Any, agent: Any) -> None:
+    """就地包裹 ``chat.completions.create``：双模式（同步 def 包装器 / async def 原生）.
+
+    不能靠 iscoroutinefunction 判定 —— OpenAI SDK 的 create 被 required_args 同步
+    包装器包过（__wrapped__ 在，iscoroutinefunction 为 False），但调用仍返回
+    awaitable。统一按「返回值是否 awaitable」分流；网关调用方一律 await。
+    """
+    if completions is None or getattr(completions, "_hl_body_model_wrapped", False):
+        return
+    orig = completions.create
+    try:
+        def create(*args: Any, **kwargs: Any) -> Any:
+            obj = orig(*args, **kwargs)
+            if not isawaitable(obj):
+                with contextlib.suppress(Exception):
+                    if hasattr(obj, "choices"):
+                        _capture_served_model(obj, agent)
+                    else:
+                        obj = _wrap_stream_capture(obj, agent)
+                return obj
+
+            async def _finish() -> Any:
+                r = await obj
+                with contextlib.suppress(Exception):
+                    if hasattr(r, "choices"):
+                        _capture_served_model(r, agent)
+                    else:
+                        r = _wrap_stream_capture(r, agent)
+                return r
+            return _finish()
+        completions.create = create
+        completions._hl_body_model_wrapped = True
+    except Exception:
+        pass  # SDK 对象不接受属性赋值等：放弃该客户端，fail-open
+
+
+def _wrap_client_completions(client: Any, agent: Any) -> None:
+    with contextlib.suppress(Exception):
+        _wrap_completions_create(getattr(getattr(client, "chat", None), "completions", None), agent)
+
+
+_SERVED_CLASS_PATCHED = False
+
+
+def ensure_served_model_capture_class(cls: Any | None = None) -> bool:
+    """类级工厂补丁（幂等）：包 ``ClientLifecycleMixin._create_request_openai_client``.
+
+    每个新建请求客户端在返回前就地带 body 捕获 —— 这让热缓存 agent 的**本轮首次**
+    API 调用也被捕获（实例级 ctx 安装发生在首个 delta 回调时，追不上已 create 的流）。
+    ``cls`` 供测试注入；缺省解析 ``agent.client_lifecycle.ClientLifecycleMixin``（旧版
+    Hermes 无该模块时静默跳过）。
+    """
+    global _SERVED_CLASS_PATCHED
+    if _SERVED_CLASS_PATCHED:
+        return True
+    if cls is None:
+        try:
+            from agent.client_lifecycle import ClientLifecycleMixin as cls  # type: ignore[import-not-found,no-redef]
+        except Exception:
+            return False
+    assert cls is not None
+    orig = getattr(cls, "_create_request_openai_client", None)
+    if not callable(orig) or getattr(orig, "_hl_body_model_class", False):
+        _SERVED_CLASS_PATCHED = True
+        return True
+
+    def factory(self: Any, *args: Any, **kwargs: Any) -> Any:
+        client = orig(self, *args, **kwargs)
+        with contextlib.suppress(Exception):
+            _wrap_client_completions(client, self)
+        return client
+
+    factory._hl_body_model_class = True  # type: ignore[attr-defined]
+    with contextlib.suppress(Exception):
+        cls._create_request_openai_client = factory
+        _SERVED_CLASS_PATCHED = True
+    return _SERVED_CLASS_PATCHED
+
+
 def ensure_served_model_capture(gateway: Any, session_key: str | None) -> None:
-    """回合开始时安装 body 模型捕获（幂等）：路由代理不回路由头时的纯插件侧补位."""
+    """回合开始时安装 body 模型捕获（幂等）：类级工厂补丁 + 缓存 agent 实例补位."""
+    ensure_served_model_capture_class()
     try:
         agent = _locate_agent(gateway, session_key)
         if agent is not None:
@@ -424,12 +532,7 @@ def ensure_served_model_capture(gateway: Any, session_key: str | None) -> None:
 
 
 def ensure_served_model_capture_ctx(ctx: Any) -> None:
-    """流式回调期的安装入口：直接经 turn_ctx.agent_holder 拿本轮 agent（不依赖缓存键）.
-
-    START 注入点处 ``session_key`` 尚未绑定（locals 只有 ``_quick_key``，与
-    ``_agent_cache`` 的键不匹配），缓存查找会落空；首个 delta 回调时 ctx 已持有
-    agent_holder —— 据此安装，多步回合从第二次 API 调用起全部被捕获（含最终响应）。
-    """
+    """流式回调期的兜底安装入口：经 turn_ctx.agent_holder 拿本轮 agent（不依赖缓存键）."""
     try:
         holder = getattr(ctx, "agent_holder", None)
         agent = holder[0] if holder else None
@@ -440,94 +543,17 @@ def ensure_served_model_capture_ctx(ctx: Any) -> None:
 
 
 def install_served_model_body_capture(agent: Any) -> bool:
-    """包裹 agent 的 OpenAI 兼容客户端，把响应体 ``model`` 字段写入 ``agent.last_served_model``.
+    """实例级补位：包 ``agent.client``（非流式路径，随 agent 缓存常驻）.
 
-    背景：10R 等路由代理把实际服务的模型名回写进响应体 / 流式 chunk 的 ``model``
-    字段（实测：请求 ``cbcn/hy4-preview``，回 ``model: hy4-preview`` —— 渠道前缀
-    剥掉露出实际模型），但响应头里没有路由信息，Hermes 自带的头捕获（#54864）
-    拿不到。本包裹补齐 body 路径，写进同一个槽位：头捕获每响应先跑（无头时置
-    None），本包裹在 create 返回 / 首 chunk 到达时后跑，body 值总是后写获胜。
-
-    覆盖两条 create 面：``agent.client``（非流式主路径，随 agent 缓存常驻）与
-    ``agent._create_request_openai_client`` 工厂（流式等每请求客户端）。幂等
+    流式主路径由类级工厂补丁（``ensure_served_model_capture_class``）覆盖；
+    本函数补非流式 client 与旧 Hermes 无 mixin 模块时的兜底。幂等
     （per-completions 实例守卫）；找不到 OpenAI 表面（anthropic api_mode 等）
     或 SDK 对象不接受属性赋值时静默跳过，全程 fail-open。
     """
     if agent is None:
         return False
-
-    def _capture(obj: Any) -> None:
-        model = obj.get("model") if isinstance(obj, dict) else getattr(obj, "model", None)
-        if isinstance(model, str) and model.strip():
-            agent.last_served_model = model.strip()
-
-    def _wrap_stream(stream: Any) -> Any:
-        if not hasattr(stream, "__anext__"):
-            return stream  # 同步流或未知对象：不包装，fail-open
-
-        class _StreamCapture:
-            def __getattr__(self, name: str) -> Any:
-                return getattr(stream, name)
-
-            def __aiter__(self) -> _StreamCapture:
-                return self
-
-            async def __anext__(self) -> Any:
-                chunk = await stream.__anext__()
-                with contextlib.suppress(Exception):
-                    _capture(chunk)
-                return chunk
-
-        return _StreamCapture()
-
-    def _wrap_create(completions: Any) -> None:
-        if completions is None or getattr(completions, "_hl_body_model_wrapped", False):
-            return
-        orig = completions.create
-        try:
-            # 双模式包装：不能靠 iscoroutinefunction 判定 —— OpenAI SDK 的 create 被
-            # required_args 同步包装器包过（__wrapped__ 在，iscoroutinefunction 为
-            # False），但调用仍返回 awaitable。统一按「返回值是否 awaitable」分流：
-            # 同步 def 包装器与 async def 原生定义都覆盖；网关调用方一律 await。
-            def create(*args: Any, **kwargs: Any) -> Any:
-                obj = orig(*args, **kwargs)
-                if not isawaitable(obj):
-                    with contextlib.suppress(Exception):
-                        if hasattr(obj, "choices"):
-                            _capture(obj)
-                        else:
-                            obj = _wrap_stream(obj)
-                    return obj
-
-                async def _finish() -> Any:
-                    r = await obj
-                    with contextlib.suppress(Exception):
-                        if hasattr(r, "choices"):
-                            _capture(r)
-                        else:
-                            r = _wrap_stream(r)
-                    return r
-                return _finish()
-            completions.create = create
-            completions._hl_body_model_wrapped = True
-        except Exception:
-            pass  # SDK 对象不接受属性赋值等：放弃该客户端，fail-open
-
-    # 非流式主路径：agent.client 常驻（init / switch_model 时重建）。
     with contextlib.suppress(Exception):
-        client = getattr(agent, "client", None)
-        _wrap_create(getattr(getattr(client, "chat", None), "completions", None))
-    # 流式等每请求客户端：包工厂，之后由工厂创建的每个 client 在返回前被就地包裹。
-    with contextlib.suppress(Exception):
-        factory = getattr(agent, "_create_request_openai_client", None)
-        if callable(factory) and not getattr(factory, "_hl_body_model_factory", False):
-            def factory_wrapper(*args: Any, **kwargs: Any) -> Any:
-                client = factory(*args, **kwargs)
-                with contextlib.suppress(Exception):
-                    _wrap_create(getattr(getattr(client, "chat", None), "completions", None))
-                return client
-            factory_wrapper._hl_body_model_factory = True  # type: ignore[attr-defined]
-            agent._create_request_openai_client = factory_wrapper
+        _wrap_client_completions(getattr(agent, "client", None), agent)
     return True
 
 

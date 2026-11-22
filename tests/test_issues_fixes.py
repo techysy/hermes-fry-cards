@@ -561,22 +561,67 @@ async def test_body_capture_stream_writes_last_served_model() -> None:
 
 
 @pytest.mark.asyncio
-async def test_body_capture_wraps_request_client_factory() -> None:
-    """工厂路径：流式每请求 client 返回前被就地包裹."""
-    from hermes_fry_cards.patch import install_served_model_body_capture
+async def test_body_capture_class_factory_patch_covers_first_call() -> None:
+    """类级工厂补丁：热缓存 agent 本轮首次 API 调用即被捕获（ctx 安装追不上的时序）."""
+    from hermes_fry_cards.patch import ensure_served_model_capture_class
 
     completions = _FakeCompletions(
         lambda: asyncio.sleep(0, result=_FakeAsyncStream([_chunk("glm-5.3-flash")]))
     )
-    agent = _FakeServedAgent(client=None)
-    agent._create_request_openai_client = lambda **kwargs: _FakeClient(completions)
-    install_served_model_body_capture(agent)
+
+    class _FakeClientLifecycleMixin:
+        def _create_request_openai_client(self, **kwargs):
+            return _FakeClient(completions)
+
+    # 真实 Hermes agent 继承 ClientLifecycleMixin：测试 agent 同构继承，实例方法
+    # 解析到类补丁
+    class _FakeAgent(_FakeClientLifecycleMixin, _FakeServedAgent):
+        pass
+
+    agent = _FakeAgent(client=None)
+    assert ensure_served_model_capture_class(_FakeClientLifecycleMixin) is True
 
     client = agent._create_request_openai_client(reason="chat_completion_stream_request")
     stream = await client.chat.completions.create()
     chunks = [c async for c in stream]
     assert chunks[0].model == "glm-5.3-flash"
     assert agent.last_served_model == "glm-5.3-flash"
+
+
+def test_body_capture_class_patch_idempotent() -> None:
+    """类补丁幂等：二次 ensure 不再重包（原工厂只被一层包装）."""
+    from hermes_fry_cards.patch import ensure_served_model_capture_class
+
+    calls = {"n": 0}
+
+    class _FakeClientLifecycleMixin:
+        def _create_request_openai_client(self, **kwargs):
+            calls["n"] += 1
+            return object()
+
+    assert ensure_served_model_capture_class(_FakeClientLifecycleMixin) is True
+    mixin = _FakeClientLifecycleMixin()
+    mixin._create_request_openai_client()
+    mixin._create_request_openai_client()
+    assert calls["n"] == 2  # 两次真实调用各过一层包装
+
+    ensure_served_model_capture_class(_FakeClientLifecycleMixin)
+    mixin._create_request_openai_client()
+    assert calls["n"] == 3  # 幂等：没有叠加第二层
+
+
+def test_body_capture_class_patch_graceful_without_module() -> None:
+    """Hermes 不可导入（纯测试环境）时类补丁静默跳过，返回 False 不抛错."""
+    import hermes_fry_cards.patch as _patch_mod
+    from hermes_fry_cards.patch import ensure_served_model_capture_class
+
+    prev = _patch_mod._SERVED_CLASS_PATCHED
+    try:
+        _patch_mod._SERVED_CLASS_PATCHED = False  # 清掉前序测试可能置位的标记
+        # Windows 测试环境没有 agent 包：cls=None 走 ImportError 分支
+        assert ensure_served_model_capture_class() is False
+    finally:
+        _patch_mod._SERVED_CLASS_PATCHED = prev
 
 
 @pytest.mark.asyncio
