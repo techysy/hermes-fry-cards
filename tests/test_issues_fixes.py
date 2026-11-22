@@ -12,7 +12,7 @@ import pytest
 from hermes_fry_cards.config import Config
 from hermes_fry_cards.controller import StreamCardController
 from hermes_fry_cards.feishu import FeishuAPIError
-from hermes_fry_cards.patcher import _complete_hook
+from hermes_fry_cards.patcher import _complete_hook, _start_hook
 from hermes_fry_cards.streaming.flush import FlushController
 from hermes_fry_cards.streaming.segments import Segment, SegmentType
 from hermes_fry_cards.streaming.session import CardSession, SessionState
@@ -464,3 +464,167 @@ def test_complete_card_hides_arrow_when_served_missing_or_equal() -> None:
             el for el in card["body"]["elements"] if el.get("tag") == "collapsible_panel"
         )
         assert "→" not in unified["header"]["title"]["content"]
+
+
+# ── 10R 路由可见性：body 模型捕获（纯插件侧补位） ─────────────────────────────
+
+
+class _FakeCompletions:
+    """模拟 OpenAI chat.completions 资源对象（实例可赋值）。"""
+
+    def __init__(self, result_fn) -> None:
+        self._result_fn = result_fn
+
+    async def create(self, *args, **kwargs):
+        return await self._result_fn()
+
+
+class _FakeChat:
+    def __init__(self, completions) -> None:
+        self.completions = completions
+
+
+class _FakeClient:
+    def __init__(self, completions) -> None:
+        self.chat = _FakeChat(completions)
+
+
+class _FakeServedAgent:
+    def __init__(self, client=None) -> None:
+        self.client = client
+        self.last_served_model = None
+
+
+class _FakeAsyncStream:
+    """模拟 OpenAI AsyncStream：__anext__ 产出 chunk，属性可读（.response 等）。"""
+
+    def __init__(self, chunks) -> None:
+        self._chunks = list(chunks)
+        self.response = SimpleNamespace(status_code=200)
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if not self._chunks:
+            raise StopAsyncIteration
+        return self._chunks.pop(0)
+
+
+def _chunk(model: str) -> SimpleNamespace:
+    return SimpleNamespace(model=model)
+
+
+@pytest.mark.asyncio
+async def test_body_capture_non_stream_writes_last_served_model() -> None:
+    """非流式：create 返回带 .model 的响应对象 → agent.last_served_model 更新."""
+    from hermes_fry_cards.patch import install_served_model_body_capture
+
+    completions = _FakeCompletions(
+        lambda: asyncio.sleep(0, result=SimpleNamespace(model="hy4-preview", choices=[1]))
+    )
+    agent = _FakeServedAgent(_FakeClient(completions))
+    assert install_served_model_body_capture(agent) is True
+
+    # 模拟 Hermes 头捕获每响应先跑（无头 → 置 None），body 捕获后写获胜
+    agent.last_served_model = None
+    await agent.client.chat.completions.create(model="cbcn/hy4-preview")
+    assert agent.last_served_model == "hy4-preview"
+
+
+@pytest.mark.asyncio
+async def test_body_capture_stream_writes_last_served_model() -> None:
+    """流式：包装层透传 chunk 且在首个 chunk 就捕获实际模型；.response 属性委托可读."""
+    from hermes_fry_cards.patch import install_served_model_body_capture
+
+    async def result_fn():
+        return _FakeAsyncStream([_chunk("hy4-preview"), _chunk("hy4-preview")])
+
+    completions = _FakeCompletions(result_fn)
+    agent = _FakeServedAgent(_FakeClient(completions))
+    install_served_model_body_capture(agent)
+    agent.last_served_model = None  # 模拟头捕获先置 None
+
+    stream = await agent.client.chat.completions.create()
+    assert stream.response.status_code == 200  # 属性委托（_chat_stream_created 读它）
+    chunks = [c async for c in stream]
+    assert [c.model for c in chunks] == ["hy4-preview", "hy4-preview"]
+    assert agent.last_served_model == "hy4-preview"
+
+
+@pytest.mark.asyncio
+async def test_body_capture_wraps_request_client_factory() -> None:
+    """工厂路径：流式每请求 client 返回前被就地包裹."""
+    from hermes_fry_cards.patch import install_served_model_body_capture
+
+    completions = _FakeCompletions(
+        lambda: asyncio.sleep(0, result=_FakeAsyncStream([_chunk("glm-5.3-flash")]))
+    )
+    agent = _FakeServedAgent(client=None)
+    agent._create_request_openai_client = lambda **kwargs: _FakeClient(completions)
+    install_served_model_body_capture(agent)
+
+    client = agent._create_request_openai_client(reason="chat_completion_stream_request")
+    stream = await client.chat.completions.create()
+    chunks = [c async for c in stream]
+    assert chunks[0].model == "glm-5.3-flash"
+    assert agent.last_served_model == "glm-5.3-flash"
+
+
+@pytest.mark.asyncio
+async def test_body_capture_is_idempotent() -> None:
+    """重复安装不二次包装：create 只被调用一次，结果只捕获一次."""
+    from hermes_fry_cards.patch import install_served_model_body_capture
+
+    calls = {"n": 0}
+
+    async def result_fn():
+        calls["n"] += 1
+        return SimpleNamespace(model="same", choices=[1])
+
+    completions = _FakeCompletions(result_fn)
+    agent = _FakeServedAgent(_FakeClient(completions))
+    install_served_model_body_capture(agent)
+    install_served_model_body_capture(agent)
+    install_served_model_body_capture(agent)
+
+    await agent.client.chat.completions.create()
+    assert calls["n"] == 1
+    assert agent.last_served_model == "same"
+
+
+def test_body_capture_fail_open_without_openai_surface() -> None:
+    """anthropic api_mode 等（无 chat.completions 表面）安装不抛错、不包装."""
+    from hermes_fry_cards.patch import install_served_model_body_capture
+
+    agent = _FakeServedAgent(client=SimpleNamespace(messages=object()))
+    assert install_served_model_body_capture(agent) is True
+    assert install_served_model_body_capture(_FakeServedAgent(client=None)) is True
+    assert install_served_model_body_capture(None) is False
+
+
+def test_start_hook_installs_body_capture() -> None:
+    """START 钩子在回合开始时调用 ensure_served_model_capture（幂等安装）."""
+    hook = _start_hook("    ")
+    assert "ensure_served_model_capture" in hook
+
+
+@pytest.mark.asyncio
+async def test_ensure_served_model_capture_installs_on_cached_agent() -> None:
+    """ensure 入口经 _agent_cache 定位 agent 并完成安装."""
+    from hermes_fry_cards.patch import ensure_served_model_capture
+
+    completions = _FakeCompletions(
+        lambda: asyncio.sleep(0, result=SimpleNamespace(model="m", choices=[1]))
+    )
+    agent = _FakeServedAgent(_FakeClient(completions))
+    gateway = MagicMock(spec=[])
+    gateway._agent_cache = {"sk": (agent, 1)}
+
+    ensure_served_model_capture(gateway, "sk")
+    await agent.client.chat.completions.create()
+    assert agent.last_served_model == "m"
+
+    # 找不到 agent 时静默
+    ensure_served_model_capture(MagicMock(spec=[]), "missing")
+    ensure_served_model_capture(None, "sk")
