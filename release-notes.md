@@ -1,3 +1,55 @@
+## 🍟 hermes-fry-cards v0.7.0
+
+> 统一面板厂商 logo（PNG）+ 官方模型名显示——原生体验，无 emoji。
+
+### 🏷️ 厂商 logo 上卡
+
+命中模型家族时，统一面板 header 的**前缀图标槽位**（原 🍟 品牌位）渲染厂商 PNG logo：
+
+- `icon_position: "left"`（header 层级字段，原 🍟 位置，logo 在文字前面）
+- `icon_expanded_angle: 0`——不随面板展开旋转，展开/收起箭头让位于 logo
+- 16px 尺寸（默认 10px 过小）
+- footer 的 model 字段行首内联同款 PNG
+- 未命中 / 上传失败 / 开关关闭：header 回落默认箭头，footer 回落 🍟 + 原样模型名
+
+logo 资产来自 [@lobehub/icons-static-png](https://github.com/lobehub/lobe-icons)，随包分发 20 家：
+DeepSeek / Qwen / Zhipu / Claude / Gemini / Kimi / Moonshot / MiniMax / Doubao / **Hunyuan** /
+StepFun / OpenAI / Grok / LongCat / MiMo / dots / Muse / Ling / Upstage / CodeBuddy。
+首次渲染懒上传换取 img_key（进程内缓存 + 并发去重），失败静默降级，不影响出卡。
+
+### 🪪 官方模型名
+
+logo 命中家族时，model 字段显示厂商官网口径名（剥渠道前缀与 `:tag`，官方家族拼写 + 变体尾巴）：
+
+```
+tencent/hy4-flash:free  →  Hy4 flash      （腾讯混元官网口径）
+deepseek-v4.1-flash     →  DeepSeek v4.1 flash
+qwen4-max               →  Qwen 4-max
+```
+
+未命中家族时维持 v0.6.7 起的实际服务模型直显。家族映射修正：`hy4` → 腾讯混元 Hunyuan
+（hy = Hy 家族，CodeBuddy 只是分发渠道——此前误挂 CodeBuddy logo）。
+
+### ⚙️ 其他
+
+- `img.alt` 必须是 PlainText 对象（裸字符串 CardKit 报 10002，API 实测定位修复）
+- `display.vendor_logo` 开关（默认开启），Studio 统一面板区已接线
+- 全量 **1134 passed**
+
+### 📦 升级
+
+纯运行时改动，注入体不变——`git pull` / `pip install -U` 后重启服务即可：
+
+```bash
+HERMES_PYTHON=~/.hermes/hermes-agent/venv/bin/python3
+$HERMES_PYTHON -m pip install -U hermes-fry-cards
+systemctl --user restart hermes-gateway hermes-fry-cards-studio
+```
+
+（从 0.6.8 之前的版本升级，或 `status` 提示 hook 过期时，仍需 `uninstall + install`。）
+
+---
+
 ## 🍟 hermes-fry-cards v0.6.8
 
 > v0.6.7 路由可见性实机回归修复：捕获在真实 OpenAI SDK 上从未生效，现已修复。

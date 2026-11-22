@@ -11,15 +11,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- 🦐 厂商路由 logo：统一面板展开区顶部新增「厂商 PNG logo + 本轮路由模型」条（column_set 并排），logo 取自 @lobehub/icons-static-png 随包分发（12 厂商：Qwen/Zhipu/DeepSeek/Claude/Gemini/Kimi/Moonshot/MiniMax/OpenAI/Doubao/Hunyuan/StepFun）；首次渲染经 `FeishuClient.upload_image_bytes` 懒上传缓存，失败静默降级纯文本
-- **面板 header 厂商 logo**：命中厂商资产时统一面板 header 的 icon 槽位用 `custom_icon` 渲染厂商 PNG（`icon_expanded_angle=0` 不随展开旋转；已实测 CardKit create 接受），未命中回落默认展开/收起箭头
-- **model 字段纯实际服务模型名**（家族 emoji 方案否决：header 贴不了图、emoji 不像 logo），panel/footer 均不带任何 emoji
-- `display.vendor_logo` 开关（默认开启）：关闭或未命中厂商时不渲染 logo 条
-- `FeishuClient.upload_image_bytes`：本地字节直传（`upload_image` 远程下载路径复用之）
+- **统一面板厂商 PNG logo**（最终形态）：命中模型家族时，统一面板 header 的前缀图标槽位
+  （原 🍟 品牌位）渲染厂商 logo——`custom_icon`、`icon_position: "left"`（header 层级兄弟键，
+  内嵌 `icon` 对象时服务端忽略）、`icon_expanded_angle: 0`（不随展开旋转，展开/收起箭头让位）；
+  16px（默认 10px 过小）。footer 的 model 字段行首内联同款 PNG（markdown `![](img_key)`）。
+  未命中 / 上传失败 / 开关关闭时 header 回落默认箭头、footer 回落 🍟 + 原样模型名。
+  logo 资产来自 @lobehub/icons-static-png，随包分发 20 家：DeepSeek/Qwen/Zhipu/Claude/Gemini/
+  Kimi/Moonshot/MiniMax/Doubao/Hunyuan/StepFun/OpenAI/Grok/LongCat/MiMo/dots/Muse/Ling/
+  Upstage/CodeBuddy；首次渲染经 `FeishuClient.upload_image_bytes` 懒上传 + 进程内缓存 +
+  并发去重，失败静默降级不影响出卡
+- **官方模型名显示**：logo 命中家族时 model 字段显示厂商官网口径名——剥渠道前缀与 `:tag`
+  后取官方家族拼写 + 变体尾巴，如 `tencent/hy4-flash:free` → **Hy4 flash**（混元官网口径）。
+  未命中家族时维持实际服务模型直显（0.6.7 引入）
+- **模型家族映射修正**：`hy4` → 腾讯混元 Hunyuan（hy = Hy 家族，CodeBuddy 只是分发渠道；
+  此前误挂 CodeBuddy logo）
+- **CardKit 兼容修复**：`img.alt` 必须是 PlainText 对象（裸字符串报 10002 unmarshal 错，
+  API 实测定位）
+- Studio 统一面板区新增「厂商 logo」开关接线（`display.vendor_logo`，读写回环 + 三端接线测试）
 
-### Changed
+### Config
 
-- model 字段改为**实际服务模型直显**（组合名不上卡，维护者自知），家族 emoji flair 恒在（替代原「别名 → 实际」箭头样式），与 claw-fry-cards 3.2.0 同语义
+- `display.vendor_logo`（默认开启；`display.platforms.feishu.vendor_logo` 平台覆盖优先）：
+  关闭后 header 回落默认箭头、footer 回落 🍟，不发起 logo 上传
+
+### Tests
+
+- 新增 `test_vendor_logos.py`（家族映射 / 官方名 / header 图标接线 / 资产完整性）与
+  Studio 开关回归，全量 **1134 passed**
 
 ## [0.6.8] - 2026-11-22
 
