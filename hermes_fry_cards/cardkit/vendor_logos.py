@@ -20,7 +20,10 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger(__name__)
 
-# 模型名子串（大小写不敏感）→ 打包内 logo 资产；先命中先得
+# 模型名子串（大小写不敏感）→ 打包内 logo 资产；先命中先得。
+# 匹配维度是**模型名本身**（served_model 的模型家族词，如 deepseek-v4.1-flash →
+# deepseek、hy4-flash → codebuddy），渠道前缀（cbcn/ tencent/ 等）不参与判定——
+# 子串匹配天然同时覆盖「裸模型名」与「前缀/模型」两种形态，但规则表只按模型家族登记。
 VENDOR_LOGO_RULES: tuple[tuple[str, str], ...] = (
     ("deepseek", "deepseek.png"),
     ("qwen", "qwen.png"),
@@ -39,6 +42,14 @@ VENDOR_LOGO_RULES: tuple[tuple[str, str], ...] = (
     ("gpt", "openai.png"),
     ("openai", "openai.png"),
     ("step", "stepfun.png"),
+    # 10R fleet 实际在用的模型家族（按模型名登记，与渠道前缀无关）
+    ("hy4", "codebuddy.png"),  # CodeBuddy 渠道的 hy4 家族（hy4-preview / hy4-flash）
+    ("codebuddy", "codebuddy.png"),
+    ("grok", "grok.png"),
+    ("longcat", "longcat.png"),
+    ("mimo", "xiaomimimo.png"),  # Xiaomi MiMo（lobehub 资产名 xiaomimimo）
+    ("dots", "dotsstudio.png"),  # dots3-note-prev（lobehub 资产名 dotsstudio）
+    ("muse", "muse.png"),  # muse-spark-*
 )
 
 

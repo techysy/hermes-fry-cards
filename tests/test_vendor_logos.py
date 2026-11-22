@@ -35,8 +35,21 @@ class TestResolveVendorLogoAsset:
         assert resolve_vendor_logo_asset("claude-opus-5.5") == "claude.png"
         assert resolve_vendor_logo_asset("kimi-k5") == "kimi.png"
 
+    def test_maps_by_model_name_not_channel_prefix(self) -> None:
+        """匹配维度是模型家族词，渠道前缀（tencent/ cbai/ cbcn/ 等）不参与判定."""
+        assert resolve_vendor_logo_asset("hy4-preview") == "codebuddy.png"
+        assert resolve_vendor_logo_asset("tencent/hy4-flash:free") == "codebuddy.png"
+        assert resolve_vendor_logo_asset("cbai/hy4-preview") == "codebuddy.png"
+        assert resolve_vendor_logo_asset("grok-4.7") == "grok.png"
+        assert resolve_vendor_logo_asset("ocg/grok-4.7") == "grok.png"
+        assert resolve_vendor_logo_asset("longcat/LongCat-2.5-Preview") == "longcat.png"
+        assert resolve_vendor_logo_asset("mimo-v2.6-flash-free") == "xiaomimimo.png"
+        assert resolve_vendor_logo_asset("dots3-note-prev") == "dotsstudio.png"
+        assert resolve_vendor_logo_asset("oc/muse-spark-1.3-contributor-free") == "muse.png"
+
     def test_unknown_vendor_returns_none(self) -> None:
-        assert resolve_vendor_logo_asset("hy4-flash") is None
+        assert resolve_vendor_logo_asset("space-bunny-free") is None
+        assert resolve_vendor_logo_asset("fledge-alpha-free") is None
         assert resolve_vendor_logo_asset("") is None
 
     def test_bundled_assets_exist(self) -> None:
