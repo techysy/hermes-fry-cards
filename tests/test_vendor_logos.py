@@ -100,10 +100,10 @@ class TestPanelHeaderLogoIcon:
             "logo_image_key": "img_v2_01test",
         })
         header = panel["header"]
-        assert header["icon"]["tag"] == "custom_icon"
-        assert header["icon"]["img_key"] == "img_v2_01test"
-        assert header["icon"]["icon_position"] == "left"
-        assert header["icon"]["icon_expanded_angle"] == 0
+        assert header["icon"] == {"tag": "custom_icon", "img_key": "img_v2_01test"}
+        # icon_position / icon_expanded_angle 是 header 层级字段（icon 的兄弟键）
+        assert header["icon_position"] == "left"
+        assert header["icon_expanded_angle"] == 0
         # 模型字段原生直显完整名（不走别名/⇲ 截断），无 🍟（logo 已承载）
         assert "qwen4-max" in header["title"]["content"]
         assert "🍟" not in header["title"]["content"]

@@ -1057,13 +1057,14 @@ def build_complete_card(
         }
         # 命中厂商资产：header 前缀图标槽位放家族 PNG logo，icon_position=left
         # 即原 🍟 的位置（标题区域最左侧）；icon_expanded_angle=0 保持正向不旋转。
+        # 注意：icon_position / icon_expanded_angle 是 header 层级字段（icon 的兄弟键，
+        # 与 _collapsible_panel 的箭头构造一致），嵌进 icon 对象里服务端不识别。
         # 未命中（unknown 厂商 / 上传失败 / vendor_logo 关闭）不带 icon，模型字段
         # 回落 🍟 品牌位；子面板（思考/工具行）各自的旋转箭头不受影响。
         if _logo_key:
-            unified_panel["header"]["icon"] = {
-                "tag": "custom_icon", "img_key": _logo_key,
-                "icon_position": "left", "icon_expanded_angle": 0,
-            }
+            unified_panel["header"]["icon"] = {"tag": "custom_icon", "img_key": _logo_key}
+            unified_panel["header"]["icon_position"] = "left"
+            unified_panel["header"]["icon_expanded_angle"] = 0
         elements.append(unified_panel)
 
     if not has_answer:
