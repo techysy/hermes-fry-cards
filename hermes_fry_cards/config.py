@@ -319,6 +319,25 @@ class Config:
             return 5.0
 
     @property
+    def vendor_logo(self) -> bool:
+        """厂商路由 logo 条开关（默认开启）.
+
+        开启时统一面板展开区顶部显示「厂商 PNG logo + 本轮路由模型」；
+        关闭或未命中厂商时不显示 logo 条，模型字段回落 🦐 品牌图标。
+
+        优先级：display.platforms.feishu.vendor_logo → display.vendor_logo，默认 True.
+        """
+        display = self._reload().get("display")
+        if not isinstance(display, dict):
+            return True
+        platforms = display.get("platforms")
+        if isinstance(platforms, dict):
+            feishu = platforms.get("feishu")
+            if isinstance(feishu, dict) and "vendor_logo" in feishu:
+                return bool(feishu["vendor_logo"])
+        return bool(display.get("vendor_logo", True))
+
+    @property
     def truncate_model_name(self) -> bool:
         """是否截断模型名（nvidia/moonshotai/kimi-k3 → ⇲kimi-k3）.
 

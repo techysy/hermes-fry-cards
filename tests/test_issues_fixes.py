@@ -252,6 +252,10 @@ async def test_issue_65_interrupted_turn_seals_card_as_aborted_status() -> None:
     """#65: 发生打断时，on_completed_wait 传入 is_interrupted=True 应将卡片保留为 ABORTED 终态."""
     ctrl = StreamCardController()
     ctrl._client = MagicMock()
+    # 环境无关：单测不读真实配置（VM 真配置下 enabled=False 会让 on_completed_wait 早退）
+    ctrl._cfg = MagicMock()
+    ctrl._cfg.enabled = True
+    ctrl._cfg.feishu_app_id = "cli_test"
     session = CardSession("msg_int", "chat_int", asyncio.get_running_loop())
     session.card_id = "card_int"
     session.card_msg_id = "msg_id_int"
@@ -279,6 +283,10 @@ def test_issue_65_complete_hook_passes_is_interrupted() -> None:
 async def test_issue_65_interrupted_tail_discarded_does_not_pollute_new_turn_card() -> None:
     """#65: 普通打断丢弃的旧回合，其迟到的完成事件绝不回落到 session_key 污染新卡."""
     ctrl = StreamCardController()
+    # 环境无关：单测不读真实配置（同上）
+    ctrl._cfg = MagicMock()
+    ctrl._cfg.enabled = True
+    ctrl._cfg.feishu_app_id = "cli_test"
     old_session = CardSession("old_msg", "chat_int", asyncio.get_running_loop())
     old_session.session_key = "user_sk"
     ctrl._sessions["old_msg"] = old_session
@@ -395,15 +403,14 @@ async def test_complete_hook_prefers_result_served_model() -> None:
 
 
 def test_model_with_served_rendering() -> None:
-    """model 字段：served 与配置名不同时显示「别名 → 实际」，相同/缺失不加箭头."""
+    """model 字段：实际服务模型直显（组合名不上卡）；🍟 家族 flair 恒在."""
     from hermes_fry_cards.cardkit.builder import _model_with_served
 
     assert _model_with_served({"model": "combo-main"}) == "combo-main"
     assert (
         _model_with_served({"model": "combo-main", "served_model": "provider/gemini-4"})
-        == "combo-main → provider/gemini-4"
+        == "provider/gemini-4"
     )
-    # 相同值不加箭头（runtime_footer 同语义）
     assert _model_with_served({"model": "same", "served_model": "same"}) == "same"
     assert _model_with_served({}) is None
 
@@ -416,7 +423,7 @@ def _reasoning_segment(text: str) -> Segment:
 
 
 def test_complete_card_renders_served_model_in_panel_and_footer() -> None:
-    """完成态统一面板与 footer 的 model 字段都带「→ 实际模型」."""
+    """完成态统一面板与 footer 的 model 字段都显示实际服务模型（家族 emoji flair，无组合名）."""
     from hermes_fry_cards.cardkit.builder import build_complete_card
 
     footer_data = {"duration": 10.0, "model": "combo-main", "served_model": "provider/gemini-4"}
@@ -432,16 +439,17 @@ def test_complete_card_renders_served_model_in_panel_and_footer() -> None:
     unified = next(
         el for el in card["body"]["elements"] if el.get("tag") == "collapsible_panel"
     )
-    assert "🍟 combo-main → provider/gemini-4" in unified["header"]["title"]["content"]
-    assert "🍟 combo-main → provider/gemini-4" in unified["header"]["title"]["i18n_content"]["zh_cn"]
+    assert "♊ provider/gemini-4" in unified["header"]["title"]["content"]
+    assert "♊ provider/gemini-4" in unified["header"]["title"]["i18n_content"]["zh_cn"]
+    assert "combo-main" not in unified["header"]["title"]["content"]
 
-    # footer 里 model 字段的 markdown 也带箭头
+    # footer 里 model 字段同样带家族 emoji + 实际模型
     footer_texts = [
         el["content"]
         for el in card["body"]["elements"]
         if el.get("tag") == "markdown"
     ]
-    assert any("combo-main → provider/gemini-4" in t for t in footer_texts)
+    assert any("♊ provider/gemini-4" in t for t in footer_texts)
 
 
 def test_complete_card_hides_arrow_when_served_missing_or_equal() -> None:

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.7.0] - 2026-11-22
+
+### Added
+
+- 🦐 厂商路由 logo：统一面板展开区顶部新增「厂商 PNG logo + 本轮路由模型」条（column_set 并排），logo 取自 @lobehub/icons-static-png 随包分发（12 厂商：Qwen/Zhipu/DeepSeek/Claude/Gemini/Kimi/Moonshot/MiniMax/OpenAI/Doubao/Hunyuan/StepFun）；首次渲染经 `FeishuClient.upload_image_bytes` 懒上传缓存，失败静默降级纯文本
+- **面板 header 模型字段显示家族 logo emoji**（`_model_family_emoji`）：命中厂商家族时替换品牌薯条（DeepSeek 🐳 / Qwen 🦆 / Zhipu·GLM 🌀 / Claude ✳️ / Gemini ♊ / Kimi·Moonshot 🌙 / MiniMax Ⓜ️ / Doubao 🫘 / Hunyuan 🐧 / OpenAI 🟢 / Step 🪜，另补 Grok 🚀 / LongCat 🐱 / MiMo 🐰 / Spark 🔥 四个 emoji 独占家族），未命中回落 🍟；家族判定按实际服务模型（走 fallback 链落到别的家族时 logo 跟着变），footer 同步
+- `display.vendor_logo` 开关（默认开启）：关闭或未命中厂商时不渲染 logo 条
+- `FeishuClient.upload_image_bytes`：本地字节直传（`upload_image` 远程下载路径复用之）
+
+### Changed
+
+- model 字段改为**实际服务模型直显**（组合名不上卡，维护者自知），家族 emoji flair 恒在（替代原「别名 → 实际」箭头样式），与 claw-fry-cards 3.2.0 同语义
+
 ## [0.6.8] - 2026-11-22
 
 ### 修复 / Fixed

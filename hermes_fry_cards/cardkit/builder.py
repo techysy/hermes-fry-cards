@@ -471,19 +471,56 @@ def _build_reasoning_panel(
 
 
 def _model_with_served(data: dict) -> str | None:
-    """model 字段显示名：别名解析 + 截断；路由代理上报了实际服务模型（
-    ``served_model``，来自响应头捕获）且与配置名不同时附「→ 实际模型」.
-    语义对齐 Hermes ``gateway/runtime_footer.py`` 的 served_model 字段
-    （``alias → served``，相同/缺失时不加箭头）。
+    """model 字段显示名：实际服务模型直显（组合名不上卡，维护者自知）。
+
+    路由代理上报的实际服务模型（``served_model``，来自响应头捕获）优先，
+    缺失回落配置模型；家族 logo emoji 由渲染端叠加（面板 header 贴不了图，
+    用 emoji 呈现厂商家族；PNG logo 条只出现在面板展开区）。
     """
     raw = str(data.get("model") or "").strip()
     if not raw:
         return None
-    name = _display_model(raw)
     served = str(data.get("served_model") or "").strip()
-    if served and served != raw:
-        return f"{name} → {served}"
-    return name
+    return served or raw
+
+
+# 模型家族 emoji：与 vendor_logos.VENDOR_LOGO_RULES 的厂商清单对齐（header title
+# 是纯文本贴不了图，家族 logo 以 emoji 呈现），另补几个无 PNG 资产、emoji 独占
+# 的家族。先命中先得；未命中回落 🍟（fry-cards 品牌）。
+_MODEL_FAMILY_EMOJI: tuple[tuple[str, str], ...] = (
+    ("deepseek", "🐳"),
+    ("qwen", "🦆"),
+    ("zhipu", "🌀"),
+    ("glm", "🌀"),
+    ("zcode", "🌀"),
+    ("chatglm", "🌀"),
+    ("claude", "✳️"),
+    ("anthropic", "✳️"),
+    ("gemini", "♊"),
+    ("kimi", "🌙"),
+    ("moonshot", "🌙"),
+    ("minimax", "Ⓜ️"),
+    ("doubao", "🫘"),
+    ("hunyuan", "🐧"),
+    ("gpt", "🟢"),
+    ("openai", "🟢"),
+    ("step", "🪜"),
+    # emoji 独占家族（无 PNG 资产）
+    ("grok", "🚀"),
+    ("longcat", "🐱"),
+    ("mimo", "🐰"),
+    ("spark", "🔥"),
+)
+DEFAULT_FAMILY_EMOJI = "🍟"
+
+
+def _model_family_emoji(model: str) -> str:
+    """模型名 → 家族 logo emoji；未命中厂商家族时回落 🍟."""
+    lower = str(model or "").lower()
+    for needle, emoji in _MODEL_FAMILY_EMOJI:
+        if needle in lower:
+            return emoji
+    return DEFAULT_FAMILY_EMOJI
 
 
 def _render_panel_field(
@@ -505,7 +542,7 @@ def _render_panel_field(
     if name == "model":
         v = _model_with_served(data)
         if v:
-            return f"🍟 {v}", f"🍟 {v}"
+            return f"{_model_family_emoji(v)} {v}", f"{_model_family_emoji(v)} {v}"
         return None, None
     if name == "reasoning":
         if reasoning_count > 0:
@@ -643,6 +680,8 @@ def _render_footer_field(
 
     if name == "model":
         v = _model_with_served(data)
+        if v:
+            v = f"{_model_family_emoji(v)} {v}"
         return v, v
 
     if name == "tokens":
@@ -998,6 +1037,47 @@ def build_complete_card(
                     compact=True,
                 )
                 unified_children.append(tool_panel)
+        # 面板展开区顶部：厂商 PNG logo 并排本轮路由模型名（header title 是纯文本
+        # 贴不了图；logo 为打包内 lobehub icons 静态 PNG，首次渲染上传换 img_key 并
+        # 缓存；上传失败/开关关闭时 footer_data 无 logo_image_key，模型字段回落 🦐）
+        _logo_key = str((footer_data or {}).get("logo_image_key") or "").strip()
+        _logo_model = str(
+            (footer_data or {}).get("served_model") or (footer_data or {}).get("model") or ""
+        ).strip()
+        if _logo_key and _logo_model:
+            unified_children.insert(0, {
+                "tag": "column_set",
+                "flex_mode": "stretch",
+                "horizontal_spacing": "8px",
+                "margin": "0 0 4px 0",
+                "columns": [
+                    {
+                        "tag": "column",
+                        "width": "weighted",
+                        "weight": 1,
+                        "vertical_align": "center",
+                        "elements": [
+                            {"tag": "img", "img_key": _logo_key, "alt": _logo_model, "custom_width": 28},
+                        ],
+                    },
+                    {
+                        "tag": "column",
+                        "width": "weighted",
+                        "weight": 6,
+                        "vertical_align": "center",
+                        "elements": [
+                            {
+                                "tag": "markdown",
+                                "content": f"**本轮路由** `{_logo_model}`",
+                                "i18n_content": {
+                                    "zh_cn": f"**本轮路由** `{_logo_model}`",
+                                    "en_us": f"**Routed model** `{_logo_model}`",
+                                },
+                            },
+                        ],
+                    },
+                ],
+            })
         # header: 字段化组合（默认 🍟 model · 💭n · 🔧n · context · ⏱️ elapsed），
         # 与 footer 共用字段池，可经 display.platforms.feishu.panel_fields 自由组合
         from ..config import Config

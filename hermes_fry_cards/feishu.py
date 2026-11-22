@@ -416,6 +416,10 @@ class FeishuClient:
         if data is None:
             return None
 
+        return await self.upload_image_bytes(data)
+
+    async def upload_image_bytes(self, data: bytes) -> str | None:
+        """上传本地图片字节到飞书，返回 img_key."""
         file = io.BytesIO(data)
         request = (
             CreateImageRequest.builder()
