@@ -507,10 +507,10 @@ def _render_panel_field(
         v = _model_with_served(data)
         if not v:
             return None, None
-        logo = str(logo_image_key or "").strip()
-        if logo:
-            # 命中厂商：行首内联 PNG logo + 完整原生模型名（不走别名/⇲ 截断）
-            return f"![]({logo}) {v}", f"![]({logo}) {v}"
+        if logo_image_key:
+            # 命中厂商：原生直显完整模型名（不走别名/⇲ 截断）；
+            # 家族 logo 由面板 header 的前缀图标槽位承载（icon_position=left）。
+            return v, v
         # 未命中厂商：回落默认形态（别名解析 / ⇲ 截断）
         return f"🍟 {_display_model(v)}", f"🍟 {_display_model(v)}"
     if name == "reasoning":
@@ -1046,10 +1046,7 @@ def build_complete_card(
             "expanded": panel_expanded,
             "header": {
                 "title": {
-                    # 命中厂商 logo 时 title 用 markdown tag 内联贴图（实测 create
-                    # 接受）；未命中保持 plain_text + 🍟 品牌位。图标槽位不占用，
-                    # 默认展开/收起旋转箭头保留。
-                    "tag": "markdown" if _logo_key else "plain_text",
+                    "tag": "plain_text",
                     "content": header_en,
                     "i18n_content": _i18n(header_en, header_zh),
                 },
@@ -1058,6 +1055,15 @@ def build_complete_card(
             "border": {"color": border_color, "corner_radius": "5px"},
             "elements": unified_children,
         }
+        # 命中厂商资产：header 前缀图标槽位放家族 PNG logo，icon_position=left
+        # 即原 🍟 的位置（标题区域最左侧）；icon_expanded_angle=0 保持正向不旋转。
+        # 未命中（unknown 厂商 / 上传失败 / vendor_logo 关闭）不带 icon，模型字段
+        # 回落 🍟 品牌位；子面板（思考/工具行）各自的旋转箭头不受影响。
+        if _logo_key:
+            unified_panel["header"]["icon"] = {
+                "tag": "custom_icon", "img_key": _logo_key,
+                "icon_position": "left", "icon_expanded_angle": 0,
+            }
         elements.append(unified_panel)
 
     if not has_answer:

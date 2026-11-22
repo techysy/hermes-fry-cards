@@ -80,59 +80,39 @@ class TestModelFieldServed:
         assert _model_with_served({}) is None
 
 
-class TestPanelTitleLogo:
-    """命中厂商时 title 内联 PNG logo（markdown tag，原 🍟 位置）；箭头与默认图标保留."""
+class TestPanelHeaderLogoIcon:
+    """命中厂商：header 前缀图标槽位放家族 logo（icon_position=left，原 🍟 位置）；
+    箭头不受影响（子面板各自独立）；未命中回落 🍟 品牌位。"""
 
-    @pytest.fixture()
-    def _panel(self):
+    def _panel(self, footer_data):
         card = build_complete_card(
             segments=[_seg("reasoning", "推理内容"), _seg("answer", "答案正文")],
             all_tool_steps=[],
-            footer_data={
-                "duration": 60.0,
-                "model": "openclaw",
-                "served_model": "qwen4-max",
-                "logo_image_key": "img_v2_01test",
-            },
+            footer_data=footer_data,
         )
         panels = [el for el in card["body"]["elements"] if el.get("tag") == "collapsible_panel"]
         assert len(panels) == 1
         return panels[0]
 
-    def test_title_is_markdown_with_inline_logo(self, _panel) -> None:
-        title = _panel["header"]["title"]
-        assert title["tag"] == "markdown"
-        assert title["content"].startswith("![](img_v2_01test) ")
-        assert "qwen4-max" in title["content"]
-
-    def test_logo_replaces_fries_position(self, _panel) -> None:
-        """logo 内联在原 🍟 的位置（行首），模型名原生直显不走截断."""
-        assert "🍟" not in _panel["header"]["title"]["content"]
-
-    def test_arrow_icon_slot_untouched(self, _panel) -> None:
-        """图标槽位不占用：默认展开/收起旋转箭头保留."""
-        assert "icon" not in _panel["header"]
-
-    def test_no_strip_element(self) -> None:
-        card = build_complete_card(
-            segments=[_seg("reasoning", "推理内容"), _seg("answer", "答案正文")],
-            all_tool_steps=[],
-            footer_data={"duration": 60.0, "model": "openclaw", "served_model": "qwen4-max"},
-        )
-        panels = [el for el in card["body"]["elements"] if el.get("tag") == "collapsible_panel"]
-        children = panels[0]["elements"]
-        assert all(el["tag"] != "column_set" for el in children)
+    def test_logo_as_left_prefix_icon(self) -> None:
+        panel = self._panel({
+            "duration": 60.0, "model": "openclaw", "served_model": "qwen4-max",
+            "logo_image_key": "img_v2_01test",
+        })
+        header = panel["header"]
+        assert header["icon"]["tag"] == "custom_icon"
+        assert header["icon"]["img_key"] == "img_v2_01test"
+        assert header["icon"]["icon_position"] == "left"
+        assert header["icon"]["icon_expanded_angle"] == 0
+        # 模型字段原生直显完整名（不走别名/⇲ 截断），无 🍟（logo 已承载）
+        assert "qwen4-max" in header["title"]["content"]
+        assert "🍟" not in header["title"]["content"]
+        assert "openclaw" not in header["title"]["content"]
 
     def test_fallback_fries_without_logo_key(self) -> None:
-        """未命中厂商（无 logo key）：回落原 🍟 品牌位 + 默认形态."""
-        card = build_complete_card(
-            segments=[_seg("reasoning", "推理内容"), _seg("answer", "答案正文")],
-            all_tool_steps=[],
-            footer_data={"duration": 60.0, "model": "openclaw", "served_model": "qwen4-max"},
-        )
-        panels = [el for el in card["body"]["elements"] if el.get("tag") == "collapsible_panel"]
-        title = panels[0]["header"]["title"]
-        assert title["tag"] == "plain_text"
-        assert "🍟" in title["content"]
-        assert "qwen4-max" in title["content"]
-        assert "openclaw" not in title["content"]
+        panel = self._panel({"duration": 60.0, "model": "openclaw", "served_model": "qwen4-max"})
+        header = panel["header"]
+        assert "icon" not in header
+        assert "🍟" in header["title"]["content"]
+        assert "qwen4-max" in header["title"]["content"]
+        assert "openclaw" not in header["title"]["content"]
