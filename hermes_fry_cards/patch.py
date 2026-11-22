@@ -421,24 +421,46 @@ def _capture_served_model(obj: Any, agent: Any) -> None:
 
 
 def _wrap_stream_capture(stream: Any, agent: Any) -> Any:
-    """薄委托层：透传全部属性（.response 等），每个 chunk 捕获后原样转发."""
-    if not hasattr(stream, "__anext__"):
-        return stream  # 同步流或未知对象：不包装，fail-open
+    """薄委托层：透传全部属性（.response 等），每个 chunk 捕获后原样转发.
 
-    class _StreamCapture:
-        def __getattr__(self, name: str) -> Any:
-            return getattr(stream, name)
+    异步流（``__anext__``，openai.AsyncStream）与同步流（``__next__``，openai.Stream
+    —— AIAgent 的 chat 路径是同步客户端）都包装；都不像时原样返回 fail-open。
+    """
+    if hasattr(stream, "__anext__"):
 
-        def __aiter__(self) -> _StreamCapture:
-            return self
+        class _AsyncStreamCapture:
+            def __getattr__(self, name: str) -> Any:
+                return getattr(stream, name)
 
-        async def __anext__(self) -> Any:
-            chunk = await stream.__anext__()
-            with contextlib.suppress(Exception):
-                _capture_served_model(chunk, agent)
-            return chunk
+            def __aiter__(self) -> "_AsyncStreamCapture":
+                return self
 
-    return _StreamCapture()
+            async def __anext__(self) -> Any:
+                chunk = await stream.__anext__()
+                with contextlib.suppress(Exception):
+                    _capture_served_model(chunk, agent)
+                return chunk
+
+        return _AsyncStreamCapture()
+
+    if hasattr(stream, "__next__"):
+
+        class _SyncStreamCapture:
+            def __getattr__(self, name: str) -> Any:
+                return getattr(stream, name)
+
+            def __iter__(self) -> "_SyncStreamCapture":
+                return self
+
+            def __next__(self) -> Any:
+                chunk = stream.__next__()
+                with contextlib.suppress(Exception):
+                    _capture_served_model(chunk, agent)
+                return chunk
+
+        return _SyncStreamCapture()
+
+    return stream  # 未知对象：不包装，fail-open
 
 
 def _wrap_completions_create(completions: Any, agent: Any) -> None:
