@@ -486,10 +486,13 @@ _SERVED_CLASS_PATCHED = False
 
 
 def ensure_served_model_capture_class(cls: Any | None = None) -> bool:
-    """类级工厂补丁（幂等）：包 ``ClientLifecycleMixin._create_request_openai_client``.
+    """类级工厂补丁（幂等）：包 ``ClientLifecycleMixin`` 的两个 client 工厂.
 
-    每个新建请求客户端在返回前就地带 body 捕获 —— 这让热缓存 agent 的**本轮首次**
-    API 调用也被捕获（实例级 ctx 安装发生在首个 delta 回调时，追不上已 create 的流）。
+    ``_create_request_openai_client``（流式/每请求客户端）与 ``_create_openai_client``
+    （agent.client，非流式与 CLI 有限轮）都在 mixin 上（后者经 lazy_forward 转发，
+    覆盖其类属性即可，wrapper 内调用先捕获的 forwarder，真实实现每次调用时解析）。
+    每个新建客户端在返回前就地带 body 捕获 —— 热缓存 agent 的**本轮首次** API 调用
+    也被捕获（实例级 ctx 安装发生在首个 delta 回调时，追不上已 create 的流）。
     ``cls`` 供测试注入；缺省解析 ``agent.client_lifecycle.ClientLifecycleMixin``（旧版
     Hermes 无该模块时静默跳过）。
     """
@@ -502,20 +505,25 @@ def ensure_served_model_capture_class(cls: Any | None = None) -> bool:
         except Exception:
             return False
     assert cls is not None
-    orig = getattr(cls, "_create_request_openai_client", None)
-    if not callable(orig) or getattr(orig, "_hl_body_model_class", False):
-        _SERVED_CLASS_PATCHED = True
-        return True
 
-    def factory(self: Any, *args: Any, **kwargs: Any) -> Any:
-        client = orig(self, *args, **kwargs)
+    patched_any = False
+    for name in ("_create_request_openai_client", "_create_openai_client"):
+        orig = getattr(cls, name, None)
+        if not callable(orig) or getattr(orig, "_hl_body_model_class", False):
+            continue
+
+        # 逐轮固化 orig（默认参数绑定），避免两轮 factory 闭包晚绑定共享最后一个 orig
+        def factory(self: Any, *args: Any, _orig: Any = orig, **kwargs: Any) -> Any:
+            client = _orig(self, *args, **kwargs)
+            with contextlib.suppress(Exception):
+                _wrap_client_completions(client, self)
+            return client
+
+        factory._hl_body_model_class = True  # type: ignore[attr-defined]
         with contextlib.suppress(Exception):
-            _wrap_client_completions(client, self)
-        return client
-
-    factory._hl_body_model_class = True  # type: ignore[attr-defined]
-    with contextlib.suppress(Exception):
-        cls._create_request_openai_client = factory
+            setattr(cls, name, factory)
+            patched_any = True
+    if patched_any:
         _SERVED_CLASS_PATCHED = True
     return _SERVED_CLASS_PATCHED
 
