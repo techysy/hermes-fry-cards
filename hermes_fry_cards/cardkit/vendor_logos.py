@@ -50,6 +50,8 @@ VENDOR_LOGO_RULES: tuple[tuple[str, str], ...] = (
     ("mimo", "xiaomimimo.png"),  # Xiaomi MiMo（lobehub 资产名 xiaomimimo）
     ("dots", "dotsstudio.png"),  # dots3-note-prev（lobehub 资产名 dotsstudio）
     ("muse", "muse.png"),  # muse-spark-*
+    ("ling", "ling.png"),  # ling-3.0 / ling-3.1（InclusionAI Ling）
+    ("upstage", "upstage.png"),  # nous/upstage/solar-mini4
 )
 
 

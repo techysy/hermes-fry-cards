@@ -46,10 +46,14 @@ class TestResolveVendorLogoAsset:
         assert resolve_vendor_logo_asset("mimo-v2.6-flash-free") == "xiaomimimo.png"
         assert resolve_vendor_logo_asset("dots3-note-prev") == "dotsstudio.png"
         assert resolve_vendor_logo_asset("oc/muse-spark-1.3-contributor-free") == "muse.png"
+        assert resolve_vendor_logo_asset("oc/ling-3.0-flash-fin-free") == "ling.png"
+        assert resolve_vendor_logo_asset("qwc/ling-3.1-flash") == "ling.png"
+        assert resolve_vendor_logo_asset("nous/upstage/solar-mini4:free") == "upstage.png"
 
     def test_unknown_vendor_returns_none(self) -> None:
         assert resolve_vendor_logo_asset("space-bunny-free") is None
         assert resolve_vendor_logo_asset("fledge-alpha-free") is None
+        assert resolve_vendor_logo_asset("qdc/qfmodel") is None
         assert resolve_vendor_logo_asset("") is None
 
     def test_bundled_assets_exist(self) -> None:
