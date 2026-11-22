@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.8] - 2026-11-22
+
+### 修复 / Fixed
+- **body 模型捕获在真实 SDK 上全程失效**（v0.6.7 实机回归）：OpenAI SDK 的
+  `chat.completions.create` 被 `required_args` 同步包装器包过
+  （`__wrapped__` 存在、`iscoroutinefunction` 返回 False），安装器以此为门控
+  把真实客户端整只跳过。包装器改双模式——按「返回值是否 awaitable」分流，
+  同步 def 包装器与 async def 原生定义都覆盖。
+- **START 安装点缓存键不匹配**：START 注入点位于 `_handle_message_with_agent`
+  顶端，locals 只有 `_quick_key`（与 `_agent_cache` 键不匹配），缓存查找落空。
+  新增 `ensure_served_model_capture_ctx(ctx)`：经 `turn_ctx.agent_holder` 直通
+  本轮 agent，接入 tool / answer 钩子注入体——首个 delta 回调即安装，
+  多步回合从第二次 API 调用起全部捕获（含最终响应）。
+
+### 测试 / Tests
+- 新增 3 项回归测试（required_args 包装器 / agent_holder 安装点 / 注入体断言），
+  全量 **1119 passed**。
+
+---
+
 ## [0.6.7] - 2026-11-22
 
 ### 新增 / Added

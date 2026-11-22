@@ -12,7 +12,7 @@ import math
 from collections.abc import Callable
 from datetime import datetime
 from functools import wraps
-from inspect import iscoroutinefunction
+from inspect import isawaitable, iscoroutinefunction
 from typing import Any
 
 from .controller import busy_receipt_suppressed, get_controller
@@ -423,6 +423,22 @@ def ensure_served_model_capture(gateway: Any, session_key: str | None) -> None:
         pass
 
 
+def ensure_served_model_capture_ctx(ctx: Any) -> None:
+    """流式回调期的安装入口：直接经 turn_ctx.agent_holder 拿本轮 agent（不依赖缓存键）.
+
+    START 注入点处 ``session_key`` 尚未绑定（locals 只有 ``_quick_key``，与
+    ``_agent_cache`` 的键不匹配），缓存查找会落空；首个 delta 回调时 ctx 已持有
+    agent_holder —— 据此安装，多步回合从第二次 API 调用起全部被捕获（含最终响应）。
+    """
+    try:
+        holder = getattr(ctx, "agent_holder", None)
+        agent = holder[0] if holder else None
+        if agent is not None:
+            install_served_model_body_capture(agent)
+    except Exception:
+        pass
+
+
 def install_served_model_body_capture(agent: Any) -> bool:
     """包裹 agent 的 OpenAI 兼容客户端，把响应体 ``model`` 字段写入 ``agent.last_served_model``.
 
@@ -468,19 +484,30 @@ def install_served_model_body_capture(agent: Any) -> bool:
         if completions is None or getattr(completions, "_hl_body_model_wrapped", False):
             return
         orig = completions.create
-        if not iscoroutinefunction(orig):
-            return  # 仅覆盖网关异步路径；同步面不包装，fail-open
         try:
-            async def create(*args: Any, **kwargs: Any) -> Any:
-                obj = await orig(*args, **kwargs)
-                try:
-                    if hasattr(obj, "choices"):
-                        _capture(obj)
-                    else:
-                        obj = _wrap_stream(obj)
-                except Exception:
-                    pass
-                return obj
+            # 双模式包装：不能靠 iscoroutinefunction 判定 —— OpenAI SDK 的 create 被
+            # required_args 同步包装器包过（__wrapped__ 在，iscoroutinefunction 为
+            # False），但调用仍返回 awaitable。统一按「返回值是否 awaitable」分流：
+            # 同步 def 包装器与 async def 原生定义都覆盖；网关调用方一律 await。
+            def create(*args: Any, **kwargs: Any) -> Any:
+                obj = orig(*args, **kwargs)
+                if not isawaitable(obj):
+                    with contextlib.suppress(Exception):
+                        if hasattr(obj, "choices"):
+                            _capture(obj)
+                        else:
+                            obj = _wrap_stream(obj)
+                    return obj
+
+                async def _finish() -> Any:
+                    r = await obj
+                    with contextlib.suppress(Exception):
+                        if hasattr(r, "choices"):
+                            _capture(r)
+                        else:
+                            r = _wrap_stream(r)
+                    return r
+                return _finish()
             completions.create = create
             completions._hl_body_model_wrapped = True
         except Exception:

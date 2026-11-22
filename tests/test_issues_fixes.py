@@ -12,7 +12,7 @@ import pytest
 from hermes_fry_cards.config import Config
 from hermes_fry_cards.controller import StreamCardController
 from hermes_fry_cards.feishu import FeishuAPIError
-from hermes_fry_cards.patcher import _complete_hook, _start_hook
+from hermes_fry_cards.patcher import _answer_hook, _complete_hook, _start_hook, _tool_hook
 from hermes_fry_cards.streaming.flush import FlushController
 from hermes_fry_cards.streaming.segments import Segment, SegmentType
 from hermes_fry_cards.streaming.session import CardSession, SessionState
@@ -628,3 +628,54 @@ async def test_ensure_served_model_capture_installs_on_cached_agent() -> None:
     # 找不到 agent 时静默
     ensure_served_model_capture(MagicMock(spec=[]), "missing")
     ensure_served_model_capture(None, "sk")
+
+
+# ── body 捕获修复：SDK required_args 包装器 + ctx.agent_holder 安装点 ──────────
+
+
+@pytest.mark.asyncio
+async def test_body_capture_survives_required_args_sync_wrapper() -> None:
+    """OpenAI SDK 的 create 被 required_args 同步包装器包过（iscoroutinefunction=False
+    但调用返回 awaitable）—— 双模式包装必须照样捕获（v0.6.7 实机回归）。"""
+    from hermes_fry_cards.patch import install_served_model_body_capture
+
+    class _SDKCompletions:
+        # 模拟真实 SDK：async 实现 + 同步 def 包装（required_args 风格，实例方法可绑定）
+        async def _impl(self, *args, **kwargs):
+            return SimpleNamespace(model="deepseek-v4.1-flash", choices=[1])
+
+        def create(self, *args, **kwargs):
+            return self._impl(*args, **kwargs)
+
+    completions = _SDKCompletions()
+    agent = _FakeServedAgent(_FakeClient(completions))
+    install_served_model_body_capture(agent)
+
+    result = await agent.client.chat.completions.create(model="cbcn/deepseek-v4.1-flash")
+    assert result.model == "deepseek-v4.1-flash"
+    assert agent.last_served_model == "deepseek-v4.1-flash"
+
+
+def test_ensure_served_model_capture_ctx_uses_agent_holder() -> None:
+    """ctx.agent_holder 直通本轮 agent：不依赖缓存键（START 处 session_key 未绑定）."""
+    from hermes_fry_cards.patch import ensure_served_model_capture_ctx
+
+    completions = _FakeCompletions(
+        lambda: asyncio.sleep(0, result=SimpleNamespace(model="m", choices=[1]))
+    )
+    agent = _FakeServedAgent(_FakeClient(completions))
+    ctx = SimpleNamespace(agent_holder=[agent])
+
+    ensure_served_model_capture_ctx(ctx)
+    assert getattr(agent.client.chat.completions, "_hl_body_model_wrapped", False) is True
+
+    # holder 为空 / ctx 缺字段：静默
+    ensure_served_model_capture_ctx(SimpleNamespace(agent_holder=[]))
+    ensure_served_model_capture_ctx(SimpleNamespace())
+    ensure_served_model_capture_ctx(None)
+
+
+def test_tool_and_answer_hooks_install_body_capture() -> None:
+    """tool/answer 钩子注入体经 ctx 兜底安装（多步回合最终响应必被覆盖）."""
+    assert "ensure_served_model_capture_ctx" in _tool_hook("    ")
+    assert "ensure_served_model_capture_ctx" in _answer_hook("    ")

@@ -1,3 +1,39 @@
+## 🍟 hermes-fry-cards v0.6.8
+
+> v0.6.7 路由可见性实机回归修复：捕获在真实 OpenAI SDK 上从未生效，现已修复。
+
+### 🔧 修复（v0.6.7 回归）
+
+实机验证发现 v0.6.7 的 body 模型捕获在真实环境**全程未生效**（卡片仍显示组合名），
+两个独立根因：
+
+1. **SDK 包装器误判**：OpenAI SDK 的 `chat.completions.create` 被 `required_args`
+   同步包装器包过（`__wrapped__` 存在、`iscoroutinefunction` 返回 False），安装器
+   把这个检测当门控，真实客户端被整只跳过。改为双模式包装——按「返回值是否
+   awaitable」分流，不再依赖协程检测。
+2. **START 安装点缓存键不匹配**：START 注入点处 locals 只有 `_quick_key`，
+   与 `_agent_cache` 的键不匹配，查找落空。新增 `ensure_served_model_capture_ctx`：
+   经 `turn_ctx.agent_holder` 直通本轮 agent，接入 tool / answer 钩子——首个
+   delta 回调即安装，多步回合从第二次 API 调用起全部捕获（含最终响应）。
+
+### ⚙️ 其他
+
+- 全量 **1119 passed**，新增 3 项回归测试
+
+### 📦 升级
+
+**注入体有改动，必须重跑 `uninstall + install`**：
+
+```bash
+HERMES_PYTHON=~/.hermes/hermes-agent/venv/bin/python3
+$HERMES_PYTHON -m pip install -U hermes-fry-cards
+$HERMES_PYTHON -m hermes_fry_cards uninstall
+$HERMES_PYTHON -m hermes_fry_cards install
+systemctl --user restart hermes-gateway
+```
+
+---
+
 ## 🍟 hermes-fry-cards v0.6.7
 
 > 路由可见性：卡片直接显示本轮实际服务的模型——纯插件侧实现，10R/LiteLLM 式代理零改动。
