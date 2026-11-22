@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.7] - 2026-11-22
+
+### 新增 / Added
+- **卡片显示实际路由模型（10R/LiteLLM 式代理，纯插件侧零上游改动）**：实测路由代理把
+  实际服务的模型名回写进响应体 / 流式 chunk 的 `model` 字段（请求 `cbcn/hy4-preview`，
+  回 `model: hy4-preview`），但响应头无路由信息。新增 `install_served_model_body_capture`
+  包裹 `agent.client.chat.completions.create` 与 `_create_request_openai_client` 工厂，
+  把 body 模型写进 Hermes 自带槽位 `agent.last_served_model`（头捕获每响应先跑置 None，
+  body 捕获后写获胜）；START 钩子回合开始时经 `ensure_served_model_capture` 幂等安装。
+  完成态 footer / 统一面板的 `model` 字段在实际模型与配置名不同时渲染
+  `🍟 配置名 → 实际模型`（语义对齐 Hermes `runtime_footer.served_model`），相同/缺失
+  与旧版渲染一致。流式包装为薄 `__aiter__/__anext__` 委托层；同步面与 anthropic
+  api_mode 跳过，全程 fail-open，**路由代理无需任何改动**。
+
+### 测试 / Tests
+- 新增 8 项测试（非流式 / 流式 / 工厂路径 / 幂等 / fail-open / START 注入体断言），
+  全量 **1116 passed**，ruff / mypy 零新增。
+
+---
+
 ## [0.6.6] - 2026-11-19
 
 ### 修复 / Fixed

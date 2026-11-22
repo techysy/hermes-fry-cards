@@ -1,3 +1,52 @@
+## 🍟 hermes-fry-cards v0.6.7
+
+> 路由可见性：卡片直接显示本轮实际服务的模型——纯插件侧实现，10R/LiteLLM 式代理零改动。
+
+### 🛰️ 卡片显示实际路由模型
+
+10Router 等路由代理会把**实际服务的模型名**回写进响应体 / 流式 chunk 的 `model` 字段
+（实测：请求 `cbcn/hy4-preview`，回来 `model: hy4-preview`——渠道前缀剥掉露出实际模型），
+但响应头里没有路由信息，此前卡片上的 🍟 model 字段只能看到配置名。
+
+本版在插件侧补齐捕获链（利用 Hermes 自带的 `agent.last_served_model` 槽位，#54864）：
+
+- **双面包裹**：非流式主路径（`agent.client.chat.completions.create`）与流式每请求客户端
+  （`_create_request_openai_client` 工厂）全部覆盖，create 返回 / 首 chunk 到达时捕获；
+- **与 Hermes 头捕获共存**：头捕获每响应先跑（无头置 None），body 捕获后写获胜；
+- **START 钩子回合开始即装**（幂等），暖缓存会话从本轮第一次 API 调用起就覆盖；
+- **完成态渲染**：footer 与统一面板的 model 字段在实际模型与配置名不同时显示
+  `🍟 配置名 → 实际模型`；相同 / 缺失与旧版渲染逐字一致；
+- **全程 fail-open**：同步面、anthropic api_mode、旧版 Hermes、会话冷启动首次回复
+  ——一律无值不加箭头，不影响任何现有行为。
+
+**路由代理无需任何改动**；Hermes 核心无需改动。
+
+### ⚙️ 其他
+
+- 全量 **1116 passed**，新增 8 项专项测试，ruff / mypy 零新增
+
+### 📦 升级
+
+**本版改动了 START 钩子注入体，必须重跑 `uninstall + install`**：
+
+```bash
+HERMES_PYTHON=~/.hermes/hermes-agent/venv/bin/python3
+$HERMES_PYTHON -m pip install -U hermes-fry-cards
+$HERMES_PYTHON -m hermes_fry_cards uninstall
+$HERMES_PYTHON -m hermes_fry_cards install
+systemctl --user restart hermes-gateway               # 或 hermes gateway restart
+```
+
+### 🔍 升级后自查
+
+| 检查项 | 正常表现 |
+| --- | --- |
+| `$HERMES_PYTHON -m hermes_fry_cards status` | 所有钩子 installed |
+| 带工具调用的多步回复（会话第二轮起） | 完成态卡片 model 字段显示 `🍟 配置名 → 实际模型` |
+| 单轮单次调用且会话冷启动的首次回复 | 无箭头（agent 未进缓存，预期 fail-open），之后恢复 |
+
+---
+
 ## 🍟 hermes-fry-cards v0.6.6
 
 > 健壮性复查专项：修复 v0.6.5 热重载在生产上失效的回归，加固配置重载与流式降级边缘。
