@@ -271,6 +271,7 @@
     setCheck("f-show-tool-use", d.show_tool_use);
     setCheck("f-show-context", d.show_context);
     setCheck("f-truncate-model", d.truncate_model_name);
+    setCheck("f-vendor-logo", d.vendor_logo);
     setCheck("f-alias-enabled", d.model_aliases_enabled);
     setVal("f-max-panels", d.max_reasoning_panels);
     setVal("f-unified-min-duration", d.unified_panel_min_duration);
@@ -354,6 +355,7 @@
         show_tool_use: $("#f-show-tool-use").checked,
         show_context: $("#f-show-context").checked,
         truncate_model_name: $("#f-truncate-model").checked,
+        vendor_logo: $("#f-vendor-logo").checked,
         model_aliases_enabled: $("#f-alias-enabled").checked,
         max_reasoning_panels: int("#f-max-panels"),
         unified_panel_min_duration: num("#f-unified-min-duration"),

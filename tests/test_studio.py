@@ -239,6 +239,16 @@ class TestValidation:
         i18n = (srv._WEB_ROOT / "js" / "i18n.js").read_text(encoding="utf-8")
         assert '"lbl.flush-interval"' in i18n
 
+    def test_studio_ui_exposes_vendor_logo(self) -> None:
+        """统一面板厂商 logo 开关在 HTML / 读写两端都接通（display.vendor_logo）."""
+        html = (srv._WEB_ROOT / "index.html").read_text(encoding="utf-8")
+        assert 'id="f-vendor-logo"' in html
+        js = (srv._WEB_ROOT / "js" / "app.js").read_text(encoding="utf-8")
+        assert 'setCheck("f-vendor-logo", d.vendor_logo)' in js
+        assert 'vendor_logo: $("#f-vendor-logo").checked' in js
+        i18n = (srv._WEB_ROOT / "js" / "i18n.js").read_text(encoding="utf-8")
+        assert '"lbl.vendor-logo"' in i18n
+
 
 # ---------------------------------------------------------------------------
 # 纯函数：白名单合并 / 备份 / 原子写
@@ -611,6 +621,17 @@ class TestAliasesEndpoint:
         assert conf["display"]["platforms"]["feishu"]["model_aliases_enabled"] is False
         _post_ok(server, "/api/config", {"display": {"model_aliases_enabled": True}})
         assert _get_json(server, "/api/state")["display"]["model_aliases_enabled"] is True
+
+    def test_vendor_logo_switch_in_state_and_config_roundtrip(self, server: str, home: Path) -> None:
+        state = _get_json(server, "/api/state")
+        assert state["display"]["vendor_logo"] is True  # 缺省开
+        _post_ok(server, "/api/config", {"display": {"vendor_logo": False}})
+        state = _get_json(server, "/api/state")
+        assert state["display"]["vendor_logo"] is False
+        conf = yaml.safe_load((home / "config.yaml").read_text(encoding="utf-8"))
+        assert conf["display"]["platforms"]["feishu"]["vendor_logo"] is False
+        _post_ok(server, "/api/config", {"display": {"vendor_logo": True}})
+        assert _get_json(server, "/api/state")["display"]["vendor_logo"] is True
 
 
 # ---------------------------------------------------------------------------
