@@ -29,6 +29,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   （`__wrapped__` 存在、`iscoroutinefunction` 返回 False），安装器以此为门控
   把真实客户端整只跳过。包装器改双模式——按「返回值是否 awaitable」分流，
   同步 def 包装器与 async def 原生定义都覆盖。
+- **无工具轮（单次 API 调用）捕获时序盲区**：ctx 路安装在首个 delta 回调时，
+  本轮流已 create，包装追不上。新增类级工厂补丁
+  （`ensure_served_model_capture_class`，包 `ClientLifecycleMixin` 的
+  `_create_request_openai_client` / `_create_openai_client` 两个工厂），
+  回合开始即生效，热缓存 agent 本轮首次调用即被捕获。
+- **同步流未包装**：AIAgent 的 chat 路径是同步 openai.Stream（`__iter__/__next__`），
+  此前只包了异步流。实机探针验证：类补丁 → agent.client 自动包装 → 真实 10R
+  流式调用 → `last_served_model` 捕获成功。
 - **START 安装点缓存键不匹配**：START 注入点位于 `_handle_message_with_agent`
   顶端，locals 只有 `_quick_key`（与 `_agent_cache` 键不匹配），缓存查找落空。
   新增 `ensure_served_model_capture_ctx(ctx)`：经 `turn_ctx.agent_holder` 直通
