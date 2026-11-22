@@ -37,9 +37,9 @@ class TestResolveVendorLogoAsset:
 
     def test_maps_by_model_name_not_channel_prefix(self) -> None:
         """匹配维度是模型家族词，渠道前缀（tencent/ cbai/ cbcn/ 等）不参与判定."""
-        assert resolve_vendor_logo_asset("hy4-preview") == "codebuddy.png"
-        assert resolve_vendor_logo_asset("tencent/hy4-flash:free") == "codebuddy.png"
-        assert resolve_vendor_logo_asset("cbai/hy4-preview") == "codebuddy.png"
+        assert resolve_vendor_logo_asset("hy4-preview") == "hunyuan.png"  # hy = 腾讯混元（渠道是 CodeBuddy）
+        assert resolve_vendor_logo_asset("tencent/hy4-flash:free") == "hunyuan.png"
+        assert resolve_vendor_logo_asset("cbai/hy4-preview") == "hunyuan.png"
         assert resolve_vendor_logo_asset("grok-4.7") == "grok.png"
         assert resolve_vendor_logo_asset("ocg/grok-4.7") == "grok.png"
         assert resolve_vendor_logo_asset("longcat/LongCat-2.5-Preview") == "longcat.png"

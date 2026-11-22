@@ -43,7 +43,7 @@ VENDOR_LOGO_RULES: tuple[tuple[str, str], ...] = (
     ("openai", "openai.png"),
     ("step", "stepfun.png"),
     # 10R fleet 实际在用的模型家族（按模型名登记，与渠道前缀无关）
-    ("hy4", "codebuddy.png"),  # CodeBuddy 渠道的 hy4 家族（hy4-preview / hy4-flash）
+    ("hy4", "hunyuan.png"),  # hy4-preview / hy4-flash：腾讯混元 Hy 家族（渠道是 CodeBuddy，模型是混元）
     ("codebuddy", "codebuddy.png"),
     ("grok", "grok.png"),
     ("longcat", "longcat.png"),
