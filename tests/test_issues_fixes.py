@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import os
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -13,7 +14,7 @@ from hermes_fry_cards.controller import StreamCardController
 from hermes_fry_cards.feishu import FeishuAPIError
 from hermes_fry_cards.patcher import _complete_hook
 from hermes_fry_cards.streaming.flush import FlushController
-from hermes_fry_cards.streaming.segments import SegmentType
+from hermes_fry_cards.streaming.segments import Segment, SegmentType
 from hermes_fry_cards.streaming.session import CardSession, SessionState
 
 # ── 健壮性复查：配置热重载生产语义 ──────────────────────────────────────────
@@ -299,3 +300,167 @@ async def test_issue_65_interrupted_tail_discarded_does_not_pollute_new_turn_car
     # 旧回合迟到的完成事件到达，查询 session 时由于在 _interrupted_tails 中，必须返回 None 而不能拿到 new_session
     completed_session = ctrl._completion_session("old_msg", session_key="user_sk")
     assert completed_session is None
+
+
+# ── 10R 路由可见性：实际服务模型上卡 ──────────────────────────────────────────
+
+
+class _FakeAgent:
+    def __init__(self, served: str | None) -> None:
+        self.last_served_model = served
+
+
+def test_collect_served_model_reads_agent_cache() -> None:
+    """从 _agent_cache / _running_agents 读 agent.last_served_model；缺失返回 None."""
+    from hermes_fry_cards.patch import collect_served_model
+
+    gw_hit = MagicMock()
+    gw_hit._agent_cache = {"sk": (_FakeAgent("gemini-4-argon"), 1)}
+    assert collect_served_model(gw_hit, "sk") == "gemini-4-argon"
+
+    gw_running = MagicMock(spec=[])
+    gw_running._running_agents = {"sk": _FakeAgent("provider/b")}
+    assert collect_served_model(gw_running, "sk") == "provider/b"
+
+    gw_none = MagicMock(spec=[])
+    gw_none._agent_cache = {"sk": (_FakeAgent(None), 1)}
+    assert collect_served_model(gw_none, "sk") is None
+
+    assert collect_served_model(MagicMock(spec=[]), "sk") is None
+    assert collect_served_model(None, "sk") is None
+
+
+@pytest.mark.asyncio
+async def test_complete_hook_passes_served_model() -> None:
+    """注入钩子优先取 agent_result['served_model']，否则回退 agent.last_served_model."""
+    gateway = MagicMock(spec=[])
+    gateway._agent_cache = {"fixture-session": (_FakeAgent("provider/gemini-4"), 1)}
+
+    # 生产钩子注入在方法体内，self / session_key 是真局部变量：
+    # wrapper 用同名形参复现这一点（locals().get('self') 才拿得到 gateway）。
+    source = (
+        "async def complete(agent_result, event, response, _response_time, _footer_line,"
+        " self=None, session_key=None):\n"
+        f"{_complete_hook('    ')}"
+        "    return agent_result, response, _footer_line\n"
+    )
+    namespace: dict = {"_quick_key": None}
+    exec(compile(source, "<complete-hook-served>", "exec"), namespace)
+
+    with (
+        patch(
+            "hermes_fry_cards.patch.on_message_completed_wait",
+            new_callable=AsyncMock,
+            return_value=True,
+        ) as on_completed,
+        patch("hermes_fry_cards.patch.on_message_needs_text_fallback", return_value=False),
+    ):
+        await namespace["complete"](
+            {"model": "combo-main"},
+            SimpleNamespace(message_id="message"),
+            "answer", 1.0, "",
+            self=gateway,
+            session_key="fixture-session",
+        )
+
+    assert on_completed.await_args.kwargs["served_model"] == "provider/gemini-4"
+
+
+@pytest.mark.asyncio
+async def test_complete_hook_prefers_result_served_model() -> None:
+    """agent_result 已带 served_model（上游投影）时不回退 live 读取."""
+    source = (
+        "async def complete(agent_result, event, response, _response_time, _footer_line):\n"
+        f"{_complete_hook('    ')}"
+        "    return agent_result, response, _footer_line\n"
+    )
+    namespace = {"self": MagicMock(spec=[]), "session_key": "sk", "_quick_key": None}
+    exec(compile(source, "<complete-hook-served-result>", "exec"), namespace)
+
+    with (
+        patch(
+            "hermes_fry_cards.patch.on_message_completed_wait",
+            new_callable=AsyncMock,
+            return_value=True,
+        ) as on_completed,
+        patch("hermes_fry_cards.patch.on_message_needs_text_fallback", return_value=False),
+    ):
+        await namespace["complete"](
+            {"model": "combo-main", "served_model": "provider/a"},
+            SimpleNamespace(message_id="message"),
+            "answer", 1.0, "",
+        )
+
+    assert on_completed.await_args.kwargs["served_model"] == "provider/a"
+
+
+def test_model_with_served_rendering() -> None:
+    """model 字段：served 与配置名不同时显示「别名 → 实际」，相同/缺失不加箭头."""
+    from hermes_fry_cards.cardkit.builder import _model_with_served
+
+    assert _model_with_served({"model": "combo-main"}) == "combo-main"
+    assert (
+        _model_with_served({"model": "combo-main", "served_model": "provider/gemini-4"})
+        == "combo-main → provider/gemini-4"
+    )
+    # 相同值不加箭头（runtime_footer 同语义）
+    assert _model_with_served({"model": "same", "served_model": "same"}) == "same"
+    assert _model_with_served({}) is None
+
+
+def _reasoning_segment(text: str) -> Segment:
+    seg = Segment(SegmentType.REASONING, "reasoning_0_panel")
+    seg.text_el_id = "reasoning_0_text"
+    seg.text = text
+    return seg
+
+
+def test_complete_card_renders_served_model_in_panel_and_footer() -> None:
+    """完成态统一面板与 footer 的 model 字段都带「→ 实际模型」."""
+    from hermes_fry_cards.cardkit.builder import build_complete_card
+
+    footer_data = {"duration": 10.0, "model": "combo-main", "served_model": "provider/gemini-4"}
+    card = build_complete_card(
+        segments=[_reasoning_segment("thought")],
+        all_tool_steps=[],
+        footer_data=footer_data,
+        footer_enabled=True,
+        footer_fields=[["model"]],
+        panel_fields=["model"],
+    )
+
+    unified = next(
+        el for el in card["body"]["elements"] if el.get("tag") == "collapsible_panel"
+    )
+    assert "🍟 combo-main → provider/gemini-4" in unified["header"]["title"]["content"]
+    assert "🍟 combo-main → provider/gemini-4" in unified["header"]["title"]["i18n_content"]["zh_cn"]
+
+    # footer 里 model 字段的 markdown 也带箭头
+    footer_texts = [
+        el["content"]
+        for el in card["body"]["elements"]
+        if el.get("tag") == "markdown"
+    ]
+    assert any("combo-main → provider/gemini-4" in t for t in footer_texts)
+
+
+def test_complete_card_hides_arrow_when_served_missing_or_equal() -> None:
+    """served 缺失或与配置名相同时，model 字段与旧版渲染完全一致."""
+    from hermes_fry_cards.cardkit.builder import build_complete_card
+
+    for footer_data in (
+        {"duration": 10.0, "model": "combo-main"},
+        {"duration": 10.0, "model": "same", "served_model": "same"},
+    ):
+        card = build_complete_card(
+            segments=[_reasoning_segment("thought")],
+            all_tool_steps=[],
+            footer_data=footer_data,
+            footer_enabled=True,
+            footer_fields=[["model"]],
+            panel_fields=["model"],
+        )
+        unified = next(
+            el for el in card["body"]["elements"] if el.get("tag") == "collapsible_panel"
+        )
+        assert "→" not in unified["header"]["title"]["content"]

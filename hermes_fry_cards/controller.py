@@ -1177,6 +1177,7 @@ class StreamCardController(StreamingController):
         is_interrupted: bool = False,
         duration: float = 0.0,
         model: str = "",
+        served_model: str | None = None,
         tokens: dict | None = None,
         context: dict | None = None,
         session_key: str | None = None,
@@ -1216,6 +1217,7 @@ class StreamCardController(StreamingController):
             answer=answer,
             duration=duration,
             model=model,
+            served_model=served_model,
             tokens=tokens,
             context=context,
             answer_rewritten=answer_rewritten,
@@ -1565,6 +1567,7 @@ class StreamCardController(StreamingController):
         tokens: dict | None,
         context: dict | None,
         answer_rewritten: bool = False,
+        served_model: str | None = None,
     ) -> None:
         if answer and session.segment_state:
             final_answer = strip_reasoning_tags(answer)
@@ -1579,9 +1582,14 @@ class StreamCardController(StreamingController):
         prev_model = session.footer.get("model") or ""
         _cache_read = (tokens or {}).get("cache_read_tokens") or 0
         _tps = (tokens or {}).get("tokens_per_sec") or 0
+        _served = str(served_model or "").strip()
         session.footer = {
             "duration": _duration,
             "model": model or prev_model,
+            # 路由代理（10R/LiteLLM 式）上报的实际服务模型：与 model 不同时
+            # footer/panel 的 model 字段渲染「别名 → 实际模型」（语义对齐
+            # Hermes runtime_footer 的 served_model 字段）。
+            **({"served_model": _served} if _served else {}),
             **({"input_tokens": tokens.get("input_tokens")} if tokens else {}),
             **({"output_tokens": tokens.get("output_tokens")} if tokens else {}),
             **({"cache_read_tokens": _cache_read} if _cache_read else {}),

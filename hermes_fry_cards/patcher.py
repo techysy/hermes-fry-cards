@@ -524,6 +524,7 @@ def _complete_hook(indent: str) -> str:
             "try:",
             "    from hermes_fry_cards.patch import (",
             "        on_message_completed_wait, on_message_needs_text_fallback, collect_stream_stats,",
+            "        collect_served_model,",
             "    )",
             "    _lark_completion_id = agent_result.get('_hermes_lark_completion_id') or event.message_id",
             "    _lark_answer_rewritten = any(",
@@ -538,6 +539,16 @@ def _complete_hook(indent: str) -> str:
             "        answer_rewritten=_lark_answer_rewritten,",
             "        duration=locals().get('_response_time', locals().get('_turn_seconds')),",
             "        model=agent_result.get('model', ''),",
+            # 路由代理（10R/LiteLLM 式）响应头里的实际服务模型：优先取 turn result
+            # 自带的 served_model（上游已投影时），否则直接读 agent.last_served_model。
+            # 旧版 Hermes 无此属性 → None，卡片不显示，fail-open。
+            "        served_model=(",
+            "            agent_result.get('served_model')",
+            "            or collect_served_model(",
+            "                locals().get('self'),",
+            "                locals().get('session_key') or locals().get('_quick_key'),",
+            "            )",
+            "        ),",
             "        session_key=locals().get('session_key') or locals().get('_quick_key'),",
             "        tokens={",
             "            'input_tokens': agent_result.get('input_tokens', 0),",

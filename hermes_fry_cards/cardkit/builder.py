@@ -470,6 +470,22 @@ def _build_reasoning_panel(
     return panel
 
 
+def _model_with_served(data: dict) -> str | None:
+    """model 字段显示名：别名解析 + 截断；路由代理上报了实际服务模型（
+    ``served_model``，来自响应头捕获）且与配置名不同时附「→ 实际模型」.
+    语义对齐 Hermes ``gateway/runtime_footer.py`` 的 served_model 字段
+    （``alias → served``，相同/缺失时不加箭头）。
+    """
+    raw = str(data.get("model") or "").strip()
+    if not raw:
+        return None
+    name = _display_model(raw)
+    served = str(data.get("served_model") or "").strip()
+    if served and served != raw:
+        return f"{name} → {served}"
+    return name
+
+
 def _render_panel_field(
     name: str,
     data: dict,
@@ -487,10 +503,9 @@ def _render_panel_field(
     其余共享字段（speed/cache/tokens/status）原样回落 footer 渲染器。
     """
     if name == "model":
-        v = (data.get("model") or "").strip()
+        v = _model_with_served(data)
         if v:
-            v = f"🍟 {_display_model(v)}"
-            return v, v
+            return f"🍟 {v}", f"🍟 {v}"
         return None, None
     if name == "reasoning":
         if reasoning_count > 0:
@@ -627,9 +642,7 @@ def _render_footer_field(
         return None, None
 
     if name == "model":
-        v = data.get("model") or None
-        if v:
-            v = _display_model(v)
+        v = _model_with_served(data)
         return v, v
 
     if name == "tokens":

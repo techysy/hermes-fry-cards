@@ -377,6 +377,34 @@ def collect_stream_stats(gateway: Any, session_key: str | None) -> dict[str, Any
     return stats
 
 
+def collect_served_model(gateway: Any, session_key: str | None) -> str | None:
+    """路由代理上报的实际服务模型（Hermes #54864 served-model 机制），供卡片 footer 展示.
+
+    Hermes 的 httpx 响应钩子（``agent/served_model.py``）把 ``x-litellm-model-id`` /
+    ``x-litellm-model-api-base`` 头存到 ``agent.last_served_model``（每响应刷新，无头时
+    置 None，值不会串轮）。10R 等 LiteLLM 式代理回这个头，卡片即可显示
+    「配置别名 → 实际路由模型」。agent 不在缓存或头不存在返回 None，全程 fail-open。
+    """
+    if gateway is None or not session_key:
+        return None
+    try:
+        agent: Any = None
+        running = getattr(gateway, "_running_agents", None)
+        if isinstance(running, dict):
+            agent = running.get(session_key)
+        if agent is None:
+            cache = getattr(gateway, "_agent_cache", None)
+            if cache is not None:
+                entry = cache.get(session_key)
+                agent = (entry[0] if entry else None) if isinstance(entry, tuple) else entry
+        served = getattr(agent, "last_served_model", None) if agent is not None else None
+        if isinstance(served, str) and served.strip():
+            return served.strip()
+    except Exception:
+        pass
+    return None
+
+
 @_safe_hook(default_return=False)
 async def on_message_completed_wait(
     *,
@@ -387,6 +415,7 @@ async def on_message_completed_wait(
     is_interrupted: bool = False,
     duration: float = 0.0,
     model: str = "",
+    served_model: str | None = None,
     tokens: dict[str, Any] | None = None,
     context: dict[str, Any] | None = None,
     session_key: str | None = None,
@@ -405,6 +434,7 @@ async def on_message_completed_wait(
             is_interrupted=is_interrupted,
             duration=duration,
             model=model,
+            served_model=served_model,
             tokens=tokens,
             context=context,
             session_key=session_key,
