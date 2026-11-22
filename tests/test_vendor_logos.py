@@ -80,9 +80,11 @@ class TestModelFieldServed:
         assert _model_with_served({}) is None
 
 
-class TestRoutingLogoStrip:
+class TestPanelTitleLogo:
+    """命中厂商时 title 内联 PNG logo（markdown tag，原 🍟 位置）；箭头与默认图标保留."""
+
     @pytest.fixture()
-    def complete_panel_children(self):
+    def _panel(self):
         card = build_complete_card(
             segments=[_seg("reasoning", "推理内容"), _seg("answer", "答案正文")],
             all_tool_steps=[],
@@ -95,20 +97,23 @@ class TestRoutingLogoStrip:
         )
         panels = [el for el in card["body"]["elements"] if el.get("tag") == "collapsible_panel"]
         assert len(panels) == 1
-        return panels[0]["elements"]
+        return panels[0]
 
-    def test_strip_is_first_element(self, complete_panel_children) -> None:
-        strip = complete_panel_children[0]
-        assert strip["tag"] == "column_set"
+    def test_title_is_markdown_with_inline_logo(self, _panel) -> None:
+        title = _panel["header"]["title"]
+        assert title["tag"] == "markdown"
+        assert title["content"].startswith("![](img_v2_01test) ")
+        assert "qwen4-max" in title["content"]
 
-    def test_strip_has_logo_and_label(self, complete_panel_children) -> None:
-        strip = complete_panel_children[0]
-        logo_col, text_col = strip["columns"]
-        assert logo_col["elements"][0]["tag"] == "img"
-        assert logo_col["elements"][0]["img_key"] == "img_v2_01test"
-        assert "qwen4-max" in text_col["elements"][0]["content"]
+    def test_logo_replaces_fries_position(self, _panel) -> None:
+        """logo 内联在原 🍟 的位置（行首），模型名原生直显不走截断."""
+        assert "🍟" not in _panel["header"]["title"]["content"]
 
-    def test_strip_omitted_without_logo_key(self) -> None:
+    def test_arrow_icon_slot_untouched(self, _panel) -> None:
+        """图标槽位不占用：默认展开/收起旋转箭头保留."""
+        assert "icon" not in _panel["header"]
+
+    def test_no_strip_element(self) -> None:
         card = build_complete_card(
             segments=[_seg("reasoning", "推理内容"), _seg("answer", "答案正文")],
             all_tool_steps=[],
@@ -116,40 +121,18 @@ class TestRoutingLogoStrip:
         )
         panels = [el for el in card["body"]["elements"] if el.get("tag") == "collapsible_panel"]
         children = panels[0]["elements"]
-        assert children[0]["tag"] != "column_set"
-        # header model 段为纯实际模型（无 emoji）；未命中厂商时不带 icon，回落默认箭头
-        header = panels[0]["header"]["title"]["content"]
-        assert "qwen4-max" in header
-        assert "openclaw" not in header
-        assert "icon" not in panels[0]["header"]
+        assert all(el["tag"] != "column_set" for el in children)
 
-
-class TestHeaderLogoIcon:
-    """header 图标槽位：命中厂商 logo 时用 custom_icon 替换默认箭头（实测 create 接受）."""
-
-    def test_logo_used_as_header_icon(self) -> None:
+    def test_fallback_fries_without_logo_key(self) -> None:
+        """未命中厂商（无 logo key）：回落原 🍟 品牌位 + 默认形态."""
         card = build_complete_card(
             segments=[_seg("reasoning", "推理内容"), _seg("answer", "答案正文")],
             all_tool_steps=[],
-            footer_data={
-                "duration": 60.0,
-                "model": "openclaw",
-                "served_model": "qwen4-max",
-                "logo_image_key": "img_v2_01test",
-            },
+            footer_data={"duration": 60.0, "model": "openclaw", "served_model": "qwen4-max"},
         )
         panels = [el for el in card["body"]["elements"] if el.get("tag") == "collapsible_panel"]
-        header = panels[0]["header"]
-        assert header["icon"]["tag"] == "custom_icon"
-        assert header["icon"]["img_key"] == "img_v2_01test"
-        assert header["icon"]["icon_expanded_angle"] == 0
-        assert "qwen4-max" in header["title"]["content"]
-
-    def test_arrow_kept_without_logo_key(self) -> None:
-        card = build_complete_card(
-            segments=[_seg("reasoning", "推理内容"), _seg("answer", "答案正文")],
-            all_tool_steps=[],
-            footer_data={"duration": 60.0, "model": "openclaw", "served_model": "hy4-preview"},
-        )
-        panels = [el for el in card["body"]["elements"] if el.get("tag") == "collapsible_panel"]
-        assert "icon" not in panels[0]["header"]
+        title = panels[0]["header"]["title"]
+        assert title["tag"] == "plain_text"
+        assert "🍟" in title["content"]
+        assert "qwen4-max" in title["content"]
+        assert "openclaw" not in title["content"]

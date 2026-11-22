@@ -993,8 +993,8 @@ class TestPanelHeaderFields:
     def test_default_composition(self) -> None:
         panel = self._panel(self._card(footer_data={"duration": 8.0, "model": "deepseek-v4"}))
         title = panel["header"]["title"]["content"]
-        assert "deepseek-v4" in title
-        assert "🍟" not in title
+        # 未命中厂商（无 logo key）：回落原 🍟 品牌位 + 默认形态
+        assert "🍟 deepseek-v4" in title
         assert "💭1" in title
         assert "🔧1" in title
         assert "⏱️ 8.0s" in title

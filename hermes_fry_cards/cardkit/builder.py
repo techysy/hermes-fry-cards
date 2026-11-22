@@ -493,16 +493,26 @@ def _render_panel_field(
     panel_elapsed_ms: int | float,
     show_context: bool,
     context_mode: str,
+    logo_image_key: str = "",
 ) -> tuple[str | None, str | None]:
     """统一面板 header 字段渲染 — 与 footer 共用字段池，外加面板专属计数.
 
-    面板 flair：model 前缀 🍟、elapsed 前缀 ⏱️（工具执行/会话耗时）、💭/🔧 为面板
-    专属计数（推理轮数/工具步数）；context 按 context_display_mode 渲染；
-    其余共享字段（speed/cache/tokens/status）原样回落 footer 渲染器。
+    model 字段行首：命中厂商时内联 PNG logo（原 🍟 的位置，title 用 markdown tag
+    实测 create 接受）；未命中厂商回落 🍟 品牌。面板 flair：elapsed 前缀 ⏱️
+    （工具执行/会话耗时）、💭/🔧 为面板专属计数（推理轮数/工具步数）；context 按
+    context_display_mode 渲染；其余共享字段（speed/cache/tokens/status）原样回落
+    footer 渲染器。
     """
     if name == "model":
         v = _model_with_served(data)
-        return v, v
+        if not v:
+            return None, None
+        logo = str(logo_image_key or "").strip()
+        if logo:
+            # 命中厂商：行首内联 PNG logo + 完整原生模型名（不走别名/⇲ 截断）
+            return f"![]({logo}) {v}", f"![]({logo}) {v}"
+        # 未命中厂商：回落默认形态（别名解析 / ⇲ 截断）
+        return f"🍟 {_display_model(v)}", f"🍟 {_display_model(v)}"
     if name == "reasoning":
         if reasoning_count > 0:
             return f"💭{reasoning_count}", f"💭{reasoning_count}"
@@ -544,8 +554,13 @@ def _build_panel_header(
     panel_elapsed_ms: int | float,
     show_context: bool,
     context_mode: str,
+    logo_image_key: str = "",
 ) -> tuple[str, str]:
-    """组装统一面板 header 文本，返回 (en, zh)。无效/缺数据字段自动隐藏."""
+    """组装统一面板 header 文本，返回 (en, zh)。无效/缺数据字段自动隐藏.
+
+    ``logo_image_key`` 存在时 model 字段行首内联厂商 PNG（title 用 markdown tag，
+    实测 create 接受）；未命中厂商回落 🍟 品牌位。
+    """
     if not fields:
         fields = list(_PANEL_DEFAULT_FIELDS)
     en_parts: list[str] = []
@@ -559,6 +574,7 @@ def _build_panel_header(
             panel_elapsed_ms=panel_elapsed_ms,
             show_context=show_context,
             context_mode=context_mode,
+            logo_image_key=logo_image_key,
         )
         if en:
             en_parts.append(en)
@@ -639,7 +655,12 @@ def _render_footer_field(
 
     if name == "model":
         v = _model_with_served(data)
-        return v, v
+        if not v:
+            return v, v
+        logo = str(data.get("logo_image_key") or "").strip()
+        if logo:
+            return f"![]({logo}) {v}", f"![]({logo}) {v}"
+        return f"🍟 {_display_model(v)}", f"🍟 {_display_model(v)}"
 
     if name == "tokens":
         input_t = data.get("input_tokens", 0) or 0
@@ -998,47 +1019,6 @@ def build_complete_card(
         # 贴不了图；logo 为打包内 lobehub icons 静态 PNG，首次渲染上传换 img_key 并
         # 缓存；上传失败/开关关闭时 footer_data 无 logo_image_key，模型字段回落 🦐）
         _logo_key = str((footer_data or {}).get("logo_image_key") or "").strip()
-        _logo_model = str(
-            (footer_data or {}).get("served_model") or (footer_data or {}).get("model") or ""
-        ).strip()
-        if _logo_key and _logo_model:
-            unified_children.insert(0, {
-                "tag": "column_set",
-                "flex_mode": "stretch",
-                "horizontal_spacing": "8px",
-                "margin": "0 0 4px 0",
-                "columns": [
-                    {
-                        "tag": "column",
-                        "width": "weighted",
-                        "weight": 1,
-                        "vertical_align": "center",
-                        "elements": [
-                            # 实测：img.alt 必须是 PlainText 对象（字符串报 10002
-                            # "failed to unmarshal for PlainText, type: string"）
-                            {"tag": "img", "img_key": _logo_key,
-                             "alt": {"tag": "plain_text", "content": _logo_model},
-                             "custom_width": 28},
-                        ],
-                    },
-                    {
-                        "tag": "column",
-                        "width": "weighted",
-                        "weight": 6,
-                        "vertical_align": "center",
-                        "elements": [
-                            {
-                                "tag": "markdown",
-                                "content": f"**本轮路由** `{_logo_model}`",
-                                "i18n_content": {
-                                    "zh_cn": f"**本轮路由** `{_logo_model}`",
-                                    "en_us": f"**Routed model** `{_logo_model}`",
-                                },
-                            },
-                        ],
-                    },
-                ],
-            })
         # header: 字段化组合（默认 🍟 model · 💭n · 🔧n · context · ⏱️ elapsed），
         # 与 footer 共用字段池，可经 display.platforms.feishu.panel_fields 自由组合
         from ..config import Config
@@ -1057,6 +1037,7 @@ def build_complete_card(
             panel_elapsed_ms=panel_elapsed_ms,
             show_context=_panel_cfg.show_context,
             context_mode=_panel_cfg.context_display_mode,
+            logo_image_key=_logo_key,
         )
         unified_panel = {
             "tag": "collapsible_panel",
@@ -1065,7 +1046,10 @@ def build_complete_card(
             "expanded": panel_expanded,
             "header": {
                 "title": {
-                    "tag": "plain_text",
+                    # 命中厂商 logo 时 title 用 markdown tag 内联贴图（实测 create
+                    # 接受）；未命中保持 plain_text + 🍟 品牌位。图标槽位不占用，
+                    # 默认展开/收起旋转箭头保留。
+                    "tag": "markdown" if _logo_key else "plain_text",
                     "content": header_en,
                     "i18n_content": _i18n(header_en, header_zh),
                 },
@@ -1074,14 +1058,6 @@ def build_complete_card(
             "border": {"color": border_color, "corner_radius": "5px"},
             "elements": unified_children,
         }
-        # header 图标槽位放厂商 PNG logo（实测 CardKit create 接受 custom_icon）：
-        # 命中厂商资产时替换默认展开/收起箭头，icon_expanded_angle=0 保持正向不旋转；
-        # 未命中（unknown 厂商 / 上传失败 / vendor_logo 关闭）不带 icon，回落默认箭头。
-        if _logo_key:
-            unified_panel["header"]["icon"] = {
-                "tag": "custom_icon", "img_key": _logo_key,
-                "icon_position": "right", "icon_expanded_angle": 0,
-            }
         elements.append(unified_panel)
 
     if not has_answer:
