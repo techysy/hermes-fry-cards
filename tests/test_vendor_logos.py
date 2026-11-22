@@ -64,9 +64,16 @@ class TestResolveVendorLogoAsset:
 
 
 class TestModelFieldServed:
-    def test_served_model_plain_when_logo_present(self) -> None:
+    def test_served_model_official_name_when_logo_present(self) -> None:
+        """logo 命中厂商：显示官方模型名（家族官方拼写 + 变体尾巴，原生体验）."""
         data = {"model": "openclaw", "served_model": "qwen4-max", "logo_image_key": "img_v2_logo"}
-        assert _model_with_served(data) == "qwen4-max"
+        assert _model_with_served(data) == "Qwen 4-max"
+
+    def test_hy4_official_name(self) -> None:
+        """混元官方口径：tencent/hy4-flash:free → Hy4 flash."""
+        data = {"model": "Hermes", "served_model": "tencent/hy4-flash:free",
+                "logo_image_key": "img_v2_logo"}
+        assert _model_with_served(data) == "Hy4 flash"
 
     def test_served_model_direct_without_logo(self) -> None:
         data = {"model": "openclaw", "served_model": "qwen4-max"}
@@ -104,8 +111,8 @@ class TestPanelHeaderLogoIcon:
         # icon_position / icon_expanded_angle 是 header 层级字段（icon 的兄弟键）
         assert header["icon_position"] == "left"
         assert header["icon_expanded_angle"] == 0
-        # 模型字段原生直显完整名（不走别名/⇲ 截断），无 🍟（logo 已承载）
-        assert "qwen4-max" in header["title"]["content"]
+        # 模型字段显示官方名（家族官方拼写 + 变体尾巴），无 🍟（logo 已承载）
+        assert "Qwen 4-max" in header["title"]["content"]
         assert "🍟" not in header["title"]["content"]
         assert "openclaw" not in header["title"]["content"]
 
@@ -114,5 +121,6 @@ class TestPanelHeaderLogoIcon:
         header = panel["header"]
         assert "icon" not in header
         assert "🍟" in header["title"]["content"]
+        # 未命中厂商：回落代理原样名 + 🍟 品牌位（官方名仅在 logo 命中时启用）
         assert "qwen4-max" in header["title"]["content"]
         assert "openclaw" not in header["title"]["content"]

@@ -64,6 +64,60 @@ def resolve_vendor_logo_asset(model: str) -> str | None:
     return None
 
 
+# 家族 → 官方拼写（厂商官网口径，如混元官网的 "Hy4 flash"）。
+# 展示名 = 官方家族拼写 + 变体尾巴（模型名去掉渠道前缀/：标签后的剩余部分）。
+_FAMILY_OFFICIAL: dict[str, str] = {
+    "hy4": "Hy4",
+    "hunyuan": "Hunyuan",
+    "deepseek": "DeepSeek",
+    "qwen": "Qwen",
+    "glm": "GLM",
+    "chatglm": "ChatGLM",
+    "zhipu": "Zhipu",
+    "zcode": "ZCode",
+    "claude": "Claude",
+    "anthropic": "Claude",
+    "gemini": "Gemini",
+    "kimi": "Kimi",
+    "moonshot": "Moonshot",
+    "minimax": "MiniMax",
+    "doubao": "Doubao",
+    "gpt": "GPT",
+    "openai": "OpenAI",
+    "step": "Step",
+    "codebuddy": "CodeBuddy",
+    "grok": "Grok",
+    "longcat": "LongCat",
+    "mimo": "MiMo",
+    "dots": "Dots",
+    "muse": "Muse",
+    "ling": "Ling",
+    "upstage": "Upstage",
+}
+
+
+def resolve_vendor_display_name(model: str) -> str | None:
+    """代理拼接名 → 官方模型展示名；未命中家族返回 None.
+
+    ``tencent/hy4-flash:free`` → 剥渠道前缀与 ``:free`` 标签 → ``hy4-flash`` →
+    官方家族拼写 ``Hy4`` + 变体尾巴 ``flash`` → ``Hy4 flash``（混元官网口径）。
+    """
+    file = resolve_vendor_logo_asset(model)
+    if not file:
+        return None
+    lower = model.lower()
+    needle = next((n for n, f in VENDOR_LOGO_RULES if f == file and n in lower), None)
+    if needle is None:
+        return None
+    official = _FAMILY_OFFICIAL.get(needle, needle.capitalize())
+    base = model.strip().split("/")[-1].split(":")[0].strip()
+    idx = base.lower().find(needle)
+    if idx < 0:
+        return official
+    tail = base[idx + len(needle):].lstrip("-_").strip()
+    return f"{official} {tail}".strip() or official
+
+
 # file → img_key（None = 上传失败，进程内不再重试）
 _memo: dict[str, str | None] = {}
 # file → 上传中的 Future（并发去重：同文件只发起一次上传）

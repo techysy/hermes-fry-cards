@@ -471,17 +471,23 @@ def _build_reasoning_panel(
 
 
 def _model_with_served(data: dict) -> str | None:
-    """model 字段显示名：实际服务模型直显（组合名不上卡，维护者自知），无 emoji.
+    """model 字段显示名：实际服务模型直显（组合名不上卡，维护者自知）.
 
     路由代理上报的实际服务模型（``served_model``，来自响应头捕获）优先，
-    缺失回落配置模型。厂商家族 logo 以 PNG 呈现：header 图标槽位（custom_icon，
-    build_complete_card 注入）+ 面板展开区顶部 logo 条，不用 emoji。
+    缺失回落配置模型。命中厂商家族（``logo_image_key`` 存在，即 vendor 资产命中）
+    时显示**官方模型名**（如 ``tencent/hy4-flash:free`` → ``Hy4 flash``，原生体验
+    与厂商官网一致，不走别名/⇲ 截断）；未命中保持代理原样。
     """
     raw = str(data.get("model") or "").strip()
     if not raw:
         return None
     served = str(data.get("served_model") or "").strip()
-    return served or raw
+    model_str = served or raw
+    if str(data.get("logo_image_key") or "").strip():
+        from .vendor_logos import resolve_vendor_display_name
+
+        return resolve_vendor_display_name(model_str) or model_str
+    return model_str
 
 
 def _render_panel_field(
