@@ -1062,7 +1062,12 @@ def build_complete_card(
         # 未命中（unknown 厂商 / 上传失败 / vendor_logo 关闭）不带 icon，模型字段
         # 回落 🍟 品牌位；子面板（思考/工具行）各自的旋转箭头不受影响。
         if _logo_key:
-            unified_panel["header"]["icon"] = {"tag": "custom_icon", "img_key": _logo_key}
+            unified_panel["header"]["icon"] = {
+                "tag": "custom_icon", "img_key": _logo_key,
+                # 官方文档：size 支持 "[1,999] [1,999]px"，默认 10px（过小）；
+                # 16px 与原旋转箭头同尺寸，与 header 文本等高协调。
+                "size": "16px 16px",
+            }
             unified_panel["header"]["icon_position"] = "left"
             unified_panel["header"]["icon_expanded_angle"] = 0
         elements.append(unified_panel)

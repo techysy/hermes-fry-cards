@@ -100,7 +100,7 @@ class TestPanelHeaderLogoIcon:
             "logo_image_key": "img_v2_01test",
         })
         header = panel["header"]
-        assert header["icon"] == {"tag": "custom_icon", "img_key": "img_v2_01test"}
+        assert header["icon"] == {"tag": "custom_icon", "img_key": "img_v2_01test", "size": "16px 16px"}
         # icon_position / icon_expanded_angle 是 header 层级字段（icon 的兄弟键）
         assert header["icon_position"] == "left"
         assert header["icon_expanded_angle"] == 0
