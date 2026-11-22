@@ -439,17 +439,17 @@ def test_complete_card_renders_served_model_in_panel_and_footer() -> None:
     unified = next(
         el for el in card["body"]["elements"] if el.get("tag") == "collapsible_panel"
     )
-    assert "♊ provider/gemini-4" in unified["header"]["title"]["content"]
-    assert "♊ provider/gemini-4" in unified["header"]["title"]["i18n_content"]["zh_cn"]
+    assert "provider/gemini-4" in unified["header"]["title"]["content"]
+    assert "provider/gemini-4" in unified["header"]["title"]["i18n_content"]["zh_cn"]
     assert "combo-main" not in unified["header"]["title"]["content"]
 
-    # footer 里 model 字段同样带家族 emoji + 实际模型
+    # footer 里 model 字段同样纯模型名（无 emoji）
     footer_texts = [
         el["content"]
         for el in card["body"]["elements"]
         if el.get("tag") == "markdown"
     ]
-    assert any("♊ provider/gemini-4" in t for t in footer_texts)
+    assert any("provider/gemini-4" in t for t in footer_texts)
 
 
 def test_complete_card_hides_arrow_when_served_missing_or_equal() -> None:

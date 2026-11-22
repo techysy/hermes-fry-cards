@@ -471,56 +471,17 @@ def _build_reasoning_panel(
 
 
 def _model_with_served(data: dict) -> str | None:
-    """model 字段显示名：实际服务模型直显（组合名不上卡，维护者自知）。
+    """model 字段显示名：实际服务模型直显（组合名不上卡，维护者自知），无 emoji.
 
     路由代理上报的实际服务模型（``served_model``，来自响应头捕获）优先，
-    缺失回落配置模型；家族 logo emoji 由渲染端叠加（面板 header 贴不了图，
-    用 emoji 呈现厂商家族；PNG logo 条只出现在面板展开区）。
+    缺失回落配置模型。厂商家族 logo 以 PNG 呈现：header 图标槽位（custom_icon，
+    build_complete_card 注入）+ 面板展开区顶部 logo 条，不用 emoji。
     """
     raw = str(data.get("model") or "").strip()
     if not raw:
         return None
     served = str(data.get("served_model") or "").strip()
     return served or raw
-
-
-# 模型家族 emoji：与 vendor_logos.VENDOR_LOGO_RULES 的厂商清单对齐（header title
-# 是纯文本贴不了图，家族 logo 以 emoji 呈现），另补几个无 PNG 资产、emoji 独占
-# 的家族。先命中先得；未命中回落 🍟（fry-cards 品牌）。
-_MODEL_FAMILY_EMOJI: tuple[tuple[str, str], ...] = (
-    ("deepseek", "🐳"),
-    ("qwen", "🦆"),
-    ("zhipu", "🌀"),
-    ("glm", "🌀"),
-    ("zcode", "🌀"),
-    ("chatglm", "🌀"),
-    ("claude", "✳️"),
-    ("anthropic", "✳️"),
-    ("gemini", "♊"),
-    ("kimi", "🌙"),
-    ("moonshot", "🌙"),
-    ("minimax", "Ⓜ️"),
-    ("doubao", "🫘"),
-    ("hunyuan", "🐧"),
-    ("gpt", "🟢"),
-    ("openai", "🟢"),
-    ("step", "🪜"),
-    # emoji 独占家族（无 PNG 资产）
-    ("grok", "🚀"),
-    ("longcat", "🐱"),
-    ("mimo", "🐰"),
-    ("spark", "🔥"),
-)
-DEFAULT_FAMILY_EMOJI = "🍟"
-
-
-def _model_family_emoji(model: str) -> str:
-    """模型名 → 家族 logo emoji；未命中厂商家族时回落 🍟."""
-    lower = str(model or "").lower()
-    for needle, emoji in _MODEL_FAMILY_EMOJI:
-        if needle in lower:
-            return emoji
-    return DEFAULT_FAMILY_EMOJI
 
 
 def _render_panel_field(
@@ -541,9 +502,7 @@ def _render_panel_field(
     """
     if name == "model":
         v = _model_with_served(data)
-        if v:
-            return f"{_model_family_emoji(v)} {v}", f"{_model_family_emoji(v)} {v}"
-        return None, None
+        return v, v
     if name == "reasoning":
         if reasoning_count > 0:
             return f"💭{reasoning_count}", f"💭{reasoning_count}"
@@ -680,8 +639,6 @@ def _render_footer_field(
 
     if name == "model":
         v = _model_with_served(data)
-        if v:
-            v = f"{_model_family_emoji(v)} {v}"
         return v, v
 
     if name == "tokens":
@@ -1113,6 +1070,14 @@ def build_complete_card(
             "border": {"color": border_color, "corner_radius": "5px"},
             "elements": unified_children,
         }
+        # header 图标槽位放厂商 PNG logo（实测 CardKit create 接受 custom_icon）：
+        # 命中厂商资产时替换默认展开/收起箭头，icon_expanded_angle=0 保持正向不旋转；
+        # 未命中（unknown 厂商 / 上传失败 / vendor_logo 关闭）不带 icon，回落默认箭头。
+        if _logo_key:
+            unified_panel["header"]["icon"] = {
+                "tag": "custom_icon", "img_key": _logo_key,
+                "icon_position": "right", "icon_expanded_angle": 0,
+            }
         elements.append(unified_panel)
 
     if not has_answer:

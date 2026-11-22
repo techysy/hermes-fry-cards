@@ -100,41 +100,39 @@ class TestRoutingLogoStrip:
         panels = [el for el in card["body"]["elements"] if el.get("tag") == "collapsible_panel"]
         children = panels[0]["elements"]
         assert children[0]["tag"] != "column_set"
-        # header model 段为家族 emoji + 实际模型（qwen → 🦆）
+        # header model 段为纯实际模型（无 emoji）；未命中厂商时不带 icon，回落默认箭头
         header = panels[0]["header"]["title"]["content"]
-        assert "🦆 qwen4-max" in header
+        assert "qwen4-max" in header
         assert "openclaw" not in header
+        assert "icon" not in panels[0]["header"]
 
 
-class TestModelFamilyEmoji:
-    def test_maps_known_families(self) -> None:
-        from hermes_fry_cards.cardkit.builder import _model_family_emoji
+class TestHeaderLogoIcon:
+    """header 图标槽位：命中厂商 logo 时用 custom_icon 替换默认箭头（实测 create 接受）."""
 
-        assert _model_family_emoji("deepseek-v4.1-flash") == "🐳"
-        assert _model_family_emoji("glm-5.3-flashx") == "🌀"
-        assert _model_family_emoji("zcode-free/glm-5.3") == "🌀"
-        assert _model_family_emoji("cmc/moonshotai/Kimi-K3") == "🌙"
-        assert _model_family_emoji("gemini-3.8-flash") == "♊"
-        assert _model_family_emoji("ocg/gpt-6-luna") == "🟢"
-        assert _model_family_emoji("claude-opus-5.5") == "✳️"
-        assert _model_family_emoji("MiniMax-M3.1-Flash") == "Ⓜ️"
-        assert _model_family_emoji("stepp-cn/step-5-preview") == "🪜"
+    def test_logo_used_as_header_icon(self) -> None:
+        card = build_complete_card(
+            segments=[_seg("reasoning", "推理内容"), _seg("answer", "答案正文")],
+            all_tool_steps=[],
+            footer_data={
+                "duration": 60.0,
+                "model": "openclaw",
+                "served_model": "qwen4-max",
+                "logo_image_key": "img_v2_01test",
+            },
+        )
+        panels = [el for el in card["body"]["elements"] if el.get("tag") == "collapsible_panel"]
+        header = panels[0]["header"]
+        assert header["icon"]["tag"] == "custom_icon"
+        assert header["icon"]["img_key"] == "img_v2_01test"
+        assert header["icon"]["icon_expanded_angle"] == 0
+        assert "qwen4-max" in header["title"]["content"]
 
-    def test_emoji_only_families(self) -> None:
-        from hermes_fry_cards.cardkit.builder import _model_family_emoji
-
-        assert _model_family_emoji("grok-4.7") == "🚀"
-        assert _model_family_emoji("longcat-2.5-preview-free") == "🐱"
-        assert _model_family_emoji("mimo-v2.6-flash-free") == "🐰"
-
-    def test_unknown_falls_back_to_fries(self) -> None:
-        from hermes_fry_cards.cardkit.builder import DEFAULT_FAMILY_EMOJI, _model_family_emoji
-
-        assert _model_family_emoji("hy4-preview") == DEFAULT_FAMILY_EMOJI == "🍟"
-        assert _model_family_emoji("") == "🍟"
-
-    def test_case_insensitive(self) -> None:
-        from hermes_fry_cards.cardkit.builder import _model_family_emoji
-
-        assert _model_family_emoji("DeepSeek-Flash") == "🐳"
-        assert _model_family_emoji("Kimi-K5") == "🌙"
+    def test_arrow_kept_without_logo_key(self) -> None:
+        card = build_complete_card(
+            segments=[_seg("reasoning", "推理内容"), _seg("answer", "答案正文")],
+            all_tool_steps=[],
+            footer_data={"duration": 60.0, "model": "openclaw", "served_model": "hy4-preview"},
+        )
+        panels = [el for el in card["body"]["elements"] if el.get("tag") == "collapsible_panel"]
+        assert "icon" not in panels[0]["header"]

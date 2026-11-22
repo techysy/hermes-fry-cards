@@ -12,7 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - 🦐 厂商路由 logo：统一面板展开区顶部新增「厂商 PNG logo + 本轮路由模型」条（column_set 并排），logo 取自 @lobehub/icons-static-png 随包分发（12 厂商：Qwen/Zhipu/DeepSeek/Claude/Gemini/Kimi/Moonshot/MiniMax/OpenAI/Doubao/Hunyuan/StepFun）；首次渲染经 `FeishuClient.upload_image_bytes` 懒上传缓存，失败静默降级纯文本
-- **面板 header 模型字段显示家族 logo emoji**（`_model_family_emoji`）：命中厂商家族时替换品牌薯条（DeepSeek 🐳 / Qwen 🦆 / Zhipu·GLM 🌀 / Claude ✳️ / Gemini ♊ / Kimi·Moonshot 🌙 / MiniMax Ⓜ️ / Doubao 🫘 / Hunyuan 🐧 / OpenAI 🟢 / Step 🪜，另补 Grok 🚀 / LongCat 🐱 / MiMo 🐰 / Spark 🔥 四个 emoji 独占家族），未命中回落 🍟；家族判定按实际服务模型（走 fallback 链落到别的家族时 logo 跟着变），footer 同步
+- **面板 header 厂商 logo**：命中厂商资产时统一面板 header 的 icon 槽位用 `custom_icon` 渲染厂商 PNG（`icon_expanded_angle=0` 不随展开旋转；已实测 CardKit create 接受），未命中回落默认展开/收起箭头
+- **model 字段纯实际服务模型名**（家族 emoji 方案否决：header 贴不了图、emoji 不像 logo），panel/footer 均不带任何 emoji
 - `display.vendor_logo` 开关（默认开启）：关闭或未命中厂商时不渲染 logo 条
 - `FeishuClient.upload_image_bytes`：本地字节直传（`upload_image` 远程下载路径复用之）
 

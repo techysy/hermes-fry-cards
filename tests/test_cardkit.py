@@ -993,7 +993,8 @@ class TestPanelHeaderFields:
     def test_default_composition(self) -> None:
         panel = self._panel(self._card(footer_data={"duration": 8.0, "model": "deepseek-v4"}))
         title = panel["header"]["title"]["content"]
-        assert "🐳 deepseek-v4" in title
+        assert "deepseek-v4" in title
+        assert "🍟" not in title
         assert "💭1" in title
         assert "🔧1" in title
         assert "⏱️ 8.0s" in title
@@ -1025,7 +1026,7 @@ class TestPanelHeaderFields:
             panel_fields=["model", "bogus_field"],
             footer_data={"duration": 8.0, "model": "m1"},
         ))
-        assert "🍟 m1" in panel["header"]["title"]["content"]
+        assert "m1" in panel["header"]["title"]["content"]
 
     def test_all_hidden_falls_back_to_placeholder(self) -> None:
         panel = self._panel(self._card(panel_fields=["model"], footer_data={"duration": 8.0}))
