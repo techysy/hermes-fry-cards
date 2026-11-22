@@ -1014,7 +1014,11 @@ def build_complete_card(
                         "weight": 1,
                         "vertical_align": "center",
                         "elements": [
-                            {"tag": "img", "img_key": _logo_key, "alt": _logo_model, "custom_width": 28},
+                            # 实测：img.alt 必须是 PlainText 对象（字符串报 10002
+                            # "failed to unmarshal for PlainText, type: string"）
+                            {"tag": "img", "img_key": _logo_key,
+                             "alt": {"tag": "plain_text", "content": _logo_model},
+                             "custom_width": 28},
                         ],
                     },
                     {
