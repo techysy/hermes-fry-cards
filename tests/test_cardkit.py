@@ -542,7 +542,12 @@ class TestBuildFooterElements:
 
     def test_speed_displayed(self) -> None:
         result = _build_footer_elements({"tokens_per_sec": 207.6}, fields=[["speed"]])
-        assert "208 tok/s" in result[0]["content"]
+        assert "⚡ 208 tok/s" in result[0]["content"]
+
+    def test_speed_below_100_one_decimal(self) -> None:
+        # 数值口径同 claw-fry-cards formatTokensPerSecond：<100 保留 1 位小数
+        result = _build_footer_elements({"tokens_per_sec": 10.04}, fields=[["speed"]])
+        assert "⚡ 10.0 tok/s" in result[0]["content"]
 
     def test_speed_hidden_without_data(self) -> None:
         assert _build_footer_elements({}, fields=[["speed"]]) == []
@@ -585,7 +590,7 @@ class TestBuildFooterElements:
             },
         )
         content = result[0]["content"]
-        for piece in ("208 tok/s", "Cache hit 54%", "50.0K", "deepseek-v4"):
+        for piece in ("⚡ 208 tok/s", "Cache hit 54%", "50.0K", "deepseek-v4"):
             assert piece in content
 
 
@@ -999,6 +1004,27 @@ class TestPanelHeaderFields:
         assert "🔧1" in title
         assert "⏱️ 8.0s" in title
 
+    def test_zero_counts_still_shown(self) -> None:
+        """💭0/🔧0 本身也是信息 — 有面板内容时零计数也渲染（口径同 claw）."""
+        # 只有工具轮：💭0 + 🔧1
+        card = build_complete_card(
+            segments=[_seg("tool", tool_offset=0, tool_end_offset=1), _seg("answer", "hi")],
+            all_tool_steps=[_STEP_SUCCESS],
+            footer_data={"duration": 8.0},
+        )
+        title = self._panel(card)["header"]["title"]["content"]
+        assert "💭0" in title
+        assert "🔧1" in title
+        # 只有思考轮（轮次长于面板最短耗时）：💭1 + 🔧0
+        card = build_complete_card(
+            segments=[_seg("reasoning", "think"), _seg("answer", "hi")],
+            all_tool_steps=[],
+            footer_data={"duration": 8.0},
+        )
+        title = self._panel(card)["header"]["title"]["content"]
+        assert "💭1" in title
+        assert "🔧0" in title
+
     def test_custom_fields_speed_cache(self) -> None:
         panel = self._panel(self._card(
             panel_fields=["cache", "speed"],
@@ -1011,7 +1037,7 @@ class TestPanelHeaderFields:
         ))
         title = panel["header"]["title"]["content"]
         assert "Cache hit 54%" in title
-        assert "208 tok/s" in title
+        assert "⚡ 208 tok/s" in title
         assert "💭" not in title  # 未选思考计数
 
     def test_header_i18n_zh(self) -> None:

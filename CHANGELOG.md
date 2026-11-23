@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.7.1] - 2026-11-23
+
+### Changed
+
+- **footer/面板 speed 字段补 ⚡ 前缀**：`7 tok/s` → `⚡ 7.0 tok/s`；数值口径对齐
+  claw-fry-cards `formatTokensPerSecond`——≥100 取整（`⚡ 208 tok/s`）、<100 保留
+  1 位小数（`⚡ 10.0 tok/s`）。speed=0（无数据）仍隐藏
+- **统一面板 💭/🔧 零计数恒显**：此前 0 就整段隐藏，现改为 `💭0` / `🔧0` 也渲染
+  （口径同 claw-fry-cards——「思考/工具计数恒随各自内容出现，💭0/🔧0 本身也是信息」）。
+  这是有意的口径变更：0.6.x 的 CHANGELOG 曾写「reasoning/tools 零计数自动隐藏」，
+  自本版起不再适用。面板出现条件不变（仍需有推理/工具内容或达到最短耗时）
+
+### Tests
+
+- speed ⚡ 前缀与 <100 一位小数、💭0/🔧0 零计数恒显、计数 >0 不变回归，全量 **1136 passed**
+
 ## [0.7.0] - 2026-11-22
 
 ### Added

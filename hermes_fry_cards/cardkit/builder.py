@@ -505,9 +505,10 @@ def _render_panel_field(
 
     model 字段行首：命中厂商时内联 PNG logo（原 🍟 的位置，title 用 markdown tag
     实测 create 接受）；未命中厂商回落 🍟 品牌。面板 flair：elapsed 前缀 ⏱️
-    （工具执行/会话耗时）、💭/🔧 为面板专属计数（推理轮数/工具步数）；context 按
+    （工具执行/会话耗时）、💭/🔧 为面板专属计数（推理轮数/工具步数，零计数恒显：
+    💭0/🔧0 本身也是信息，口径同 claw-fry-cards）；context 按
     context_display_mode 渲染；其余共享字段（speed/cache/tokens/status）原样回落
-    footer 渲染器。
+    footer 渲染器（speed 带 ⚡ 前缀，≥100 取整 / <100 一位小数）。
     """
     if name == "model":
         v = _model_with_served(data)
@@ -520,13 +521,10 @@ def _render_panel_field(
         # 未命中厂商：回落默认形态（别名解析 / ⇲ 截断）
         return f"🍟 {_display_model(v)}", f"🍟 {_display_model(v)}"
     if name == "reasoning":
-        if reasoning_count > 0:
-            return f"💭{reasoning_count}", f"💭{reasoning_count}"
-        return None, None
+        # 计数恒显（💭0/🔧0 本身也是信息，口径同 claw-fry-cards；0.6.x 曾零计数隐藏）
+        return f"💭{reasoning_count}", f"💭{reasoning_count}"
     if name == "tools":
-        if tool_count > 0:
-            return f"🔧{tool_count}", f"🔧{tool_count}"
-        return None, None
+        return f"🔧{tool_count}", f"🔧{tool_count}"
     if name == "elapsed":
         if panel_elapsed_ms > 0:
             v = f"⏱️ {_format_elapsed(panel_elapsed_ms)}"
@@ -679,7 +677,9 @@ def _render_footer_field(
     if name == "speed":
         tps = data.get("tokens_per_sec", 0) or 0
         if tps > 0:
-            v = f"{tps:.0f} tok/s"
+            # ⚡ 前缀 + 数值口径同 claw-fry-cards formatTokensPerSecond：
+            # ≥100 取整、<100 保留 1 位小数
+            v = f"⚡ {tps:.0f} tok/s" if tps >= 100 else f"⚡ {tps:.1f} tok/s"
             return v, v
         return None, None
 
