@@ -21,6 +21,7 @@ from .feishu import (
     FeishuClient,
     FeishuClientConfig,
 )
+from .streaming import summary
 from .streaming.controller import StreamingController
 from .streaming.session import CardSession, SessionState
 from .streaming.text import strip_reasoning_tags
@@ -401,7 +402,8 @@ class StreamCardController(StreamingController):
             self._stale_sweep_lock.release()
 
     async def _sweep_stale_cards(self) -> None:
-        """把上次进程遗留的活跃卡封成「已中断」."""
+        """启动对账：补投上次进程没落卡的摘要，再把遗留活跃卡封成「已中断」."""
+        await self._recover_ai_summaries()
         try:
             with self._live_cards_lock:
                 snapshot = self._read_live_cards()
@@ -441,6 +443,25 @@ class StreamCardController(StreamingController):
             _logger.info("delivery_closed: id=%s reason=gateway_restart", message_id)
         if recovered:
             _logger.info("gateway restart: closed %d stale card(s)", recovered)
+
+    async def _recover_ai_summaries(self) -> None:
+        """补投上次进程生成了但没确认落卡的完结卡摘要（启动对账的后半段）.
+
+        独立登记表 ``state/fry-cards-ai-summary.json``，与 ``fry-cards-live.json``
+        （重启封卡）互不影响：这里只会给**已封口**的卡补一行摘要，绝不改写卡片状态，
+        所以不存在「把已完成的卡扫成已中断」的连带风险（#91 同类教训）。
+
+        卡片本已落卡、只是条目没来得及出列时，重复的 ``element_id`` 会被服务端拒绝，
+        记日志后按 attempts 上限出列——不会画出两行摘要。任何失败都不影响后面的封卡清扫。
+        """
+        if self._client is None:
+            return
+        try:
+            recovered = await summary.recover_pending_summaries(self._client, self._profile_home)
+            if recovered:
+                _logger.info("ai summary recovery: re-applied %d card(s)", recovered)
+        except Exception:
+            _logger.warning("ai summary recovery failed", exc_info=True)
 
     def _drop_live_card(self, message_id: str, record: Any) -> None:
         with self._live_cards_lock:

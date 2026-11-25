@@ -267,6 +267,12 @@
 
     setVal("f-body-text-size", s.body.text_size);
     setVal("f-flush-interval-ms", s.flush_interval_ms);
+    var ais = s.ai_summary || {};
+    setCheck("f-ais-enabled", ais.enabled);
+    setVal("f-ais-min-chars", ais.min_chars == null ? 800 : ais.min_chars);
+    setVal("f-ais-out-chars", ais.max_output_chars == null ? 160 : ais.max_output_chars);
+    setVal("f-ais-timeout", ais.timeout_sec == null ? 20 : ais.timeout_sec);
+    if (ais.model) setVal("f-ais-model", ais.model);
     setCheck("f-show-reasoning", d.show_reasoning);
     setCheck("f-show-tool-use", d.show_tool_use);
     setCheck("f-show-context", d.show_context);
@@ -349,6 +355,13 @@
           text_size: $("#f-footer-text-size").value,
         },
         body: { text_size: $("#f-body-text-size").value },
+        ai_summary: {
+          enabled: $("#f-ais-enabled").checked,
+          min_chars: Math.max(0, parseInt($("#f-ais-min-chars").value, 10) || 0),
+          max_output_chars: Math.min(600, Math.max(40, parseInt($("#f-ais-out-chars").value, 10) || 160)),
+          timeout_sec: Math.min(120, Math.max(1, num("#f-ais-timeout") || 20)),
+          model: $("#f-ais-model").value,
+        },
       },
       display: {
         show_reasoning: $("#f-show-reasoning").checked,
@@ -372,14 +385,58 @@
     };
   }
 
+  /* /api/state 的最近一次结果：工具箱页签（tools.js）据此拿候选模型与端点状态 */
+  var lastState = null;
+  var stateListeners = [];
+
   async function loadState() {
     var data = await api("/api/state");
+    lastState = data;
+    // 先灌摘要模型候选，再填表单：否则 setVal 找不到 option 会写进一个临时「自定义」项，
+    // 随后被候选重建抹掉，用户已存的模型名就丢了。
+    fillAiSummaryModelOptions(data.preview, data.tools);
     fillForm(data);
     fillModelOptions(data.preview);
     var ver = data.status && data.status.fry_version;
     var el = document.getElementById("brand-version");
     if (el && ver) el.textContent = "v" + ver;
+    if (data.tools) {
+      stateListeners.forEach(function (fn) {
+        try { fn(data.tools); } catch (e) { /* 旁路出错不打断配置页 */ }
+      });
+    }
     return data;
+  }
+
+  /* 摘要模型下拉：候选同预览页口径（已配置 + 端点清单 + 厂商家族样本），
+   * 首项「自动」value 空 = 由服务端挑 flash 小模型。 */
+  function fillAiSummaryModelOptions(preview, tools) {
+    var sel = document.getElementById("f-ais-model");
+    if (!sel) return;
+    var prev = sel.value;
+    var seen = {};
+    var ids = [];
+    var pools = [(tools && tools.models) || [], (preview && preview.models) || []];
+    pools.forEach(function (list) {
+      list.forEach(function (m) {
+        var id = m && m.id;
+        if (id && !seen[id]) { seen[id] = 1; ids.push(id); }
+      });
+    });
+    sel.innerHTML = "";
+    var auto = document.createElement("option");
+    auto.value = "";
+    auto.textContent = I18N.t("opt.ais-auto");
+    auto.title = (tools && tools.default_model) || "";
+    sel.appendChild(auto);
+    ids.forEach(function (id) {
+      var o = document.createElement("option");
+      o.value = id;
+      o.textContent = id;
+      sel.appendChild(o);
+    });
+    var still = Array.prototype.some.call(sel.options, function (o) { return o.value === prev; });
+    sel.value = still ? prev : "";
   }
 
   $("#btn-reload").addEventListener("click", function () {
@@ -776,4 +833,18 @@
   loadState()
     .then(function () { return loadAliases(); })
     .catch(function (e) { toast(I18N.t("toast.readfail") + e.message, "err"); });
+
+  /* 工具箱页签（tools.js）复用同一套 api / toast / i18n 口径：
+   * onStateLoaded 在每次 /api/state 成功之后回调，把 tools 段交给它。 */
+  window.FryStudio = {
+    api: api,
+    toast: toast,
+    esc: esc,
+    i18n: I18N,
+    onStateLoaded: function (fn) {
+      if (typeof fn !== "function") return;
+      stateListeners.push(fn);
+      if (lastState && lastState.tools) { try { fn(lastState.tools); } catch (e) { /* 旁路不影响主流程 */ } }
+    },
+  };
 })();

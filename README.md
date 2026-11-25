@@ -53,6 +53,9 @@
 - 👁️ **真实 Builder 渲染预览**：非前端模拟，直接调用后端核心 Builder 实时渲染 4 大典型场景 × 3 种生命周期卡片，并可指定**模型**（默认取已配置模型，命中厂商家族时按线上口径渲染官方模型名 + logo）。
 - 🔒 **写回安全五件套**：严格格式校验、拒写防护、20 份自动备份轮转、白名单键深合并、临时文件原子落盘。
 - 🔁 **守护自启与保活**：自带 systemd 用户服务单元，支持开机启动与进程崩溃自愈。
+- 🧰 **工具箱页签（AI 摘要 / 文字翻译）**：第四个独立页签，直接复用 `config.yaml` 里现成的模型端点
+  （`model` / `custom_providers` 的 `base_url` + `api_key`）跑一次小模型调用，结果区带耗时与 token 计数。
+  凭据**只在服务端使用**：不回传浏览器、不写进仓库、不进日志；该页签不写任何配置，与卡片链路完全无关。
 
 ---
 
@@ -120,6 +123,11 @@ streaming:
     enabled: false
     fields:
       - [status, elapsed, speed, cache, context, model]   # 可选字段：status/elapsed/speed/cache/tokens/context/model，无数据字段自动隐藏
+  ai_summary:
+    enabled: false                    # 完结卡自动 AI 摘要（默认关）：卡片封口后补一段「🔍 AI 摘要」
+    min_chars: 800                    # 正文少于该字数不调模型（短回复不花 token）
+    model: ""                         # 留空 = 自动挑端点里的 flash 小模型
+    timeout_sec: 20                   # 硬超时；超时/失败都只是「没有摘要」，不拖慢收尾
 display:
   platforms:
     feishu:

@@ -31,6 +31,7 @@ try {
 <nav class="tabs" id="tabs">
   <button class="tab active" data-tab="config" data-i18n="tab.config">配置</button>
   <button class="tab" data-tab="preview" data-i18n="tab.preview">预览</button>
+  <button class="tab" data-tab="tools" data-i18n="tab.tools">工具箱</button>
   <button class="tab" data-tab="status" data-i18n="tab.status">状态</button>
 </nav>
 
@@ -95,6 +96,34 @@ try {
           <label class="row"><span class="lbl" data-i18n="lbl.notice-text">提醒文字前缀</span><input type="text" id="f-completion-notice-text" maxlength="80"></label>
           <div class="hint" data-i18n="hint.notice">通知会回复在卡片消息下，仅在卡片成功收尾后发送；错误会附带「出错」。</div>
         </fieldset>
+
+        <details class="fold-card" id="fold-ai-summary">
+          <summary>
+            <span class="fold-title" data-i18n="legend.ai-summary">🔍 完结卡 AI 摘要（默认关闭）</span>
+            <span class="fold-badge" data-fold-badge="f-ais-enabled"></span>
+          </summary>
+          <div class="fold-body">
+            <label class="row"><span class="lbl" data-i18n="lbl.ais-enabled">卡片封口后用本地端点的小模型补一段摘要</span><input type="checkbox" id="f-ais-enabled"></label>
+            <label class="row"><span class="lbl" data-i18n="lbl.ais-min">触发的最短回复（字，0=每次都摘）</span>
+              <input type="number" id="f-ais-min-chars" min="0" max="100000" step="50">
+            </label>
+            <label class="row"><span class="lbl" data-i18n="lbl.ais-out">摘要目标字数（40~600）</span>
+              <input type="number" id="f-ais-out-chars" min="40" max="600" step="10">
+            </label>
+            <label class="row"><span class="lbl" data-i18n="lbl.ais-model">指定模型（留空 = 自动挑 flash 小模型）</span>
+              <select id="f-ais-model"><option value="" data-i18n="opt.ais-auto">自动（flash 优先）</option></select>
+            </label>
+            <label class="row"><span class="lbl" data-i18n="lbl.ais-timeout">硬超时（秒，1~120）</span>
+              <input type="number" id="f-ais-timeout" min="1" max="120" step="1">
+            </label>
+            <div class="hint" data-i18n-html data-i18n="hint.ai-summary">
+              摘要在<strong>卡片确认封口之后</strong>才调模型，只做「补一个元素」，不整卡重发；
+              无凭据 / 超时 / 端点报错 / 落卡失败都只是「没有摘要」，<strong>不会</strong>拖慢收尾、
+              不会让卡片停在处理中。凭据只读 <code>config.yaml</code> 的
+              <code>model</code> / <code>custom_providers</code>，不外传、不入库、不进日志。
+            </div>
+          </div>
+        </details>
 
 
         <fieldset class="col-break">
@@ -213,6 +242,53 @@ try {
     <div id="preview-mount" class="preview-mount"><div class="preview-empty" data-i18n="preview.empty">点击「渲染预览」查看卡片</div></div>
   </section>
 
+  <!-- ================= 工具箱 ================= -->
+  <section class="panel" data-panel="tools">
+    <div class="hint" data-i18n-html data-i18n="hint.tools">
+      本地小模型旁路工具：摘要 / 翻译<strong>只在本机与 <code>config.yaml</code> 里的模型端点之间往返</strong>，
+      凭据不回传浏览器、不写进仓库、不进日志。与卡片链路无关，不做任何写配置操作。
+    </div>
+    <div id="tools-endpoint" class="hint tools-endpoint" hidden></div>
+    <div class="preview-controls">
+      <label><span data-i18n="lbl.tool-mode">模式</span>
+        <select id="t-mode">
+          <option value="summary" data-i18n="opt.mode-summary">摘要</option>
+          <option value="translate" data-i18n="opt.mode-translate">翻译</option>
+        </select>
+      </label>
+      <label id="t-lang-wrap" class="tools-lang" hidden><span data-i18n="lbl.tool-lang">目标语言</span>
+        <select id="t-lang"><option value="" data-i18n="opt.lang-auto">自动（中英互译）</option></select>
+      </label>
+      <label><span data-i18n="lbl.tool-model">模型</span>
+        <select id="t-model" data-i18n-aria="lbl.tool-model" data-i18n-title="title.tool-model">
+          <option value="" data-i18n="opt.model-loading">读取中…</option>
+        </select>
+      </label>
+      <label><span data-i18n="lbl.tool-timeout">超时（秒）</span>
+        <input type="number" id="t-timeout" min="1" max="120" step="1" value="20">
+      </label>
+      <button type="button" class="btn primary" id="btn-tool-run" data-i18n="btn.tool-run">运行</button>
+      <button type="button" class="btn ghost" id="btn-tool-swap" data-i18n="btn.tool-swap">↕ 结果搬到输入</button>
+    </div>
+    <div class="tools-io">
+      <div class="tools-col">
+        <div class="tools-col-head">
+          <span data-i18n="lbl.tool-input">输入</span>
+          <span class="tools-count" id="t-input-count">0</span>
+        </div>
+        <textarea id="t-input" rows="12" data-i18n-ph="ph.tool-input" placeholder="贴入要处理的文本…"></textarea>
+      </div>
+      <div class="tools-col">
+        <div class="tools-col-head">
+          <span data-i18n="lbl.tool-output">结果</span>
+          <button type="button" class="btn ghost btn-mini" id="btn-tool-copy" data-i18n="btn.tool-copy">复制</button>
+        </div>
+        <div id="t-output" class="tools-output"><div class="preview-empty" data-i18n="tools.empty">尚无结果</div></div>
+        <div class="tools-meta" id="t-meta" hidden></div>
+      </div>
+    </div>
+  </section>
+
   <!-- ================= 状态 ================= -->
   <section class="panel" data-panel="status">
     <div class="actions">
@@ -227,5 +303,6 @@ try {
 <script src="/js/i18n.js"></script>
 <script src="/js/preview.js"></script>
 <script src="/js/app.js"></script>
+<script src="/js/tools.js"></script>
 </body>
 </html>

@@ -36,6 +36,8 @@ _T: dict[str, tuple[str, str]] = {
     "notice_redirect": ("Redirected", "已重定向"),
     "notice_background": ("Background task", "后台任务"),
     "notice_gateway_restart": ("Gateway restarted", "网关重启"),
+    # 完结卡 AI 摘要（终态卡封口后异步补一段）
+    "ai_summary_label": ("🔍 **AI summary**", "🔍 **AI 摘要**"),
     "card_overflow_fallback": (
         "This reply exceeded the Feishu card element limit; the full answer is delivered as plain text below.",
         "本次回复超出飞书卡片元素上限，完整内容以纯文本在下方送达。",

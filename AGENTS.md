@@ -107,7 +107,19 @@ Streaming card runtime (streaming/)
   │              >40KB → ≥800ms (#46); element tiers take precedence; never below base)
   ├─ tooluse.py — ToolUseTracker: tool call lifecycle tracking with icon/status mapping
   ├─ image.py — ImageResolver: async download + re-upload markdown images as Feishu img_key
+  ├─ summary.py — completion-card AI summary: gate (switch + min_chars), small-model call, sealed-card
+  │              element patch (add_elements), separate journal state/fry-cards-ai-summary.json + startup
+  │              re-apply (called from controller._sweep_stale_cards, before the stale-card sweep)
   └─ unavailable_guard.py — UnavailableGuard: auto-terminates on message delete/recall
+
+llm.py — stdlib-only OpenAI-compatible /chat/completions client (zero new runtime deps)
+  ├─ resolve_llm_endpoint: base_url+api_key from config.yaml model → provider matching model.base_url → any
+  ├─ endpoint_model_ids / default_small_model: same-endpoint candidates, flash/lite/turbo tier preferred
+  ├─ build_summary_messages / build_translate_messages: material wrapped in <content>, embedded instructions
+  │   declared inapplicable (prompt-injection hygiene), input char cap applied before the request
+  └─ chat_completion: blocking urllib (call via asyncio.to_thread); every failure raises LLMError whose
+      text is key-masked and length-capped (≤300 chars, incl. the JSON error.message branch — upstream
+      risk-control prose is otherwise hundreds of chars)
 
 FeishuClient (feishu.py) — lark-oapi SDK wrapper
   ├─ CardKit streaming API — update single elements at 100ms intervals
@@ -132,7 +144,14 @@ Studio (studio/ — visual config workbench, stdlib http.server + native JS only
   │              (`/api/state.preview`); footer `logo_image_key` is served as a local static PNG route
   │              `/assets/vendor-logos/<file>` (allowlist = VENDOR_LOGO_RULES, no arbitrary paths)
   │              instead of a Feishu img_key, so family→official-name + logo rendering matches production
+  ├─ tools.py — 「工具箱」tab backend: POST /api/tools (summary/translate) + /api/state.tools.
+  │              Credentials are read from config.yaml server-side only — never returned to the browser,
+  │              never logged (endpoint errors re-masked at the route as defence in depth); endpoint-side
+  │              failures answer 200 + ok:false + human-readable error, invalid input stays 400;
+  │              Host gate applies to this route too. Writes no config.
   └─ web/ — index.html + style.css + preview.js (CardKit JSON→DOM renderer) + app.js (form/status/save)
+            + tools.js (toolbox tab; talks to /api/tools through window.FryStudio.{api,toast,esc,i18n,
+            onStateLoaded} — app.js publishes that bridge and replays the last /api/state to late listeners)
 ```
 
 ## Key Constraints
@@ -159,4 +178,14 @@ Studio (studio/ — visual config workbench, stdlib http.server + native JS only
 - The answer hook marks Hermes's stream consumer via `patch.mark_stream_delivered` when a delta is consumed: it installs `has_durably_delivered_text` (the duck-typed query point in `_run_agent_stream_confirmed_final_delivery`) backed by `controller.stream_card_healthy`, so `_run_agent_mark_streamed_delivery` takes the suppression branch instead of logging the "Normal final-send NOT suppressed" duplicate-risk warning. Synthetic turns carry no `event_message_id` — the mark and the health query both fall back to `session_key` (#48). `on_completed_wait` marks the text fallback when sealing fails so the gateway's `already_sent` is undone and the final text still delivers.
 - Group tool gating (#55) is injected before the `return enabled, disabled` in `_resolve_turn_toolsets` (gateway/run_turn.py; MODULAR-ONLY, OPTIONAL anchor). When `gateway.group_security_boundary.enabled`, non-admin group turns drop the built-in write/execute toolsets (`execute_code`/`terminal`/`file`/`computer_use` — query-class toolsets stay available); `non_admin_allowed_toolsets` is a strict allowlist, `non_admin_disabled_toolsets` extends the default deny, and the denylist always wins over the allowlist so a config typo cannot reopen the boundary. Admin resolution reuses Hermes's slash-command policy (`gateway.slash_access.policy_for_source(self.config, source).is_admin`); when it cannot resolve (module missing / `allow_admin_from` unset for the scope / exception) the gate fails OPEN — never lock out the owner. Cached agents keep build-time toolsets: restart the gateway (or `/new` the group session) after enabling.
 - Completion-failure diagnostics log `recursive=` (full-tree element count, `count_elements_recursive`, #56) next to `card_elements` — Feishu's 300305 counts the whole card tree, so the top-level `len(body.elements)` undercounts badly when the unified panel nests tool/reasoning panels.
+- Completion-card AI summary (`streaming.ai_summary.*`, default OFF) runs **after** the card is sealed, never inside the streaming path. Facts established by live CardKit probes on arch (card entities only, never delivered to a chat) — keep them in mind before changing this:
+  * A card already `close_streaming`-ed + fully rebuilt **does** accept further `cardkit_batch_update` (`add_elements` with `append` or `insert_before` an existing element id). So the summary adds exactly ONE element and NEVER rebuilds the whole card — a rebuild re-submits panel sub-elements the server already counted (#53's 300305 path).
+  * `sequence` must strictly increase: reusing any already-consumed value (including 0) returns 300317; jumping ahead is fine (probe used +95). The scheduled patch uses `session.sequence + 1` (card is terminal, nothing else advances it); startup re-apply jumps by `_RECOVERY_SEQ_JUMP` (1000) to clear whatever the dead process consumed.
+  * `insert_before` a missing element id returns 300315 `not find elementID` — hence the `append` fallback (next sequence), and `has_unified_panel(card)` checked locally to skip a doomed request.
+  * A duplicate `element_id` returns 300301 `Duplicate ID` — so a re-applied summary after restart fails cleanly instead of drawing two summary lines.
+  * The gate must use the `is_error` / `is_aborted` flags captured **before** the rebuild, NOT `session.state`: `_do_complete_card_inner` overwrites state to COMPLETED on a successful send even for error/aborted turns (the ABORTED restore happens later in `on_completed_wait`). Judging by state would summarize aborted cards.
+  * Element-budget gate before spending tokens: if the sealed card's recursive element count (#56 `count_elements_recursive`) already exceeds `ELEMENT_THRESHOLD - 1`, the extra element would hit 300305 anyway, so the summary is skipped **without calling the model at all**.
+  * Failure discipline: no credentials / timeout / endpoint error / failed update ⇒ log and leave the card exactly as it is. The summary never touches `already_sent`, the text-fallback path, or the card state machine, and it is scheduled fire-and-forget after the seal (so it cannot delay completion).
+  * Journal lives in `state/fry-cards-ai-summary.json`, deliberately separate from `fry-cards-live.json`: entries are removed only once the element is confirmed applied, and recovery re-applies them at startup (≤3 attempts) **without** letting the stale-card sweep mark a completed card "aborted".
+- Measured cost of one completion summary (10R endpoint, `cbcn/deepseek-v4.1-flash` / `cbcn/glm-5.3-flash`): ~1.2KB answer → 850–900 tokens total, 1.7–3.7s wall clock. `cbai/hy4-flash` was hitting upstream channel risk control (403/503) during these runs — that is exactly the degradation path, the card still sealed normally.
 - Commit messages: body should use bullet list format (unnumbered `- item`).

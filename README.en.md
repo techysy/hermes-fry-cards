@@ -35,6 +35,7 @@
 | ❓ **Clarify button cards** | Option questions render as clickable button cards (single/multi-select + "other" inline input + toast) |
 | 🔐 **Approval click fix** | Approval buttons use interactive-callback auth (upstream misused group admission policy and swallowed clicks), with accept/expired/denied toasts |
 | 🎛️ **Studio workbench** | `studio` command launches a local Web UI: config forms + **real-builder preview** (4 scenarios × 3 states × chosen model — defaults to the configured model; known vendor families render the official name + logo) + status diagnostics & one-click restart; safe write-back pipeline |
+| 🧰 **Studio toolbox tab** | Fourth tab: summarize / translate with one small-model call, reusing the endpoint already in `config.yaml` (`model` / `custom_providers` base_url + api_key). Results show elapsed time and token counts. Credentials stay server-side — never sent to the browser, committed, or logged; the tab writes no config and touches no card |
 | 🏷️ **Model alias time-persona** | `model_aliases.json` substring matching + Beijing-time time-window objects auto-switch display names (DeepSeek peak/valley), openclaw-compatible, editable in Studio |
 | 🧱 **Markdown guard engine** | Overflow tables losslessly compacted to field lists + 18KB byte budget (progressive streaming trim / head+tail preserved on seal) — no more ~30KB card JSON overflow |
 | 🔀 **Interleaved workflow rendering** | Completion panel interleaves reasoning and tool groups in true arrival order (💭→🔧→💭→🔧) |
@@ -118,6 +119,11 @@ display:
 | `chat_types` | Allowed chat types for cards (`dm`/`group`...); omit = all types. Types outside the list fall back to plain text | all (omit) |
 | `content_lang` | Language for in-content notices (table compaction / truncation): `zh` / `en` | `zh` |
 | `width_mode` | Card width (`default` / `compact` / `fill`) | `default` |
+| `ai_summary.enabled` | Add an "🔍 AI summary" segment to completion cards, after the card is confirmed sealed | `false` |
+| `ai_summary.min_chars` | Minimum answer length to trigger the summary (short replies cost zero tokens; `0` = always) | `800` |
+| `ai_summary.model` | Summary model; empty = auto-pick a flash-tier small model from the endpoint list | `""` |
+| `ai_summary.timeout_sec` | Hard timeout for the summary call — a timeout only means "no summary", never a delayed or stuck card | `20` |
+| `ai_summary.max_output_chars` | Target summary length (40–600), also enforced as an output-token cap | `160` |
 | `show_tool_use` | Show tool-use panels | `true` |
 | `show_reasoning` | Show reasoning process | `false` |
 | `model_aliases_enabled` | Master switch for model aliases; `false` falls back to truncation (config kept) | `true` |

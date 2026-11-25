@@ -166,6 +166,32 @@ def build_notice_elements(texts: list[str] | None, *, offset: int = 0) -> list[d
     ]
 
 
+AI_SUMMARY_ELEMENT_ID = "fry_ai_summary"
+# 摘要段的字节预算：卡片 JSON 有 ~30KB 上限，摘要自身还有元素数配额（1 个）。
+# 模型已被 max_output_chars / max_tokens 约束过一次，这里再兜一层，防止模型不听指令
+# 把整段回复吐回来撑爆卡片（钳制只作用在摘要段，绝不回改正文）。
+_AI_SUMMARY_MAX_BYTES = 1400
+
+
+def build_ai_summary_element(text: str, *, element_id: str = AI_SUMMARY_ELEMENT_ID) -> dict:
+    """完结卡的「🔍 AI 摘要」段（终态卡封口之后异步补上来）.
+
+    单条 markdown 元素：标签走 ``i18n_content`` 双语（与卡片其余标签口径一致），
+    摘要正文由小模型按原文语言生成，两种 locale 共用同一份正文——这是摘要的本质
+    （概括本轮结论），不是界面文案，不做二次翻译。
+    """
+    body = clamp_utf8(text.strip(), max_bytes=_AI_SUMMARY_MAX_BYTES, preserve_tail=True).strip()
+    en_label, zh_label = _T["ai_summary_label"]
+    en_content = f"{en_label}\n{body}"
+    zh_content = f"{zh_label}\n{body}"
+    return {
+        "tag": "markdown",
+        "element_id": element_id,
+        "content": en_content,
+        "i18n_content": _i18n(en_content, zh_content),
+    }
+
+
 def build_notice_element(text: str, *, element_id: str = _NOTICE_ELEMENT_ID) -> dict:
     """通知区的单条提示（Hermes 原文，原样渲染）.
 

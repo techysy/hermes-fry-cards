@@ -615,6 +615,64 @@ class Config:
         return value or "回答结束"
 
     @property
+    def ai_summary_enabled(self) -> bool:
+        """完结卡自动摘要总开关（``streaming.ai_summary.enabled``，默认关）.
+
+        开启后：正常完成的卡片封口成功之余，用配置端点里的小模型补一段
+        「🔍 AI 摘要」进同一张卡。任何失败（无凭据/超时/端点报错/落卡失败）
+        都只是「没有摘要」——卡片本体不受影响。每次从磁盘重读（热更新）。
+        """
+        sec = self._streaming_sec().get("ai_summary")
+        if not isinstance(sec, dict):
+            return False
+        return bool(sec.get("enabled", False))
+
+    @property
+    def ai_summary_min_chars(self) -> int:
+        """触发摘要的正文最小字符数（``streaming.ai_summary.min_chars``，默认 800）.
+
+        短回复不打扰：最终答案（各 answer 段合计）不足该长度就不调模型。
+        0 = 任何回复都摘要。非法值回落 800。
+        """
+        sec = self._streaming_sec().get("ai_summary")
+        value = sec.get("min_chars", 800) if isinstance(sec, dict) else 800
+        try:
+            return max(0, int(value))
+        except (TypeError, ValueError):
+            return 800
+
+    @property
+    def ai_summary_model(self) -> str:
+        """摘要指定模型（``streaming.ai_summary.model``，留空 = 自动挑 flash 小模型）."""
+        sec = self._streaming_sec().get("ai_summary")
+        value = sec.get("model") if isinstance(sec, dict) else ""
+        return value.strip() if isinstance(value, str) else ""
+
+    @property
+    def ai_summary_timeout_sec(self) -> float:
+        """摘要调用的硬超时秒数（``streaming.ai_summary.timeout_sec``，默认 20，1~120）.
+
+        摘要永远排在卡片收尾之后异步进行，超时只影响摘要本身迟到与否，
+        不阻塞卡片与网关文本投递。
+        """
+        sec = self._streaming_sec().get("ai_summary")
+        value = sec.get("timeout_sec", 20) if isinstance(sec, dict) else 20
+        try:
+            return max(1.0, min(120.0, float(value)))
+        except (TypeError, ValueError):
+            return 20.0
+
+    @property
+    def ai_summary_max_output_chars(self) -> int:
+        """摘要要求的目标长度上限（字，``streaming.ai_summary.max_output_chars``，默认 160，40~600）."""
+        sec = self._streaming_sec().get("ai_summary")
+        value = sec.get("max_output_chars", 160) if isinstance(sec, dict) else 160
+        try:
+            return max(40, min(600, int(value)))
+        except (TypeError, ValueError):
+            return 160
+
+    @property
     def width_mode(self) -> str:
         """Card 宽度模式: default / compact / fill."""
         raw = str(self._streaming_sec().get("width_mode", "default") or "default").strip().lower()

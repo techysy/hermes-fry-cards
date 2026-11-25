@@ -33,6 +33,8 @@ from urllib.parse import urlsplit
 import yaml
 
 from ..config import Config, hermes_home
+from ..llm import LLMError
+from .tools import run_tool, tools_state
 
 if TYPE_CHECKING:
     from ..streaming.segments import Segment
@@ -229,6 +231,20 @@ def _validate_chat_list(v: Any, name: str) -> list[str]:
     return out
 
 
+def _expect_model_str(v: Any, name: str) -> str:
+    """模型 id：非空短串，允许斜杠/点/冒号/减号/下划线（``cbcn/hy4-flash:free``）."""
+    if not isinstance(v, str):
+        raise ValueError(f"{name} 必须是字符串")
+    model = v.strip()
+    if len(model) > 120:
+        raise ValueError(f"{name} 最长 120 字符")
+    if any(ord(char) < 32 for char in model):
+        raise ValueError(f"{name} 不能包含控制字符")
+    if model and not re.fullmatch(r"[\w./:@+\[\]-]+", model):
+        raise ValueError(f"{name} 只允许字母数字与 . / : @ + _ - [ ] 等模型 id 常用字符")
+    return model
+
+
 def _validate_str_list(v: Any, name: str) -> list[str]:
     """通用字符串名单(如 #55 的工具集白/黑名单): 非空字符串数组，去重保序."""
     if not isinstance(v, list):
@@ -277,6 +293,14 @@ _DISPLAY_KEYS: dict[str, str] = {
     "panel_fields": "panel_fields",
     "panel_text_size": "textsize",
 }
+# 完结卡 AI 摘要（streaming.ai_summary）：默认关；阈值/模型/超时/长度全部可调
+_AI_SUMMARY_KEYS = {
+    "enabled": "bool",
+    "min_chars": "chars",
+    "model": "model",
+    "timeout_sec": "dur120",
+    "max_output_chars": "outchars",
+}
 _GATEWAY_KEYS = {
     "enabled": "bool",
     "allow_chats": "chatlist",
@@ -312,6 +336,16 @@ def _validate_scalar(v: Any, name: str, kind: str) -> Any:
         return _expect_range(v, name, 0, 86400)
     if kind == "dur600":
         return _expect_range(v, name, 0, 600)
+    if kind == "dur120":
+        return _expect_range(v, name, 1, 120)
+    if kind == "chars":  # 摘要触发阈值：0 = 任何回复都摘要
+        _expect_range(v, name, 0, 100_000)
+        return int(v)
+    if kind == "outchars":  # 摘要目标字数
+        _expect_range(v, name, 40, 600)
+        return int(v)
+    if kind == "model":
+        return _expect_model_str(v, name)
     if kind == "panels":
         _expect_range(v, name, 1, 50)
         return int(v)
@@ -354,7 +388,9 @@ def validate_payload(payload: Any) -> dict[str, Any]:
         raise ValueError(f"未知顶层字段: {', '.join(sorted(unknown))}")
 
     streaming_spec: dict[str, Any] = dict(_STREAMING_SCALARS)
-    streaming_spec.update({"header": _HEADER_KEYS, "footer": _FOOTER_KEYS, "body": _BODY_KEYS})
+    streaming_spec.update(
+        {"header": _HEADER_KEYS, "footer": _FOOTER_KEYS, "body": _BODY_KEYS, "ai_summary": _AI_SUMMARY_KEYS}
+    )
 
     result: dict[str, Any] = {}
     streaming = _validate_section(payload, "streaming", streaming_spec)
@@ -792,6 +828,14 @@ def collect_state(home: Path | None = None) -> dict[str, Any]:
             "text_size": cfg.footer_text_size,
         },
         "body": {"text_size": cfg.body_text_size},
+        # 完结卡 AI 摘要（默认关；Studio「配置」页可开，阈值/模型/超时可调）
+        "ai_summary": {
+            "enabled": cfg.ai_summary_enabled,
+            "min_chars": cfg.ai_summary_min_chars,
+            "model": cfg.ai_summary_model,
+            "timeout_sec": cfg.ai_summary_timeout_sec,
+            "max_output_chars": cfg.ai_summary_max_output_chars,
+        },
     }
     display = {
         "show_reasoning": cfg.show_reasoning,
@@ -812,6 +856,7 @@ def collect_state(home: Path | None = None) -> dict[str, Any]:
         "display": display,
         "gateway": gateway,
         "preview": preview_models(cfg),
+        "tools": tools_state(cfg),
         "status": _collect_status(home),
     }
 
@@ -1365,6 +1410,8 @@ class StudioHandler(BaseHTTPRequestHandler):
                 self._handle_aliases(payload)
             elif path == "/api/restart":
                 self._handle_restart(payload)
+            elif path == "/api/tools":
+                self._handle_tools(payload)
             else:
                 self._err(404, "not found")
         except ConfigReadError as e:
@@ -1405,6 +1452,19 @@ class StudioHandler(BaseHTTPRequestHandler):
 
     def _handle_preview(self, payload: Any) -> None:
         self._json(200, build_preview(payload))
+
+    def _handle_tools(self, payload: Any) -> None:
+        """POST /api/tools — 摘要/翻译一次小模型调用（凭据只在服务端，不回传）.
+
+        端点侧失败（无凭据、超时、返回异常）统一 200 + ``ok:false`` + 人话 error：
+        这类失败对用户是「工具没跑成」，不是 Studio 出错，不值得 5xx；
+        error 文本已由 llm 层掩掉 api_key 并截断。入参非法仍是 400（do_POST 统一处理）。
+        """
+        try:
+            self._json(200, run_tool(payload, Config(home=hermes_home())))
+        except LLMError as e:
+            _logger.info("studio tools call failed: %s", e)
+            self._json(200, {"ok": False, "error": str(e)})
 
     def _handle_restart(self, payload: Any) -> None:
         cli = shutil.which("hermes")

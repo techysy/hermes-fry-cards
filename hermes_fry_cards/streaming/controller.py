@@ -36,6 +36,7 @@ from ..feishu import (
     CARDKIT_STREAMING_CLOSED,
     FeishuAPIError,
 )
+from . import summary
 from .diagnostics import (
     compact_ids,
     extract_duplicate_element_id,
@@ -64,6 +65,9 @@ from .tooluse import ToolUseTracker
 from .unavailable_guard import is_terminal_api_code
 
 if TYPE_CHECKING:
+    from asyncio import AbstractEventLoop
+    from pathlib import Path
+
     from ..config import Config
     from ..feishu import FeishuClient
     from .session import CardSession
@@ -140,6 +144,8 @@ class StreamingController:
     _cleanup_session: Callable[[CardSession], None]
     _flush_deferred_background_reviews: Callable[[CardSession], None]
     _wait_for_card_creation: Callable[[CardSession], Coroutine[Any, Any, bool]]
+    _profile_home: Path
+    _fire_and_forget: Callable[[Coroutine[Any, Any, Any], AbstractEventLoop], Any]
 
     def _schedule_flush(self, session: CardSession) -> None:
         if session.state == SessionState.IDLE or session.state.is_terminal:
@@ -1406,6 +1412,10 @@ class StreamingController:
                         sequence=session.sequence,
                     )
                 session.state = SessionState.COMPLETED
+                self._schedule_completion_summary(
+                    session, card, is_error=is_error, is_aborted=is_aborted,
+                    card_elements=card_elements_recursive,
+                )
                 return True
             except FeishuAPIError as e:
                 _logger.warning(
@@ -1499,6 +1509,65 @@ class StreamingController:
                 )
         session.mark_failed(reason="complete_failed_after_retries")
         return False
+
+    def _schedule_completion_summary(
+        self,
+        session: CardSession,
+        card: dict[str, Any],
+        *,
+        is_error: bool,
+        is_aborted: bool,
+        card_elements: int = 0,
+    ) -> None:
+        """卡片确认封口后，异步补一段「🔍 AI 摘要」（默认关；失败即「没有摘要」）.
+
+        只在**正常完成**时排队：落卡成功那一行会把 ``session.state`` 统一写成
+        COMPLETED（错误/中断轮次也一样，#65 之后由 ``on_completed_wait`` 再改回
+        ABORTED），所以判定必须用重建卡片前捕获的 ``is_error`` / ``is_aborted``，
+        不能看 state——否则被 /stop 掐断、出错的那张卡也会被摘要，既花 token
+        又给一张残缺卡盖「摘要」。
+
+        素材取卡片实际渲染的 answer 段；序号取本次落卡用过的 ``session.sequence``
+        之后一位——此刻卡片已终态，主链路不再动序号，所以不存在 300317 竞争。
+
+        摘要任务**不参与**收尾判定：``already_sent`` / 文本回退 / 卡片状态都由前面的
+        正常链路定死，这里只做加法。整个函数体自兜底：任何意外（包括配置对象形态异常）
+        都只记 debug 日志，绝不能让这里的异常冒到完成重试循环里去重发卡片。
+        """
+        try:
+            if is_error or is_aborted or not session.card_id or self._client is None:
+                return
+            # 元素预算闸门：卡片已经逼近飞书 200 元素硬上限时，再补一个元素注定撞
+            # 300305 —— 那就连模型都别调（省一次白烧的 token），直接放弃摘要。
+            if card_elements and card_elements + 1 > ELEMENT_THRESHOLD:
+                _logger.info(
+                    "ai summary skipped: card %s already at %d elements (threshold %d)",
+                    session.card_id[:12],
+                    card_elements,
+                    ELEMENT_THRESHOLD,
+                )
+                return
+            answer_text = summary.answer_text_of(session.active_segments())
+            if not summary.should_summarize(self._cfg, answer_text):
+                return
+            coro = summary.run_completion_summary(
+                self._client,
+                self._cfg,
+                self._profile_home,
+                session.card_id,
+                sequence=session.sequence + 1,
+                answer_text=answer_text,
+                has_unified_panel=summary.has_unified_panel(card),
+            )
+            self._fire_and_forget(coro, session._loop)
+            _logger.info(
+                "ai summary scheduled: msg=%s card=%s chars=%d",
+                session.message_id[:12],
+                session.card_id[:12],
+                len(answer_text),
+            )
+        except Exception:
+            _logger.debug("ai summary scheduling skipped", exc_info=True)
 
     async def _do_cron_deliver(
         self, chat_id: str, content: str, *, task_name: str = "", run_time: str = ""

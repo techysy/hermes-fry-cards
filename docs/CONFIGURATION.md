@@ -97,6 +97,11 @@ display:
 | `footer.text_size` | `notation` | footer 小字号 |
 | `footer.show_label` | `false` | 显示字段名标签 |
 | `footer.fields` | `[[status, elapsed, model, context]]` | footer 字段布局 |
+| `ai_summary.enabled` | `false` | 完结卡自动 AI 摘要总开关（**默认关**） |
+| `ai_summary.min_chars` | `800` | 触发的最短正文字数：短回复不打扰，一个 token 都不花（`0`=每次都摘） |
+| `ai_summary.model` | 空 | 指定摘要模型；留空自动挑端点清单里的 flash 小模型 |
+| `ai_summary.timeout_sec` | `20` | 摘要调用硬超时（1~120 秒）；超时只影响摘要迟到，不拖收尾 |
+| `ai_summary.max_output_chars` | `160` | 摘要目标字数（40~600），同时折算成输出 token 上限硬约束 |
 
 **footer 可用字段**：`status` `elapsed` `model` `reasoning_count` `tool_count` `context`
 
@@ -107,6 +112,34 @@ fields:
   - [model, status]
   - [elapsed, context]
 ```
+
+**完结卡 AI 摘要（`streaming.ai_summary`）**
+
+开启后，卡片**正常完成并确认封口**，插件会用 `config.yaml` 里现成的模型端点（`model.base_url` +
+`api_key`，或 `custom_providers` / `providers` 中带 `api_key` 的条目）调一个小模型，往同一张卡补一段
+「🔍 AI 摘要」：
+
+```yaml
+streaming:
+  ai_summary:
+    enabled: true
+    min_chars: 1200      # 正文不足 1200 字不调模型（不花 token）
+    model: ""            # 留空 = 自动挑 flash 档；也可写 cbcn/deepseek-v4.1-flash
+    timeout_sec: 20
+    max_output_chars: 160
+```
+
+- **落点**：摘要插在正文之后、统一面板之前（面板不存在时落到卡片末尾）；只补一个元素，**不整卡重发**，
+  因此不会重复计数面板子元素（#53 的 300305 老路），也不影响流式打字机行为。
+- **不拖收尾**：摘要在封卡成功之后异步排队，硬超时 + 失败降级；拿不到摘要就按原样出卡（现状即正确兜底），
+  卡片不会停在「处理中」、不会丢面板、不会改 `already_sent`。
+- **不打扰残缺卡**：出错或被 `/stop` 掐断的卡片一律不摘要。
+- **不撞元素上限**：卡片元素数（递归计数）已逼近飞书 200 硬上限时直接跳过，**连模型都不调**——
+  那种卡补元素注定撞 300305，摘要的钱就是白烧。
+- **进程重启**：已生成但没确认落卡的摘要记在 `~/.hermes/state/fry-cards-ai-summary.json`，下次启动补投
+  （最多 3 次）。这份登记表与网关重启封卡用的 `fry-cards-live.json` 分离，不会把已完成的卡扫成「已中断」。
+- **成本参考**（10R 端点实测）：1.2KB 正文 → 160 字摘要约 850~900 token、1.7~3.7 秒。
+- **凭据安全**：key 只在服务端读取使用，不回传浏览器、不写进仓库、不进日志（异常消息统一掩码）。
 
 ### display 段
 

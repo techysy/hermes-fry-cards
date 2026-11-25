@@ -45,6 +45,17 @@ exclude = ["tests/samples"]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
 ignore = ["RUF002", "RUF003", "RUF006"]
 
+# 面向用户的中文文案（错误提示、prompt、卡片标签）与断言这些文案的测试里的全角标点
+# 不是「混淆字符」风险：它们本来就是给人读的中文，与仓内既有文案口径一致
+# （RUF002/RUF003 早已对 docstring/注释放行）。按文件放行，不动全局规则。
+[tool.ruff.lint.per-file-ignores]
+"hermes_fry_cards/llm.py" = ["RUF001"]
+"hermes_fry_cards/streaming/summary.py" = ["RUF001"]
+"hermes_fry_cards/studio/tools.py" = ["RUF001"]
+"tests/test_llm.py" = ["RUF001"]
+"tests/test_ai_summary.py" = ["RUF001"]
+"tests/test_studio_tools.py" = ["RUF001"]
+
 [tool.ruff.format]
 quote-style = "double"
 

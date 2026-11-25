@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### 新增 / Added
+- **Studio「工具箱」页签（AI 摘要 + 文字翻译）**：第四个独立页签，纯旁路工具，不碰卡片链路、不写配置。
+  - 模式（摘要 / 翻译）、输入 textarea（带 `36 / 20000` 字数计数，超限直接拒、不发请求）、目标语言
+    （默认「自动（中英互译）」，另备 12 种常用语言）、模型下拉、超时、运行、复制、「↕ 结果搬到输入」（摘要↔翻译互推）
+  - 结果区显示人话元数据：`本次调用：cbcn/glm-5.3-flash · 2.0s · ↑37 ↓21 tok`
+  - 新路由 `POST /api/tools`：凭据只在服务端从 `config.yaml` 读（`model` / `custom_providers` / `providers`
+    的 `base_url` + `api_key`），**不回传前端、不入库、不进日志**；端点侧失败统一 200 + `ok:false` + 可读错误
+    （实测 401/403/503 均原样成人话），入参非法仍是 400；Host 门（防 DNS rebinding）对本路由同样生效
+  - 实现为零新增运行时依赖：`hermes_fry_cards/llm.py` 用标准库 `urllib` 自实现 OpenAI 兼容
+    `/chat/completions` 调用（`pyproject` 依赖仍是 `lark-oapi` + `PyYAML`）
+- **完结卡自动 AI 摘要**（`streaming.ai_summary.*`，**默认关闭**）：卡片正常完成并确认封口后，用配置端点里的小模型
+  往同一张卡补一段「🔍 AI 摘要」。可控三档：开关、触发阈值（正文少于 `min_chars` 一个字都不花）、模型（留空自动挑 flash 档）。
+  - 落卡方式经 arch 真实 CardKit 探针验证：封口后的卡**仍接受** `add_elements`，因此只「补一个元素」，
+    优先 `insert_before unified_panel`（摘要落在正文之后、统一面板之前），面板不存在（#53 曾剥离）则回落 `append`；
+    **绝不整卡重发**——重发会把面板子元素重复计数，正是 #53 撞 300305 的老路
+  - 序号策略同样经实测：`sequence` 必须严格递增（复用已用序号含 0 一律 300317，跳号可），补投按 +1000 跳号避让；
+    重复 `element_id` 会被 300301 Duplicate ID 拒绝，因此补投即使撞上「摘要其实已落卡」也只会失败，不会画出两行
+  - 失败即「没有摘要」：无凭据 / 超时 / 端点报错 / 落卡失败都只记日志，**不碰** `already_sent`、不碰文本回退、
+    不改卡片状态机；错误/中断（被 `/stop` 掐断）的卡片一律不摘要
+  - **元素预算闸门**：卡片递归元素数（#56 口径）已逼近飞书 200 硬上限时直接跳过、**连模型都不调**——
+    那种卡补元素注定撞 300305，摘要的钱就是白烧
+  - 收尾纪律对齐 claw 侧 journal：摘要元素先写独立登记表 `state/fry-cards-ai-summary.json`，确认落卡才出列；
+    进程重启后由启动对账补投（上限 3 次）。该登记表与网关重启封卡用的 `fry-cards-live.json` **完全分离**，
+    不会把一张已完成的卡扫成「已中断」
+  - 摘要在卡片封口**之后**异步排队（`asyncio.to_thread` + `wait_for` 双硬超时），实测一次调用 1.7~3.7s、
+    约 850~900 token（1.2KB 输入 → 160 字摘要），不拖慢正常收尾
+
+### 变更 / Changed
+- Studio 配置页新增「🔍 完结卡 AI 摘要」折叠区（开关 / 触发字数 / 目标字数 / 指定模型 / 硬超时），
+  纳入 `/api/config` 白名单校验与深合并；`GET /api/state` 多出 `tools` 段（端点可用性 + 来源标签 + 候选模型，不含任何凭据）
+- `pyproject.toml` 增加 `[tool.ruff.lint.per-file-ignores]`：中文文案模块（`llm.py` / `summary.py` / `studio/tools.py`
+  及对应测试）里的全角标点按文件放行 `RUF001`，与仓内既有文案口径一致，不动全局规则
+
+### 修复 / Fixed
+- `llm._error_detail` 对 JSON `error.message` 分支未截断长度：路由代理（10R 等）会把整段渠道风控说明塞进
+  `message`（实测单条数百字），一路带进 Studio 结果区与网关日志；现所有分支统一按 300 字收口
+
+---
+
 ## [0.7.2] - 2026-11-25
 
 ### 新增 / Added

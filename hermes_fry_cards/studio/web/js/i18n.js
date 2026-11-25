@@ -18,6 +18,7 @@ window.FryI18n = (function () {
     "tab.config": ["配置", "Config"],
     "tab.preview": ["预览", "Preview"],
     "tab.status": ["状态", "Status"],
+    "tab.tools": ["工具箱", "Tools"],
 
     /* ---------- 配置页 ---------- */
     "legend.streaming": ["流式卡片", "Streaming Cards"],
@@ -139,6 +140,63 @@ window.FryI18n = (function () {
     "btn.render": ["渲染预览", "Render preview"],
     "preview.empty": ["点击「渲染预览」查看卡片", "Click “Render preview” to see the card"],
 
+    /* ---------- 配置页 · 完结卡 AI 摘要 ---------- */
+    "legend.ai-summary": ["🔍 完结卡 AI 摘要（默认关闭）", "🔍 Completion-card AI summary (off by default)"],
+    "lbl.ais-enabled": ["卡片封口后用本地端点的小模型补一段摘要", "After the card seals, add a summary using a small model on the local endpoint"],
+    "lbl.ais-min": ["触发的最短回复（字，0=每次都摘）", "Minimum reply length to trigger (chars, 0 = always)"],
+    "lbl.ais-out": ["摘要目标字数（40~600）", "Summary target length (40–600 chars)"],
+    "lbl.ais-model": ["指定模型（留空 = 自动挑 flash 小模型）", "Model (empty = auto-pick a flash-tier small model)"],
+    "opt.ais-auto": ["自动（flash 优先）", "Auto (flash first)"],
+    "lbl.ais-timeout": ["硬超时（秒，1~120）", "Hard timeout (s, 1–120)"],
+    "hint.ai-summary": [
+      "摘要在<strong>卡片确认封口之后</strong>才调模型，只做「补一个元素」，不整卡重发；" +
+      "无凭据 / 超时 / 端点报错 / 落卡失败都只是「没有摘要」，<strong>不会</strong>拖慢收尾、" +
+      "不会让卡片停在处理中。凭据只读 <code>config.yaml</code> 的 <code>model</code> / " +
+      "<code>custom_providers</code>，不外传、不入库、不进日志。",
+      "The summary is requested <strong>only after the card is confirmed sealed</strong>, and it adds a single element — " +
+      "the card is never rebuilt. Missing credentials / timeout / endpoint error / failed update simply means \"no summary\": " +
+      "it cannot delay completion or leave the card stuck on processing. Credentials are read from " +
+      "<code>config.yaml</code> (<code>model</code> / <code>custom_providers</code>) only — never exposed, committed, or logged.",
+    ],
+
+    /* ---------- 工具箱页签 ---------- */
+    "hint.tools": [
+      "本地小模型旁路工具：摘要 / 翻译<strong>只在本机与 <code>config.yaml</code> 里的模型端点之间往返</strong>，" +
+      "凭据不回传浏览器、不写进仓库、不进日志。与卡片链路无关，本页面不做任何写配置操作。",
+      "Local small-model toolbox: summarizing / translating happens <strong>only between this machine and the " +
+      "model endpoint in <code>config.yaml</code></strong>. Credentials are never sent to the browser, committed, " +
+      "or logged. This page is unrelated to the card pipeline and never writes config.",
+    ],
+    "lbl.tool-mode": ["模式", "Mode"],
+    "opt.mode-summary": ["摘要", "Summarize"],
+    "opt.mode-translate": ["翻译", "Translate"],
+    "lbl.tool-lang": ["目标语言", "Target language"],
+    "opt.lang-auto": ["自动（中英互译）", "Auto (zh ↔ en)"],
+    "lbl.tool-model": ["模型", "Model"],
+    "opt.tool-model-auto": ["自动（flash 小模型）", "Auto (small flash model)"],
+    "title.tool-model": ["留空 = 用端点清单里的 flash 小模型；指定模型只影响本次调用，不写回配置", "Leave empty to use a flash-tier small model from the endpoint list. The choice applies to this call only and is never written back to config."],
+    "lbl.tool-timeout": ["超时（秒）", "Timeout (s)"],
+    "btn.tool-run": ["运行", "Run"],
+    "btn.tool-swap": ["↕ 结果搬到输入", "↕ Result → input"],
+    "btn.tool-copy": ["复制", "Copy"],
+    "lbl.tool-input": ["输入", "Input"],
+    "lbl.tool-output": ["结果", "Result"],
+    "ph.tool-input": ["贴入要处理的文本…", "Paste the text to process…"],
+    "tools.empty": ["尚无结果", "No result yet"],
+    "tools.hint-translate": ["选目标语言后点「运行」", "Pick a target language, then click “Run”"],
+    "tools.running": ["调用中…", "Calling…"],
+    "tools.meta": ["本次调用：", "This call: "],
+    "tools.endpoint-ok": ["模型端点可用（凭据来自 config.yaml 的 {}，只在本机与服务端之间使用）", "Model endpoint ready (credentials come from config.yaml “{}”, used only between this machine and the server)"],
+    "tools.endpoint-missing": ["未找到可用的模型端点：请在 config.yaml 配好 model.base_url + model.api_key，或 custom_providers 里带 api_key 的条目", "No usable model endpoint: set model.base_url + model.api_key, or add an api_key entry under custom_providers / providers in config.yaml"],
+    "tools.need-input": ["先贴入要处理的文本", "Paste some text first"],
+    "tools.too-long": ["文本超过 {} 字符上限（当前 {}）：请截短后再跑，避免白花 token", "Text exceeds the {}-character limit ({} now): shorten it first so tokens are not wasted"],
+    "tools.no-result": ["还没有结果", "No result to use yet"],
+    "tools.copied": ["已复制", "Copied"],
+    "tools.copy-fail": ["复制失败：请手动选中文本复制", "Copy failed: select the text and copy manually"],
+    "tools.failed": ["调用失败", "Call failed"],
+    "tools.done": ["完成（{}s）", "Done ({}s)"],
+    "tools.unknown-fail": ["端点调用失败", "Endpoint call failed"],
+
     /* ---------- 状态页 ---------- */
     "btn.refresh": ["刷新", "Refresh"],
     "btn.restart": ["重启网关", "Restart gateway"],
@@ -218,6 +276,7 @@ window.FryI18n = (function () {
   var HTML_KEYS = {
     "brand.meta": true, "hint.warn": true, "hint.alias": true, "hint.gsb": true, "hint.preview": true,
     "hint.footer": true, "hint.panel-fields": true, "fields-note": true,
+    "hint.ai-summary": true, "hint.tools": true,
   };
 
   function apply(root) {
