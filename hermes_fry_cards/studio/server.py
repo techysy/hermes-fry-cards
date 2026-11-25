@@ -70,6 +70,29 @@ _SCENARIOS = ("short", "workflow", "tables", "longtext")
 _OUTCOMES = ("completed", "error", "aborted")
 _STATES = ("streaming", "completed")
 
+# 预览「模型」下拉：既接受已配置/已登记的模型，也允许手填任意 id（配置改了不必重启 Studio）
+_PREVIEW_MODEL_MAX_LEN = 120
+_PREVIEW_MODEL_MAX_OPTIONS = 200  # 候选上限：已配置模型优先占位，防止超大 provider 清单刷爆下拉
+# 无任何配置可读时的兜底展示模型（与厂商家族样本池同口径，保证下拉非空）
+_PREVIEW_FALLBACK_MODEL = "mimo/mimo-x-flash"
+# 内置样本池：覆盖打包内厂商 logo 家族（口径同线上 10R fleet），
+# 让「没配 model/custom_providers」的机器也能预览到 logo + 官方名映射效果
+_PREVIEW_MODEL_SAMPLES = (
+    "tencent/hy4-flash:free",
+    "deepseek-v4.1-flash",
+    "qwen4-max",
+    "glm-5.3-flashx",
+    "kimi-k5",
+    "MiniMax-M3.1-Flash",
+    "longcat/LongCat-2.5-Preview",
+    "grok-4.7",
+    "claude-opus-5.5",
+    "mimo-v2.6-flash-free",
+    "oc/ling-3.1-flash",
+    "space-bunny-free",  # 未命中厂商家族 → 回落别名/⇲ 截断形态
+)
+_VENDOR_LOGO_URL_PREFIX = "/assets/vendor-logos/"
+
 _CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".css": "text/css; charset=utf-8",
@@ -788,6 +811,7 @@ def collect_state(home: Path | None = None) -> dict[str, Any]:
         "streaming": streaming,
         "display": display,
         "gateway": gateway,
+        "preview": preview_models(cfg),
         "status": _collect_status(home),
     }
 
@@ -861,10 +885,116 @@ def _workflow_steps() -> list[ToolDisplayStep]:
     ]
 
 
-def _scenario_data(scenario: str) -> tuple[list[Segment], list[ToolDisplayStep], dict[str, Any], float]:
-    """返回 (segments, all_tool_steps, footer_data, streaming_elapsed_ms)."""
+def _preview_default_model(cfg: Config) -> str:
+    """已配置模型（config.yaml ``model.default`` / ``model.model``，兼容字符串形态）.
+
+    与 Hermes ``_resolve_gateway_model`` 同口径；读不出（无配置/结构异常）返回空串。
+    """
+    raw = cfg.raw_section("model")
+    if isinstance(raw, str):
+        return raw.strip()
+    if isinstance(raw, dict):
+        for key in ("default", "model"):
+            value = raw.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return ""
+
+
+def _configured_models(cfg: Config) -> list[str]:
+    """配置里出现过的模型 id（已配置模型 + custom_providers / providers 名单），保序去重.
+
+    结构完全按「尽力而为」读取：任何一段形态不符就跳过该段，绝不因此报错——
+    Studio 预览只是给个人挑一个名字渲染，配置写得再怎么稀奇也不该把预览页打死。
+    """
+    out: list[str] = []
+
+    def _add(value: Any) -> None:
+        if isinstance(value, str):
+            name = value.strip()
+            if name and name not in out:
+                out.append(name)
+
+    def _walk_models(value: Any) -> None:
+        if isinstance(value, str):
+            _add(value)
+        elif isinstance(value, dict):
+            for key in value:  # custom_providers[].models 是 {模型名: {...}} 映射
+                _add(key)
+        elif isinstance(value, (list, tuple)):
+            for item in value:  # 也兼容 ["model-a", "model-b"] 形态
+                _add(item)
+
+    _add(_preview_default_model(cfg))
+    for section in ("custom_providers", "providers", "fallback_providers", "fallback_model"):
+        raw = cfg.raw_section(section)
+        if isinstance(raw, dict):  # providers 也可能写成 {slug: {...}} 映射
+            entries = list(raw.values())
+        elif isinstance(raw, (list, tuple)):
+            entries = list(raw)
+        else:
+            entries = [raw]
+        for entry in entries:
+            if not isinstance(entry, dict):
+                _add(entry)
+                continue
+            _add(entry.get("model"))
+            _walk_models(entry.get("models"))
+    return out
+
+
+def preview_models(cfg: Config | None = None) -> dict[str, Any]:
+    """GET /api/state 的 preview 段 — 渲染预览「模型」下拉的候选与默认值.
+
+    候选 = 已配置模型 + 配置内出现过的模型 + 内置厂商家族样本池（覆盖打包内 logo
+    家族，没配 model/custom_providers 的机器也能预览 logo/官方名映射效果）。
+    默认选中已配置模型，读不到时回落兜底样本；总量有界（已配置项优先占位）。
+    """
+    from ..cardkit.vendor_logos import resolve_vendor_display_name
+
+    cfg = cfg or Config()
+    ids: list[str] = []
+    # 已配置模型/配置内模型在前（用户最可能挑它们），样本池补足家族覆盖；总量有界
+    for name in [*_configured_models(cfg), *_PREVIEW_MODEL_SAMPLES, _PREVIEW_FALLBACK_MODEL]:
+        if name and name not in ids:
+            ids.append(name)
+        if len(ids) >= _PREVIEW_MODEL_MAX_OPTIONS:
+            break
+    if _PREVIEW_FALLBACK_MODEL not in ids:  # 截断兜底：默认值必须在候选里
+        ids.append(_PREVIEW_FALLBACK_MODEL)
+
+    models: list[dict[str, str]] = []
+    for name in ids:
+        display = resolve_vendor_display_name(name) or ""
+        models.append({"id": name, "label": f"{name} → {display}" if display and display != name else name})
+    default = _preview_default_model(cfg) or _PREVIEW_FALLBACK_MODEL
+    return {"models": models, "default_model": default}
+
+
+def _preview_logo_key(model: str) -> str:
+    """预览用 logo 引用：命中厂商家族 → Studio 本地静态 PNG 路径；未命中 → 空串.
+
+    线上 logo 走「上传飞书换 img_key」（需 FeishuClient），Studio 不碰凭据，
+    改由 ``/assets/vendor-logos/<file>`` 直接提供打包内同一份 PNG——builder 只把
+    这个值当字符串透传（footer ``![](key)`` 与面板 header ``custom_icon.img_key``），
+    渲染判定链路（官方名映射、logo 位、回落 🍟）与线上完全一致。
+    """
+    from ..cardkit.vendor_logos import resolve_vendor_logo_asset
+
+    asset = resolve_vendor_logo_asset(model)
+    return f"{_VENDOR_LOGO_URL_PREFIX}{asset}" if asset else ""
+
+
+def _scenario_data(
+    scenario: str, model: str = _PREVIEW_FALLBACK_MODEL,
+) -> tuple[list[Segment], list[ToolDisplayStep], dict[str, Any], float]:
+    """返回 (segments, all_tool_steps, footer_data, streaming_elapsed_ms).
+
+    ``model`` 为本轮预览要渲染的模型 id（footer/统一面板的 model 字段数据源，
+    口径同线上 ``session.footer["model"]``）。
+    """
     base_footer = {
-        "model": "mimo/mimo-x-flash",
+        "model": model,
         "input_tokens": 15420,
         "output_tokens": 986,
         "cache_read_tokens": 8300,  # 8300/15420 ≈ 54%，展示 speed/cache 字段效果
@@ -935,10 +1065,28 @@ def _apply_overrides(vals: dict[str, Any], overrides_raw: Any) -> dict[str, Any]
     return out
 
 
+def _preview_model_value(payload: dict[str, Any], cfg: Config) -> str:
+    """校验并归一化预览「模型」入参：手填任意 id 也接受（只限长度/控制字符）.
+
+    缺省（未传/空串）→ 已配置模型 → 兜底样本，与下拉默认项同一口径。
+    """
+    if "model" not in payload:
+        return _preview_default_model(cfg) or _PREVIEW_FALLBACK_MODEL
+    raw = payload["model"]
+    if not isinstance(raw, str):
+        raise ValueError("model 必须是字符串")
+    value = raw.strip()
+    if not value:
+        return _preview_default_model(cfg) or _PREVIEW_FALLBACK_MODEL
+    if len(value) > _PREVIEW_MODEL_MAX_LEN or any(ord(char) < 32 for char in value):
+        raise ValueError(f"model 必须是 1~{_PREVIEW_MODEL_MAX_LEN} 字符、不含控制字符的字符串")
+    return value
+
+
 def build_preview(payload: Any, home: Path | None = None) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError("payload 必须是对象")
-    unknown = set(payload) - {"scenario", "state", "outcome", "overrides"}
+    unknown = set(payload) - {"scenario", "state", "outcome", "model", "overrides"}
     if unknown:
         raise ValueError(f"未知字段: {', '.join(sorted(unknown))}")
 
@@ -954,6 +1102,7 @@ def build_preview(payload: Any, home: Path | None = None) -> dict[str, Any]:
 
     home = home or hermes_home()
     base = collect_state(home)
+    model = _preview_model_value(payload, Config(home=home))
     vals = _apply_overrides(
         {"streaming": base["streaming"], "display": base["display"]},
         payload.get("overrides"),
@@ -963,7 +1112,14 @@ def build_preview(payload: Any, home: Path | None = None) -> dict[str, Any]:
     sv_footer = sv.get("footer") or {}
     sv_body = sv.get("body") or {}
 
-    segments, steps, footer_data, elapsed_ms = _scenario_data(scenario)
+    segments, steps, footer_data, elapsed_ms = _scenario_data(scenario, model)
+    # 厂商 logo：口径同线上封卡（display.vendor_logo 开启且命中家族才带 key），
+    # Studio 用本地静态 PNG 路径替代飞书 img_key（见 _preview_logo_key）
+    footer_data.pop("logo_image_key", None)
+    if dv.get("vendor_logo", True):
+        _logo_key = _preview_logo_key(model)
+        if _logo_key:
+            footer_data["logo_image_key"] = _logo_key
 
     from ..cardkit.builder import build_complete_card, build_streaming_card_v2
 
@@ -1003,7 +1159,11 @@ def build_preview(payload: Any, home: Path | None = None) -> dict[str, Any]:
             show_tool_use=common["show_tool_use"],
             width_mode=common["width_mode"],
         )
-    return {"ok": True, "card": card, "meta": {"scenario": scenario, "state": state, "outcome": outcome}}
+    return {
+        "ok": True,
+        "card": card,
+        "meta": {"scenario": scenario, "state": state, "outcome": outcome, "model": model},
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1101,6 +1261,26 @@ class StudioHandler(BaseHTTPRequestHandler):
         except (OSError, ValueError):
             self._err(404, "not found")
             return
+        self._send_file(target)
+
+    def _vendor_logo(self, name: str) -> None:
+        """预览用厂商 logo PNG：只按打包内资产文件名白名单取文件（不接任意路径）."""
+        from ..cardkit.vendor_logos import VENDOR_LOGO_RULES
+
+        allowed = {file for _, file in VENDOR_LOGO_RULES}
+        if name not in allowed:
+            self._err(404, "not found")
+            return
+        try:
+            from importlib import resources
+
+            data = resources.files("hermes_fry_cards").joinpath("assets/vendor-logos", name).read_bytes()
+        except Exception:
+            self._err(404, "not found")
+            return
+        self._respond(200, data, "image/png", {"Cache-Control": "no-cache"})
+
+    def _send_file(self, target: Path) -> None:
         if not target.is_file():
             self._err(404, "not found")
             return
@@ -1123,6 +1303,8 @@ class StudioHandler(BaseHTTPRequestHandler):
                 self._static("index.html")
             elif path.startswith("/css/") or path.startswith("/js/"):
                 self._static(path.lstrip("/"))
+            elif path.startswith(_VENDOR_LOGO_URL_PREFIX):
+                self._vendor_logo(path[len(_VENDOR_LOGO_URL_PREFIX):])
             elif path == "/api/state":
                 self._json(200, {"ok": True, **collect_state()})
             elif path == "/api/aliases":

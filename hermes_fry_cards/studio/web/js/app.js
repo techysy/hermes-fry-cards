@@ -375,6 +375,7 @@
   async function loadState() {
     var data = await api("/api/state");
     fillForm(data);
+    fillModelOptions(data.preview);
     var ver = data.status && data.status.fry_version;
     var el = document.getElementById("brand-version");
     if (el && ver) el.textContent = "v" + ver;
@@ -433,10 +434,38 @@
   });
 
   /* ---------- 预览 ---------- */
-  $("#p-state").addEventListener("change", function () {
+  $("#p-state").addEventListener("change", syncPreviewControls);
+  function syncPreviewControls() {
     var streaming = $("#p-state").value === "streaming";
     $("#p-outcome").disabled = streaming;
-  });
+    // 流式占位卡不含 model 字段（footer/统一面板在完成态才生成），选也没效果 → 置灰
+    $("#p-model").disabled = streaming;
+  }
+
+  /* 模型下拉：候选来自服务端（已配置模型 + 配置内模型 + 厂商家族样本），
+   * 首项「已配置模型（默认）」value 为空 → 渲染时由服务端解析当前配置模型，
+   * 改完配置不必重开 Studio 也能跟着走。 */
+  function fillModelOptions(preview) {
+    var sel = $("#p-model");
+    if (!sel) return;
+    var prev = sel.value;
+    var models = (preview && preview.models) || [];
+    sel.innerHTML = "";
+    var optDefault = document.createElement("option");
+    optDefault.value = "";
+    optDefault.textContent = I18N.t("opt.model-default");
+    optDefault.title = (preview && preview.default_model) || "";
+    sel.appendChild(optDefault);
+    models.forEach(function (m) {
+      var o = document.createElement("option");
+      o.value = m.id;
+      o.textContent = m.label;
+      sel.appendChild(o);
+    });
+    // 保留用户已选（重新读取/保存后不跳回默认），选项已不存在则回落默认项
+    var still = Array.prototype.some.call(sel.options, function (o) { return o.value === prev; });
+    sel.value = still ? prev : "";
+  }
 
   $("#btn-render").addEventListener("click", async function () {
     var btn = $("#btn-render");
@@ -446,6 +475,7 @@
         scenario: $("#p-scenario").value,
         state: $("#p-state").value,
         outcome: $("#p-outcome").value,
+        model: $("#p-model").value,
       };
       var data = await api("/api/preview", {
         method: "POST",

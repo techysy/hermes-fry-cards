@@ -126,7 +126,12 @@ Card templates (cardkit/)
 
 Studio (studio/ — visual config workbench, stdlib http.server + native JS only)
   ├─ server.py — whitelist validation / refuse-write (409) / backup rotation / atomic merge;
-  │              real-builder preview (4 scenarios × streaming/completed/error); structured status collect
+  │              real-builder preview (4 scenarios × streaming/completed/error × chosen model); structured status collect.
+  │              Preview model selector: candidates = config `model.default` + models seen in
+  │              `custom_providers`/`providers`/`fallback_*` + bundled vendor-family samples
+  │              (`/api/state.preview`); footer `logo_image_key` is served as a local static PNG route
+  │              `/assets/vendor-logos/<file>` (allowlist = VENDOR_LOGO_RULES, no arbitrary paths)
+  │              instead of a Feishu img_key, so family→official-name + logo rendering matches production
   └─ web/ — index.html + style.css + preview.js (CardKit JSON→DOM renderer) + app.js (form/status/save)
 ```
 

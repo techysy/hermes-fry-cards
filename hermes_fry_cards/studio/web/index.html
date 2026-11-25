@@ -203,6 +203,11 @@ try {
       <label><span data-i18n="lbl.outcome">结果</span>
         <select id="p-outcome"><option value="completed" data-i18n="opt.oc-done">✅ 完成</option><option value="error" data-i18n="opt.oc-error">❌ 出错</option><option value="aborted" data-i18n="opt.oc-aborted">🛑 中止</option></select>
       </label>
+      <label><span data-i18n="lbl.model">模型</span>
+        <select id="p-model" data-i18n-aria="lbl.model" data-i18n-title="title.model">
+          <option value="" data-i18n="opt.model-loading">读取中…</option>
+        </select>
+      </label>
       <button type="button" class="btn primary" id="btn-render" data-i18n="btn.render">渲染预览</button>
     </div>
     <div id="preview-mount" class="preview-mount"><div class="preview-empty" data-i18n="preview.empty">点击「渲染预览」查看卡片</div></div>

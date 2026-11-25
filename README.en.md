@@ -34,7 +34,7 @@
 | 🛡️ **Group security boundary** | Group @bot replies get an output boundary (no keys/passwords/internal IPs); DMs unaffected (modular Hermes 0.21+, editable in Studio) |
 | ❓ **Clarify button cards** | Option questions render as clickable button cards (single/multi-select + "other" inline input + toast) |
 | 🔐 **Approval click fix** | Approval buttons use interactive-callback auth (upstream misused group admission policy and swallowed clicks), with accept/expired/denied toasts |
-| 🎛️ **Studio workbench** | `studio` command launches a local Web UI: config forms + **real-builder preview** (4 scenarios × 3 states) + status diagnostics & one-click restart; safe write-back pipeline |
+| 🎛️ **Studio workbench** | `studio` command launches a local Web UI: config forms + **real-builder preview** (4 scenarios × 3 states × chosen model — defaults to the configured model; known vendor families render the official name + logo) + status diagnostics & one-click restart; safe write-back pipeline |
 | 🏷️ **Model alias time-persona** | `model_aliases.json` substring matching + Beijing-time time-window objects auto-switch display names (DeepSeek peak/valley), openclaw-compatible, editable in Studio |
 | 🧱 **Markdown guard engine** | Overflow tables losslessly compacted to field lists + 18KB byte budget (progressive streaming trim / head+tail preserved on seal) — no more ~30KB card JSON overflow |
 | 🔀 **Interleaved workflow rendering** | Completion panel interleaves reasoning and tool groups in true arrival order (💭→🔧→💭→🔧) |

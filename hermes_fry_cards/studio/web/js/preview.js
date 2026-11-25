@@ -28,7 +28,12 @@
     );
     s = s.replace(/`([^`\n]+)`/g, "<code>$1</code>");
     s = s.replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>");
-    s = s.replace(/!\[([^\]]*)\]\([^)]*\)/g, function (m, alt) {
+    s = s.replace(/!\[([^\]]*)\]\(([^)]*)\)/g, function (m, alt, url) {
+      // 预览用厂商 logo（Studio 本地静态 PNG）直接出图，其余图片仍按占位芯片显示
+      var src = String(url || "");
+      if (/^\/assets\/vendor-logos\/[\w.-]+$/.test(src)) {
+        return '<img class="vlogo" src="' + src + '" alt="' + (alt || "") + '" title="' + src + '">';
+      }
       return '<span class="mdimg">🖼 ' + (alt || "image") + "</span>";
     });
     s = s.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");
@@ -145,7 +150,18 @@
         d.className = "cp" + (el.border && el.border.color ? " border-" + el.border.color : "");
         if (el.expanded) d.open = true;
         var sum = document.createElement("summary");
-        sum.textContent = pickText(el.header && el.header.title);
+        // 面板 header 前缀图标槽位：命中厂商时是 custom_icon（预览为 Studio 本地 PNG）
+        var ic = el.header && el.header.icon;
+        if (ic && ic.tag === "custom_icon" && /^\/assets\/vendor-logos\/[\w.-]+$/.test(String(ic.img_key || ""))) {
+          var im = document.createElement("img");
+          im.className = "vlogo";
+          im.src = ic.img_key;
+          im.alt = "";
+          sum.appendChild(im);
+        }
+        var st = document.createElement("span");
+        st.textContent = pickText(el.header && el.header.title);
+        sum.appendChild(st);
         if (el.header && el.header.text_size) sum.className = "ts-" + el.header.text_size;
         d.appendChild(sum);
         var kids = document.createElement("div");

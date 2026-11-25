@@ -222,6 +222,8 @@ legend { font-weight: 700; padding: 0 0 6px; font-size: 14px; color: var(--text)
   padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius);
   background: var(--card); color: var(--text); font-size: 13px;
 }
+/* 模型下拉：候选是「id → 官方名」长串，限宽等宽字体，避免挤走渲染按钮 */
+.preview-controls #p-model { max-width: 320px; font-family: ui-monospace, Consolas, monospace; }
 .preview-mount {
   background: var(--bg-soft); border-radius: var(--radius-lg); padding: 24px; box-shadow: var(--shadow);
   min-height: 220px; display: flex; justify-content: center; align-items: flex-start;
@@ -262,6 +264,9 @@ legend { font-weight: 700; padding: 0 0 6px; font-size: 14px; color: var(--text)
 .md th { background: #f7f8fa; }
 .md hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
 .md .mdimg { display: inline-block; background: #f0f1f3; border: 1px dashed var(--grey); border-radius: 6px; padding: 2px 8px; font-size: 12px; color: var(--text-2); }
+/* 预览用厂商 logo（Studio 本地静态 PNG）：与卡片内 16px 图标同尺寸 */
+.vlogo { width: 16px; height: 16px; vertical-align: -3px; object-fit: contain; border-radius: 3px; background: #f0f1f3; }
+details.cp summary .vlogo { margin-right: 6px; }
 .fc-red { color: var(--red); } .fc-green { color: var(--green); }
 .fc-turquoise { color: #00b8d4; } .fc-grey { color: var(--grey); }
 

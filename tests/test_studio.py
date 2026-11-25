@@ -229,6 +229,17 @@ class TestValidation:
         i18n = (srv._WEB_ROOT / "js" / "i18n.js").read_text(encoding="utf-8")
         assert '"lbl.panel-text-size"' in i18n
 
+    def test_studio_ui_exposes_preview_model_selector(self) -> None:
+        """预览「模型」下拉：HTML 控件 + 候选填充 + 渲染入参 + i18n 词条四处都接通."""
+        html = (srv._WEB_ROOT / "index.html").read_text(encoding="utf-8")
+        assert 'id="p-model"' in html
+        js = (srv._WEB_ROOT / "js" / "app.js").read_text(encoding="utf-8")
+        assert "fillModelOptions(data.preview)" in js
+        assert 'model: $("#p-model").value' in js
+        i18n = (srv._WEB_ROOT / "js" / "i18n.js").read_text(encoding="utf-8")
+        assert '"lbl.model"' in i18n
+        assert '"opt.model-default"' in i18n
+
     def test_studio_ui_exposes_flush_interval_ms(self) -> None:
         """流式刷新节流输入控件在 HTML / 读写两端都接通（streaming.flush_interval_ms）."""
         html = (srv._WEB_ROOT / "index.html").read_text(encoding="utf-8")
@@ -516,6 +527,158 @@ class TestPreviewEndpoint:
         code, body, _ = _req(server, "/api/preview", payload)
         assert code == 400
         assert json.loads(body)["ok"] is False
+
+
+# ---------------------------------------------------------------------------
+# HTTP：预览「模型」选择
+# ---------------------------------------------------------------------------
+
+_MODEL_YAML = (
+    "model:\n"
+    "  default: cbcn/hy4-preview\n"
+    "  provider: custom\n"
+    "custom_providers:\n"
+    "  - name: ten\n"
+    "    model: tencent/hy4-flash:free\n"
+    "    models:\n"
+    "      deepseek-v4.1-flash:\n"
+    "        context_length: 128000\n"
+    "      kimi-k5: {}\n"
+)
+
+
+@pytest.fixture()
+def model_home(home: Path) -> Path:
+    (home / "config.yaml").write_text(_MODEL_YAML, encoding="utf-8")
+    return home
+
+
+class TestPreviewModelCandidates:
+    def test_state_exposes_preview_section(self, server: str, model_home: Path) -> None:
+        preview = _get_json(server, "/api/state")["preview"]
+        assert preview["default_model"] == "cbcn/hy4-preview"  # 已配置模型为默认
+
+    def test_configured_models_lead_and_dedupe(self, server: str, model_home: Path) -> None:
+        ids = [m["id"] for m in _get_json(server, "/api/state")["preview"]["models"]]
+        assert ids[:4] == ["cbcn/hy4-preview", "tencent/hy4-flash:free", "deepseek-v4.1-flash", "kimi-k5"]
+        assert len(ids) == len(set(ids))  # 保序去重
+
+    def test_family_hit_label_shows_official_name(self, server: str, model_home: Path) -> None:
+        labels = {m["id"]: m["label"] for m in _get_json(server, "/api/state")["preview"]["models"]}
+        assert labels["tencent/hy4-flash:free"] == "tencent/hy4-flash:free → Hy4 flash"
+        # 未命中家族：无官方名映射，label 就是 id 本身
+        assert labels["space-bunny-free"] == "space-bunny-free"
+
+    def test_samples_present_without_any_config(self, server: str) -> None:
+        """没配 model/custom_providers 的机器：候选仍非空、默认回落样本池（下拉不会是空的）."""
+        preview = _get_json(server, "/api/state")["preview"]
+        assert preview["models"]
+        assert preview["default_model"] == srv._PREVIEW_FALLBACK_MODEL
+
+    def test_weird_config_sections_do_not_break_state(self, server: str, home: Path) -> None:
+        """配置形态再稀奇也只影响能挑到哪些名字，绝不打死 /api/state."""
+        (home / "config.yaml").write_text(
+            "model:\n  default: 12345\ncustom_providers:\n  - just-a-string\n  - model: [a, b]\n",
+            encoding="utf-8",
+        )
+        preview = _get_json(server, "/api/state")["preview"]
+        assert preview["default_model"]  # 非字符串 → 视为未配置，回落样本
+        assert preview["models"]
+
+    def test_providers_mapping_shape(self, server: str, home: Path) -> None:
+        """providers 写成 {slug: {...}} 映射也要能挑出模型名（不止 list 形态）."""
+        (home / "config.yaml").write_text(
+            "model:\n  default: tencent/hy4-flash:free\n"
+            "providers:\n  ten:\n    model: glm-5.2\n    models: [kimi-k5, qwen4-max]\n",
+            encoding="utf-8",
+        )
+        ids = [m["id"] for m in _get_json(server, "/api/state")["preview"]["models"]]
+        assert ids[:3] == ["tencent/hy4-flash:free", "glm-5.2", "kimi-k5"]
+
+    def test_candidates_are_bounded(self, server: str, home: Path) -> None:
+        """超大 provider 清单不刷爆下拉，但默认值一定在候选里."""
+        rows = "\n".join(f"  m{i}: {{}}" for i in range(300))
+        (home / "config.yaml").write_text(
+            "model:\n  default: cbcn/hy4-preview\ncustom_providers:\n  - models:\n" + rows + "\n",
+            encoding="utf-8",
+        )
+        preview = _get_json(server, "/api/state")["preview"]
+        assert len(preview["models"]) <= srv._PREVIEW_MODEL_MAX_OPTIONS + 1
+        assert preview["default_model"] in {m["id"] for m in preview["models"]}
+
+    def test_labels_precompute_family_mapping(self, server: str, model_home: Path) -> None:
+        """label 里已带官方名（纯前端展示，不必再回服务端问）."""
+        models = _get_json(server, "/api/state")["preview"]["models"]
+        assert all(m["id"] and m["label"].startswith(m["id"]) for m in models)
+
+
+class TestPreviewModelRendering:
+    def test_model_drives_official_name_and_logo(self, server: str, model_home: Path) -> None:
+        data = _post_ok(server, "/api/preview", {"scenario": "workflow", "model": "tencent/hy4-flash:free"})
+        assert data["meta"]["model"] == "tencent/hy4-flash:free"
+        raw = json.dumps(data["card"], ensure_ascii=False)
+        assert "Hy4 flash" in raw  # 官方模型名（混元官网口径）
+        assert "/assets/vendor-logos/hunyuan.png" in raw  # 面板 header custom_icon / footer 内联
+        assert "custom_icon" in raw
+
+    def test_unmatched_family_falls_back_to_brand(self, server: str, model_home: Path) -> None:
+        data = _post_ok(server, "/api/preview", {"scenario": "workflow", "model": "qdc/qfmodel"})
+        raw = json.dumps(data["card"], ensure_ascii=False)
+        assert "/assets/vendor-logos/" not in raw
+        assert "🍟 ⇲qfmodel" in raw  # 回落 🍟 品牌位 + ⇲ 截断
+
+    def test_default_model_used_when_omitted(self, server: str, model_home: Path) -> None:
+        data = _post_ok(server, "/api/preview", {"scenario": "workflow"})
+        assert data["meta"]["model"] == "cbcn/hy4-preview"
+        assert "Hy4 preview" in json.dumps(data["card"], ensure_ascii=False)
+
+    def test_empty_model_string_means_default(self, server: str, model_home: Path) -> None:
+        """前端首项「已配置模型（默认）」value 为空 → 服务端现读配置，改配置不必重启 Studio."""
+        data = _post_ok(server, "/api/preview", {"scenario": "workflow", "model": ""})
+        assert data["meta"]["model"] == "cbcn/hy4-preview"
+
+    def test_vendor_logo_off_override_drops_logo(self, server: str, model_home: Path) -> None:
+        data = _post_ok(
+            server, "/api/preview",
+            {"scenario": "workflow", "model": "kimi-k5", "overrides": {"display": {"vendor_logo": False}}},
+        )
+        raw = json.dumps(data["card"], ensure_ascii=False)
+        assert "/assets/vendor-logos/" not in raw
+        assert "🍟" in raw
+
+    def test_streaming_state_accepts_model(self, server: str, model_home: Path) -> None:
+        data = _post_ok(
+            server, "/api/preview",
+            {"scenario": "workflow", "state": "streaming", "model": "glm-5.3-flashx"},
+        )
+        assert data["card"]["config"]["streaming_mode"] is True
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {"scenario": "short", "model": 5},
+            {"scenario": "short", "model": "x" * 121},
+            {"scenario": "short", "model": "a\nb"},
+        ],
+    )
+    def test_invalid_model_400(self, server: str, payload: dict) -> None:
+        code, body, _ = _req(server, "/api/preview", payload)
+        assert code == 400
+        assert json.loads(body)["ok"] is False
+
+
+class TestVendorLogoStaticRoute:
+    def test_bundled_logo_served(self, server: str) -> None:
+        code, body, headers = _req(server, "/assets/vendor-logos/hunyuan.png")
+        assert code == 200
+        assert headers["Content-Type"] == "image/png"
+        assert body[:8] == b"\x89PNG\r\n\x1a\n"
+
+    @pytest.mark.parametrize("path", ["/assets/vendor-logos/evil.png", "/assets/vendor-logos/../../config.yaml"])
+    def test_only_bundled_names(self, server: str, path: str) -> None:
+        """文件名按打包资产白名单取，不接任意路径（含穿越形态）."""
+        code, _body, _ = _req(server, path)
+        assert code == 404
 
 
 # ---------------------------------------------------------------------------

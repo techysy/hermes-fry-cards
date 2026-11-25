@@ -132,6 +132,10 @@ window.FryI18n = (function () {
     "opt.oc-done": ["✅ 完成", "✅ Completed"],
     "opt.oc-error": ["❌ 出错", "❌ Error"],
     "opt.oc-aborted": ["🛑 中止", "🛑 Aborted"],
+    "lbl.model": ["模型", "Model"],
+    "opt.model-default": ["已配置模型（默认）", "Configured model (default)"],
+    "opt.model-loading": ["读取中…", "Loading…"],
+    "title.model": ["按所选模型渲染 model 字段：命中厂商家族显示官方名 + logo，未命中回落别名/⇲ 截断；也可手填任意模型 id", "Render the model field for this model: known vendor families show the official name + logo, others fall back to alias / ⇲ truncation. You can also type any model id"],
     "btn.render": ["渲染预览", "Render preview"],
     "preview.empty": ["点击「渲染预览」查看卡片", "Click “Render preview” to see the card"],
 

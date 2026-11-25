@@ -713,6 +713,14 @@ class Config:
                 return result
         return {}
 
+    def raw_section(self, key: str) -> Any:
+        """顶层原始段（只读，热重载口径同 ``_reload``）— 供 Studio 预览等旁路读取.
+
+        插件不解释这些段（如 Hermes 自己的 ``model`` / ``custom_providers``），
+        形态一律由调用方按「尽力而为」处理；结构异常时返回原值或 None，不抛错。
+        """
+        return self._reload().get(key)
+
     def _load(self) -> dict[str, Any]:
         if self._raw is not None:
             return self._raw

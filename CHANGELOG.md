@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### 新增 / Added
+- **Studio 渲染预览新增「模型」选择**：预览页在「场景 / 状态 / 结果」旁多一个模型下拉，
+  按所选模型渲染卡片（此前 footer/统一面板的模型名写死为 `mimo/mimo-x-flash`）。
+  - 候选来源（`GET /api/state` 的 `preview` 段）：已配置模型（`model.default` / `model.model`，
+    与 Hermes `_resolve_gateway_model` 同口径）→ 配置里出现过的模型（`custom_providers` /
+    `providers` / `fallback_providers`，list 与 `{slug: {...}}` 两种形态都吃）→ 内置厂商家族样本池
+    （覆盖打包内全部 logo 家族，没配 model 的机器下拉也不会是空的）；保序去重、总量有界（200）
+  - 首项「已配置模型（默认）」value 为空 → 渲染时服务端现读配置，改完 `config.yaml` 不必重启 Studio
+  - 命中厂商家族时按线上同一判定显示**官方模型名**（`tencent/hy4-flash:free` → `Hy4 flash`）并带家族
+    logo；未命中回落 🍟 品牌位 + 别名/⇲ 截断；`display.vendor_logo` 关闭时同样回落（override 生效）
+  - Studio 不碰飞书凭据，预览 logo 走新增的本地静态路由 `/assets/vendor-logos/<file>`（文件名按
+    `VENDOR_LOGO_RULES` 白名单取，不接任意路径），前端 `preview.js` 对这一路径出真图、其余图片照旧占位
+  - 流式占位卡不含 model 字段（footer/面板在完成态才生成），故「状态=流式中」时模型下拉置灰
+  - `Config.raw_section()` 新增只读顶层段访问（热重载口径同 `_reload`），供预览旁路读取 Hermes 自有配置段
+
+### 测试 / Tests
+- `TestPreviewModelCandidates`（默认值/配置优先保序去重/官方名 label/无配置兜底/怪配置不打死 state/
+  providers 映射形态/候选有界）、`TestPreviewModelRendering`（官方名+logo/未命中回落 🍟/缺省与空串走默认/
+  vendor_logo override/流式态/非法 model 400）、`TestVendorLogoStaticRoute`（PNG 出图 + 穿越与未知名 404）、
+  `test_studio_ui_exposes_preview_model_selector`（HTML/JS/i18n 三端接线）。
+  全量 **1157 passed**，ruff / mypy 零新增；另以 headless Chrome 实机目视三态（hy4-flash 出混元 logo +
+  `Hy4 flash`、未知家族出 🍟、流式中下拉置灰）。
+
+---
+
 ## [0.7.1] - 2026-11-23
 
 ### Changed
