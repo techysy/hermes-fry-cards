@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [0.7.3] - 2026-11-26
 
 ### 新增 / Added
 - **Studio「工具箱」页签（AI 摘要 + 文字翻译）**：第四个独立页签，纯旁路工具，不碰卡片链路、不写配置。
@@ -45,6 +45,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 修复 / Fixed
 - `llm._error_detail` 对 JSON `error.message` 分支未截断长度：路由代理（10R 等）会把整段渠道风控说明塞进
   `message`（实测单条数百字），一路带进 Studio 结果区与网关日志；现所有分支统一按 300 字收口
+
+### 测试 / Tests
+- `test_llm.py`（凭据读取优先级、同端点模型候选与 flash 档默认、prompt 素材隔离、成功/HTTP 错误/不可达/
+  超时/非 JSON/空内容各降级路径、`repr` 与异常消息掩码、`base_url` 缺 scheme 判掉、错误文本长度收口）、
+  `test_ai_summary.py`（开关与阈值、元素构造与钳制、insert_before→append 回落、序号递增不变式、journal
+  生命周期与 FIFO 上限、启动补投跳号与三次出列、主链路「封口后才排队 / 错误中断不摘要 / 不拖慢收尾 /
+  封卡失败仍走文本回退 / 元素预算闸门不调模型」）、`test_studio_tools.py`（`/api/state.tools` 不泄凭据、
+  `/api/tools` 入参校验、端点失败 200+人话且 key 已掩码、路由不写配置、Host 门、`ai_summary` 白名单
+  校验与深合并、保存后热读跟上）。
+  全量 **1270 passed**（新增 113 例），ruff 139 条与 mypy 17 条逐条等于 v0.7.2 基线（零新增）；
+  Studio 前端以 headless Chrome + CDP 实机目视（四页签、摘要折叠区回填与徽标联动、工具箱双栏/语言切换/
+  字数计数/错误态红字 + toast），并核对 `document.body` 内不含任何凭据。
 
 ---
 

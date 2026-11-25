@@ -1,3 +1,86 @@
+## 🍟 hermes-fry-cards v0.7.3
+
+> Studio 新增「工具箱」页签（AI 摘要 / 文字翻译），完结卡可选自动 AI 摘要——都复用 `config.yaml` 里现成的模型端点，零新增依赖。
+
+### 🧰 Studio 工具箱页签
+
+第四个独立页签，纯旁路工具，不碰卡片链路、也不写任何配置：
+
+- **摘要 / 翻译双模式**：目标语言默认「自动（中英互译）」，另备 12 种常用语言；「↕ 结果搬到输入」可把
+  摘要结果直接送去翻译
+- **模型下拉**复用预览页同一口径（已配置模型 + 端点清单 + 家族样本），默认自动挑 `flash` / `lite` /
+  `turbo` 档小模型；超时可调（1~120 秒）
+- **结果元数据**一眼看清花了多少：`本次调用：cbcn/glm-5.3-flash · 2.0s · ↑37 ↓21 tok`
+- **输入有上限**（20000 字，带 `36 / 20000` 计数）：超限直接拒、不发请求，避免误粘整份日志白烧 token
+- **凭据只在服务端**：`POST /api/tools` 现读 `config.yaml` 的 `model` / `custom_providers` /
+  `providers`（`base_url` + `api_key`），不回传浏览器、不写进仓库、不进日志（`repr` 与异常消息统一掩码）
+- 端点侧失败（无凭据 / 超时 / 401 / 上游风控 403·503）统一 200 + `ok:false` + **人话错误**，
+  入参非法仍是 400；Host 门（防 DNS rebinding）对本路由同样生效
+- **零新增运行时依赖**：`hermes_fry_cards/llm.py` 用标准库 `urllib` 自实现 OpenAI 兼容
+  `/chat/completions`，`pyproject` 依赖仍是 `lark-oapi` + `PyYAML`
+
+### 🔍 完结卡自动 AI 摘要（默认关闭）
+
+开启 `streaming.ai_summary.enabled` 后，卡片**正常完成并确认封口**，插件会用同一份端点配置调小模型，
+往同一张卡补一段「🔍 AI 摘要」：
+
+```yaml
+streaming:
+  ai_summary:
+    enabled: true
+    min_chars: 1200      # 正文不足 1200 字不调模型（短回复一个 token 都不花）
+    model: ""            # 留空 = 自动挑 flash 档
+    timeout_sec: 20
+    max_output_chars: 160
+```
+
+- **只补一个元素，绝不整卡重发**：arch 真机 CardKit 探针证实封口后的卡仍接受 `add_elements`，
+  优先插在统一面板之前（面板被 #53 剥离时回落卡片末尾）；整卡重发会把面板子元素重复计数，
+  正是 #53 撞 300305 的老路，因此弃用
+- **不拖慢收尾**：摘要在封卡成功之后异步排队（线程池 + 硬超时双保险），不碰 `already_sent`、
+  不碰文本回退、不改卡片状态机；无凭据 / 超时 / 端点报错 / 落卡失败都只是「没有摘要」，
+  卡片保持原样完成，不会停在「处理中」也不会丢面板
+- **不打扰残缺卡**：出错或被 `/stop` 掐断的卡片一律不摘要（判定用重建前捕获的 `is_error` / `is_aborted`，
+  因为落卡成功会把 state 覆写成 COMPLETED）
+- **不白烧**：卡片元素数（递归计数）逼近飞书 200 硬上限时直接跳过、连模型都不调
+- **重启不丢**：已生成但未确认落卡的摘要写进独立登记表 `state/fry-cards-ai-summary.json`，
+  下次启动补投（≤3 次、序号跳号避让 300317；重复 `element_id` 会被 300301 拒，所以不会画出两行）。
+  该表与网关重启封卡用的 `fry-cards-live.json` **完全分离**，不会把一张已完成的卡扫成「已中断」
+- **实测成本**（10R 端点 flash 档）：1.2KB 正文 → 160 字摘要，约 **850~900 token、1.7~3.7 秒**
+
+### ⚙️ 其他
+
+- Studio 配置页新增「🔍 完结卡 AI 摘要」折叠区（开关 / 触发字数 / 目标字数 / 指定模型 / 硬超时），
+  纳入 `/api/config` 白名单校验与深合并；`GET /api/state` 增 `tools` 段（端点可用性 + 来源标签 +
+  候选模型，不含任何凭据）
+- 修复 `llm._error_detail` 的 JSON `error.message` 分支未截断：上游渠道风控说明单条可达数百字，
+  会一路带进结果区与日志，现统一按 300 字收口
+- 摘要登记表加 `RLock`（口径同 `_live_cards_lock`）：多个会话并发写同一份文件时不再丢写
+- `pyproject.toml` 增加 `[tool.ruff.lint.per-file-ignores]`：中文文案模块及其测试里的全角标点按文件
+  放行 `RUF001`，与仓内既有文案口径一致，不动全局规则
+- 全量 **1270 passed**（新增 113 例），ruff 139 条 / mypy 17 条逐条等于 v0.7.2 基线（零新增）
+
+### 📦 升级
+
+```bash
+HERMES_PYTHON=~/.hermes/hermes-agent/venv/bin/python3
+$HERMES_PYTHON -m pip install -U hermes-fry-cards
+$HERMES_PYTHON -m hermes_fry_cards verify
+$HERMES_PYTHON -m hermes_fry_cards studio   # 「工具箱」页签试用摘要 / 翻译
+```
+
+> 摘要**默认关闭**，升级即装即安全。只想玩 Studio 工具箱：重启 studio 服务即可，**无需重启网关**。
+> 若要启用线上完结卡摘要：本次改动了 `controller.py` / `streaming/controller.py`（不涉及 AST 注入锚点，
+> **无需 uninstall/install 重打补丁**），但需要 `hermes gateway restart` 让新代码生效。
+
+---
+
+完整明细见 [CHANGELOG.md](https://github.com/techysy/hermes-fry-cards/blob/main/CHANGELOG.md)。
+
+**Full Changelog**: [v0.7.2...v0.7.3](https://github.com/techysy/hermes-fry-cards/compare/v0.7.2...v0.7.3)
+
+---
+
 ## 🍟 hermes-fry-cards v0.7.2
 
 > Studio 渲染预览新增「模型」选择——按指定模型看卡片，logo 与官方名口径与线上一致。
