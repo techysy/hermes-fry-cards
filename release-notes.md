@@ -1,3 +1,48 @@
+## 🍟 hermes-fry-cards v0.7.2
+
+> Studio 渲染预览新增「模型」选择——按指定模型看卡片，logo 与官方名口径与线上一致。
+
+### 👁️ 预览可按模型渲染
+
+预览页在「场景 / 状态 / 结果」旁多一个**模型**下拉，此前卡片上的模型名是写死的样本值：
+
+- **候选来源**：已配置模型（`config.yaml` 的 `model.default` / `model.model`，与 Hermes
+  `_resolve_gateway_model` 同口径）→ 配置里出现过的模型（`custom_providers` / `providers` /
+  `fallback_*`，list 与 `{slug: {...}}` 两种写法都认）→ 内置厂商家族样本池（覆盖随包分发的
+  20 家 logo 家族，没配 model 的机器下拉也不会是空的）；保序去重，总量有界
+- **默认项**「已配置模型」value 留空，渲染时服务端现读 `config.yaml`——改完配置不必重启 Studio
+- **判定链路复用真实 builder**：命中厂商家族 → 官方模型名（`tencent/hy4-flash:free` → `Hy4 flash`）
+  + 家族 logo；未命中 → 回落 🍟 品牌位 + 别名 / `⇲` 截断；`display.vendor_logo` 关闭时同样回落
+  （预览 override 也生效）
+- **Studio 不碰飞书凭据**：预览 logo 走新增的本地静态路由 `/assets/vendor-logos/<file>`，文件名按
+  厂商家族规则表白名单取（不接任意路径，穿越与未知名一律 404），出的是随包分发的同一份 PNG
+- 流式占位卡不含 model 字段（footer / 统一面板在完成态才生成），故「状态 = 流式中」时下拉置灰
+
+### ⚙️ 其他
+
+- `Config.raw_section()` 新增只读顶层段访问（热重载口径同 `_reload`），供 Studio 旁路读取
+  Hermes 自有的 `model` / `custom_providers` 段；结构异常只跳过该段，绝不打死预览页
+- 全量 **1157 passed**，ruff / mypy 零新增；另以 headless Chrome 实机目视三态（混元 logo +
+  `Hy4 flash`、未知家族回落 🍟、流式中下拉置灰）
+
+### 📦 升级
+
+```bash
+HERMES_PYTHON=~/.hermes/hermes-agent/venv/bin/python3
+$HERMES_PYTHON -m pip install -U hermes-fry-cards
+$HERMES_PYTHON -m hermes_fry_cards studio   # 预览页试用「模型」下拉
+```
+
+> 纯 Studio 预览改动，不涉及网关 hook，**无需 uninstall/install 重打补丁、无需重启网关**。
+
+---
+
+完整明细见 [CHANGELOG.md](https://github.com/techysy/hermes-fry-cards/blob/main/CHANGELOG.md)。
+
+**Full Changelog**: [v0.7.1...v0.7.2](https://github.com/techysy/hermes-fry-cards/compare/v0.7.1...v0.7.2)
+
+---
+
 ## 🍟 hermes-fry-cards v0.7.0
 
 > 统一面板厂商 logo（PNG）+ 官方模型名显示——原生体验，无 emoji。

@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [0.7.2] - 2026-11-25
 
 ### 新增 / Added
 - **Studio 渲染预览新增「模型」选择**：预览页在「场景 / 状态 / 结果」旁多一个模型下拉，
