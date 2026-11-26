@@ -77,6 +77,13 @@ def logo_pixels(data: bytes) -> list[tuple[int, int, int]]:
     return out
 
 
+def png_size(data: bytes) -> tuple[int, int]:
+    """logo PNG 的 IHDR 宽高——同样只用标准库."""
+    assert data[:8] == b"\x89PNG\r\n\x1a\n", "不是 PNG"
+    assert data[12:16] == b"IHDR", "首块不是 IHDR"
+    return struct.unpack(">II", data[16:24])
+
+
 def dark_ratio(data: bytes) -> float:
     """可见像素里「深色」的占比（亮度 < 200，亮度 = 0.2126R+0.7152G+0.0722B）.
 
@@ -174,6 +181,17 @@ class TestAgentFallback:
         for path in sorted(_asset_dir("vendor-logos").iterdir()):
             if path.name.endswith(".png"):
                 assert dark_ratio(path.read_bytes()) > 0.2, f"{path.name} 整片近白: 白底上看不见"
+
+    def test_all_logos_are_256_square(self) -> None:
+        """源图统一 256×256：卡片上图标最大渲染尺寸远小于此，640 只是上传负担.
+
+        v0.7.5 把两目录 27 张全部从 640×640 等比重采样到 256×256（体积 −49.8%）。
+        锁住尺寸口径，避免以后混进大图把上传体积悄悄涨回去。
+        """
+        for name in ("vendor-logos", "agent-logos"):
+            for path in sorted(_asset_dir(name).iterdir()):
+                if path.name.endswith(".png"):
+                    assert png_size(path.read_bytes()) == (256, 256), f"{name}/{path.name} 不是 256×256"
 
     def test_asset_dirs_have_no_name_overlap(self) -> None:
         """两目录文件名不得重复：重复会让按文件名派生的缓存键串图."""

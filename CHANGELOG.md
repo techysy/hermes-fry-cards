@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.7.5] - 2026-11-26
+
+### 变更 / Changed
+
+- **图标源图统一降到 256×256，上传体积近乎减半**：`assets/vendor-logos` 20 张 +
+  `assets/agent-logos` 7 张全部由 640×640 等比重采样为 256×256。卡片上图标最大渲染
+  尺寸远小于 640，源图分辨率纯属上传负担。预乘 alpha Lanczos 高质量重采样，仍是
+  8 位调色板 PNG（行滤波 0 + `tRNS` 透明索引），**配色与图源一律不动**：瓦片家族的
+  中性底 `(72,75,84)` 与圆角/inset 几何按 0.4× 等比缩放，Claude Code 品牌橙 `#D97757`、
+  gemini 四色渐变逐张按「误差达标里最小」的色数档位保留（多数 64 色，doubao /
+  hunyuan / xiaomimimo 96 色，minimax 192 色，gemini / codebuddy 256 色）。
+  27 张合计 **269.2 KB → 135.1 KB（−49.8%）**。
+- **逐张像素复核（纯标准库读 `PLTE`+`IDAT`，测试不引入 Pillow）**：尺寸 256×256、
+  主色与缩放前一致、白字形图标在浅色面板上的深色像素占比仍过守卫
+  （agent >0.5 / vendor >0.2）、两目录零重名；另比对未量化 Lanczos 参照物，
+  可见像素平均 RGB 误差 ≤0.6（gemini 渐变 1.48 为全库最大）。新增
+  `test_all_logos_are_256_square` 锁住尺寸口径。
+- **上传缓存键结构不变**（`app|目录/文件名|sha256[:12]`）：像素换了 → 摘要变了 →
+  每张用过的 logo 会重新上传一次，这是一次性代价，之后照旧命中缓存。
+
 ## [0.7.4] - 2026-11-26
 
 ### 新增 / Added
