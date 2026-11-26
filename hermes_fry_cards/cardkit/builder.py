@@ -500,7 +500,7 @@ def _model_with_served(data: dict) -> str | None:
     """model 字段显示名：实际服务模型直显（组合名不上卡，维护者自知）.
 
     路由代理上报的实际服务模型（``served_model``，来自响应头捕获）优先，
-    缺失回落配置模型。命中厂商家族（``logo_image_key`` 存在，即 vendor 资产命中）
+    缺失回落配置模型。命中厂商家族（``logo_image_key`` 存在且 ``logo_kind`` 非 agent）
     时显示**官方模型名**（如 ``tencent/hy4-flash:free`` → ``Hy4 flash``，原生体验
     与厂商官网一致，不走别名/⇲ 截断）；未命中保持代理原样。
     """
@@ -509,7 +509,11 @@ def _model_with_served(data: dict) -> str | None:
         return None
     served = str(data.get("served_model") or "").strip()
     model_str = served or raw
-    if str(data.get("logo_image_key") or "").strip():
+    # 官方名只跟随**厂商命中**；智能体兜底图（logo_kind=agent）不改写模型名，
+    # 否则代理池/自建网关名会连带丢掉 model_aliases 自定义别名与 ⇲ 截断。
+    # 未标 kind 的旧调用（只塞 logo_image_key）按厂商口径处理，保持兼容。
+    logo = str(data.get("logo_image_key") or "").strip()
+    if logo and str(data.get("logo_kind") or "vendor") != "agent":
         from .vendor_logos import resolve_vendor_display_name
 
         return resolve_vendor_display_name(model_str) or model_str
@@ -526,6 +530,7 @@ def _render_panel_field(
     show_context: bool,
     context_mode: str,
     logo_image_key: str = "",
+    logo_kind: str = "vendor",
 ) -> tuple[str | None, str | None]:
     """统一面板 header 字段渲染 — 与 footer 共用字段池，外加面板专属计数.
 
@@ -541,10 +546,13 @@ def _render_panel_field(
         if not v:
             return None, None
         if logo_image_key:
-            # 命中厂商：原生直显完整模型名（不走别名/⇲ 截断）；
-            # 家族 logo 由面板 header 的前缀图标槽位承载（icon_position=left）。
-            return v, v
-        # 未命中厂商：回落默认形态（别名解析 / ⇲ 截断）
+            # 有 logo（厂商命中或智能体兜底）：图标已由面板 header 前缀槽位承载
+            # （icon_position=left），这里不再叠 🍟，避免双品牌图标。
+            # 厂商命中 → 官方名直显（不走别名/⇲ 截断）；智能体兜底 → 仍走默认
+            # 别名解析 / ⇲ 截断，别把用户自定义的 model_aliases 吞掉。
+            shown = v if logo_kind != "agent" else _display_model(v)
+            return shown, shown
+        # 未命中厂商且没有兜底图（开关关 / 上传失败）：回落 🍟 品牌位
         return f"🍟 {_display_model(v)}", f"🍟 {_display_model(v)}"
     if name == "reasoning":
         # 计数恒显（💭0/🔧0 本身也是信息，口径同 claw-fry-cards；0.6.x 曾零计数隐藏）
@@ -585,6 +593,7 @@ def _build_panel_header(
     show_context: bool,
     context_mode: str,
     logo_image_key: str = "",
+    logo_kind: str = "vendor",
 ) -> tuple[str, str]:
     """组装统一面板 header 文本，返回 (en, zh)。无效/缺数据字段自动隐藏.
 
@@ -605,6 +614,7 @@ def _build_panel_header(
             show_context=show_context,
             context_mode=context_mode,
             logo_image_key=logo_image_key,
+            logo_kind=logo_kind,
         )
         if en:
             en_parts.append(en)
@@ -1047,10 +1057,13 @@ def build_complete_card(
                     compact=True,
                 )
                 unified_children.append(tool_panel)
-        # 面板展开区顶部：厂商 PNG logo 并排本轮路由模型名（header title 是纯文本
-        # 贴不了图；logo 为打包内 lobehub icons 静态 PNG，首次渲染上传换 img_key 并
-        # 缓存；上传失败/开关关闭时 footer_data 无 logo_image_key，模型字段回落 🦐）
+        # 面板展开区顶部：logo（厂商 PNG 或智能体兜底 PNG）并排本轮路由模型名
+        # （header title 是纯文本贴不了图；logo 为打包内 lobehub icons 静态 PNG，
+        # 首次渲染上传换 img_key 并按内容摘要缓存；上传失败/开关关闭时 footer_data
+        # 无 logo_image_key，模型字段回落 🦐）
         _logo_key = str((footer_data or {}).get("logo_image_key") or "").strip()
+        # kind 区分厂商图 / 智能体兜底图：兜底图不改写模型名（见 _model_with_served）
+        _logo_kind = str((footer_data or {}).get("logo_kind") or "vendor")
         # header: 字段化组合（默认 🍟 model · 💭n · 🔧n · context · ⏱️ elapsed），
         # 与 footer 共用字段池，可经 display.platforms.feishu.panel_fields 自由组合
         from ..config import Config
@@ -1070,6 +1083,7 @@ def build_complete_card(
             show_context=_panel_cfg.show_context,
             context_mode=_panel_cfg.context_display_mode,
             logo_image_key=_logo_key,
+            logo_kind=_logo_kind,
         )
         unified_panel = {
             "tag": "collapsible_panel",
@@ -1087,12 +1101,14 @@ def build_complete_card(
             "border": {"color": border_color, "corner_radius": "5px"},
             "elements": unified_children,
         }
-        # 命中厂商资产：header 前缀图标槽位放家族 PNG logo，icon_position=left
-        # 即原 🍟 的位置（标题区域最左侧）；icon_expanded_angle=0 保持正向不旋转。
+        # 取到 logo（厂商命中 / 智能体兜底）：header 前缀图标槽位放 PNG，
+        # icon_position=left 即原 🍟 的位置（标题区域最左侧）；
+        # icon_expanded_angle=0 保持正向不旋转。
         # 注意：icon_position / icon_expanded_angle 是 header 层级字段（icon 的兄弟键，
         # 与 _collapsible_panel 的箭头构造一致），嵌进 icon 对象里服务端不识别。
-        # 未命中（unknown 厂商 / 上传失败 / vendor_logo 关闭）不带 icon，模型字段
+        # 无 logo（上传失败 / vendor_logo 关闭 / 本轮无模型信息）不带 icon，模型字段
         # 回落 🍟 品牌位；子面板（思考/工具行）各自的旋转箭头不受影响。
+        # 未识别模型现在由智能体/宿主品牌图兜底，不再走到这里（见 resolve_logo_asset）。
         if _logo_key:
             unified_panel["header"]["icon"] = {
                 "tag": "custom_icon", "img_key": _logo_key,

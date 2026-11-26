@@ -91,9 +91,13 @@ _PREVIEW_MODEL_SAMPLES = (
     "claude-opus-5.5",
     "mimo-v2.6-flash-free",
     "oc/ling-3.1-flash",
-    "space-bunny-free",  # 未命中厂商家族 → 回落别名/⇲ 截断形态
+    "space-bunny-free",  # 未命中厂商家族 → 智能体兜底（本宿主品牌图）+ 别名/⇲ 截断
+    "10router/10r-free",  # 自建网关路由名：连智能体也认不出 → 宿主品牌图兜底
+    "combo/Hermes",  # 模型名里带智能体词 → Hermes 智能体图
+    "chat-mode-pool",  # 代理池入口（无厂商词）→ 宿主品牌图兜底
 )
 _VENDOR_LOGO_URL_PREFIX = "/assets/vendor-logos/"
+_AGENT_LOGO_URL_PREFIX = "/assets/agent-logos/"
 
 _CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -1017,17 +1021,28 @@ def preview_models(cfg: Config | None = None) -> dict[str, Any]:
 
 
 def _preview_logo_key(model: str) -> str:
-    """预览用 logo 引用：命中厂商家族 → Studio 本地静态 PNG 路径；未命中 → 空串.
+    """预览用 logo 引用：Studio 本地静态 PNG 路径；无模型信息 → 空串.
 
     线上 logo 走「上传飞书换 img_key」（需 FeishuClient），Studio 不碰凭据，
-    改由 ``/assets/vendor-logos/<file>`` 直接提供打包内同一份 PNG——builder 只把
-    这个值当字符串透传（footer ``![](key)`` 与面板 header ``custom_icon.img_key``），
-    渲染判定链路（官方名映射、logo 位、回落 🍟）与线上完全一致。
+    改由 ``/assets/vendor-logos/<file>`` / ``/assets/agent-logos/<file>`` 直接提供
+    打包内同一份 PNG——builder 只把这个值当字符串透传（footer ``![](key)`` 与面板
+    header ``custom_icon.img_key``），渲染判定链路（官方名映射、logo 位、回落 🍟）
+    与线上完全一致：**取图口径共用 resolve_logo_asset**（厂商优先、未识别回退
+    智能体图、再回退宿主品牌图），预览与线上不会各说一套。
     """
-    from ..cardkit.vendor_logos import resolve_vendor_logo_asset
+    return _preview_logo_url(model)[0]
 
-    asset = resolve_vendor_logo_asset(model)
-    return f"{_VENDOR_LOGO_URL_PREFIX}{asset}" if asset else ""
+
+def _preview_logo_url(model: str) -> tuple[str, str]:
+    """预览 logo 的 (URL, kind)；kind ∈ vendor / agent（空 URL 时 kind 无意义）."""
+    from ..cardkit.vendor_logos import resolve_logo_asset
+
+    asset = resolve_logo_asset(model)
+    if not asset:
+        return "", "vendor"
+    dir_name, file = asset
+    prefix = _VENDOR_LOGO_URL_PREFIX if dir_name == "vendor-logos" else _AGENT_LOGO_URL_PREFIX
+    return f"{prefix}{file}", ("vendor" if dir_name == "vendor-logos" else "agent")
 
 
 def _scenario_data(
@@ -1161,10 +1176,12 @@ def build_preview(payload: Any, home: Path | None = None) -> dict[str, Any]:
     # 厂商 logo：口径同线上封卡（display.vendor_logo 开启且命中家族才带 key），
     # Studio 用本地静态 PNG 路径替代飞书 img_key（见 _preview_logo_key）
     footer_data.pop("logo_image_key", None)
+    footer_data.pop("logo_kind", None)
     if dv.get("vendor_logo", True):
-        _logo_key = _preview_logo_key(model)
+        _logo_key, _logo_kind = _preview_logo_url(model)
         if _logo_key:
             footer_data["logo_image_key"] = _logo_key
+            footer_data["logo_kind"] = _logo_kind
 
     from ..cardkit.builder import build_complete_card, build_streaming_card_v2
 
@@ -1308,19 +1325,16 @@ class StudioHandler(BaseHTTPRequestHandler):
             return
         self._send_file(target)
 
-    def _vendor_logo(self, name: str) -> None:
-        """预览用厂商 logo PNG：只按打包内资产文件名白名单取文件（不接任意路径）."""
-        from ..cardkit.vendor_logos import VENDOR_LOGO_RULES
+    def _logo_png(self, dir_name: str, name: str) -> None:
+        """预览用 logo PNG：只按打包内资产文件名白名单取文件（不接任意路径）.
 
-        allowed = {file for _, file in VENDOR_LOGO_RULES}
-        if name not in allowed:
-            self._err(404, "not found")
-            return
-        try:
-            from importlib import resources
+        厂商目录与智能体兜底目录同一守卫：``logo_asset_bytes`` 只收纯文件名，
+        ``../``、分隔符一律拒绝；目录也只认这两个固定值。
+        """
+        from ..cardkit.vendor_logos import logo_asset_bytes
 
-            data = resources.files("hermes_fry_cards").joinpath("assets/vendor-logos", name).read_bytes()
-        except Exception:
+        data = logo_asset_bytes(dir_name, name)
+        if not data:
             self._err(404, "not found")
             return
         self._respond(200, data, "image/png", {"Cache-Control": "no-cache"})
@@ -1349,7 +1363,9 @@ class StudioHandler(BaseHTTPRequestHandler):
             elif path.startswith("/css/") or path.startswith("/js/"):
                 self._static(path.lstrip("/"))
             elif path.startswith(_VENDOR_LOGO_URL_PREFIX):
-                self._vendor_logo(path[len(_VENDOR_LOGO_URL_PREFIX):])
+                self._logo_png("vendor-logos", path[len(_VENDOR_LOGO_URL_PREFIX):])
+            elif path.startswith(_AGENT_LOGO_URL_PREFIX):
+                self._logo_png("agent-logos", path[len(_AGENT_LOGO_URL_PREFIX):])
             elif path == "/api/state":
                 self._json(200, {"ok": True, **collect_state()})
             elif path == "/api/aliases":

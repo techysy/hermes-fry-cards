@@ -27,7 +27,7 @@ from ..cardkit.markdown import (
     optimize_markdown_style,
     prepare_streaming_markdown,
 )
-from ..cardkit.vendor_logos import resolve_vendor_logo_image_key
+from ..cardkit.vendor_logos import resolve_logo_asset, resolve_vendor_logo_image_key
 from ..feishu import (
     CARDKIT_CONTENT_FAILED,
     CARDKIT_ELEMENT_LIMIT,
@@ -1331,9 +1331,11 @@ class StreamingController:
         is_aborted = session.state == SessionState.ABORTED
         all_tool_steps = session.tool_use.build_display_steps()
 
-        # 厂商路由 logo：开关开启且命中厂商资产时懒上传换 img_key（进程内缓存，
-        # 上传失败静默降级——footer 无 logo_image_key 时模型字段回落 🦐 品牌图标）
+        # 模型 logo：开关开启时懒上传换 img_key（厂商命中优先，未识别模型回退
+        # 智能体/宿主品牌图；进程内按内容摘要缓存，上传失败静默降级——footer 无
+        # logo_image_key 时模型字段回落 🦐 品牌图标）。开关关掉时厂商图与兜底图都不出。
         session.footer.pop("logo_image_key", None)
+        session.footer.pop("logo_kind", None)
         if self._cfg.vendor_logo and self._client is not None:
             _logo_model = str(
                 session.footer.get("served_model") or session.footer.get("model") or ""
@@ -1342,6 +1344,10 @@ class StreamingController:
                 _logo_key = await resolve_vendor_logo_image_key(self._client, _logo_model)
                 if _logo_key:
                     session.footer["logo_image_key"] = _logo_key
+                    _asset = resolve_logo_asset(_logo_model)
+                    session.footer["logo_kind"] = (
+                        "vendor" if _asset and _asset[0] == "vendor-logos" else "agent"
+                    )
 
         if segment_state is not None:
             segment_state.finalize_segments(len(all_tool_steps))

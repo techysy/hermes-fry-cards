@@ -151,6 +151,7 @@ streaming:
 | `max_reasoning_panels` | `3` | 超出后推理片段合并进最后一个面板（防飞书 200 元素上限） |
 | `unified_panel_min_duration` | `5` | 秒。耗时≤该值或无工具调用 → 不显示统一面板 |
 | `truncate_model_name` | `true` | `nvidia/moonshotai/kimi-k3` → `⇲kimi-k3` |
+| `vendor_logo` | `true` | 统一面板头 logo：命中厂商家族出厂商图，未识别模型回退智能体/宿主品牌图；关掉则一个图标都不出，模型名回落 🍟 品牌位 |
 
 ### 模型别名配置
 

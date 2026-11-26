@@ -33,7 +33,7 @@ dev = [
 include = ["hermes_fry_cards*"]
 
 [tool.setuptools.package-data]
-"hermes_fry_cards" = ["assets/vendor-logos/*.png"]
+"hermes_fry_cards" = ["assets/vendor-logos/*.png", "assets/agent-logos/*.png"]
 "hermes_fry_cards.studio" = ["web/*.html", "web/css/*.css", "web/js/*.js"]
 
 [tool.ruff]

@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### 新增 / Added
+
+- **未识别模型兜底智能体图标**：面板头左侧原来只在命中厂商家族时才有图标，代理池 /
+  自建网关的模型名（`qd/qfmodel`、`10router/10r-free`、`space-bunny-free` 一类）一律
+  空着。现在厂商未命中时按模型串里的智能体词取 `assets/agent-logos/`（Hermes /
+  OpenClaw / Claude Code / Codex / ZCode / kimi-code / Antigravity，7 张资产随包分发），
+  连智能体也认不出时用**本宿主品牌图**兜到最后一档——认不出模型不再等于没有图标。
+  命中厂商时口径不变（厂商图 + 官方模型名）；`display.vendor_logo` 关掉时厂商图与
+  兜底图**都**不出，模型名回落 🍟 品牌位。
+- **兜底图不改写模型名**：新增 footer 字段 `logo_kind`（`vendor` / `agent`）。官方名
+  映射只跟随厂商命中，兜底图下仍走 `model_aliases` 自定义别名与 `⇲` 截断——否则
+  用户给路由名起的人设别名会被官方名分支静默吞掉。
+- **Studio 预览同口径**：预览与线上共用 `resolve_logo_asset`，新增
+  `/assets/agent-logos/` 静态路由（与厂商目录同等做纯文件名校验，`../` 与跨目录
+  取名一律 404）；模型速选补 `10router/10r-free` / `combo/Hermes` / `chat-mode-pool`
+  三档，未命中厂商的效果可直接目视验收。
+
+### 修复 / Fixed
+
+- **7 张厂商 Logo 白底卡片上看不见**：`openai` / `moonshot` / `grok` / `dotsstudio` /
+  `upstage` / `xiaomimimo` / `kimi` 取的是 lobehub 的 dark 变体（纯白或近纯白），画在
+  浅色面板头上等于没有图标。全部换成白底可见版本（640×640 / 8 位调色板，与家族其余
+  资产同规格），并加测试锁住「每张资产都必须有足够深色像素」。
+- **Logo 上传缓存改按内容失效**：进程内 memo 的键原来只有裸文件名，资产像素换过仍
+  命中旧 `image_key`，上面那条修复在早已发过卡的进程里永远显不出来。键里加进应用维度
+  与文件内容摘要（`app|目录/文件名|sha256[:12]`），换图即重传。
+- **打包漏带资产**：`pyproject.toml` 的 package-data 此前只登记 `assets/vendor-logos/*.png`，
+  新增的兜底目录若不登记，wheel / pip 安装出来的包根本没有这些图（editable 安装能跑、
+  一发版就瞎）。已登记并实测 wheel 内 vendor-logos 20 张 + agent-logos 7 张齐全。
+- `logo_asset_bytes` 只接受纯文件名与两个固定目录，带路径分隔符或 `..` 的片段一律拒绝。
+- 英文 README 的版本徽章是静态的、停在 `v0.4.1`（落后 3 个小版本）；改为与中文 README
+  同源的动态 shields，跟随 tag 自动更新。
+- `docs/CONFIGURATION.md` 的 display 段表格补上一直缺失的 `vendor_logo` 说明。
+
+### 测试 / Tests
+
+- 新增智能体兜底解析、厂商优先、宿主品牌兜底、空模型不出图、资产白底可见性
+  （纯标准库解 PLTE + IDAT 判亮度，本仓测试不引入 Pillow）、两目录文件名零交集、
+  路径穿越拒绝、上传缓存按内容失效、开关关闭时无任何图标等用例；Studio 侧补兜底
+  预览、智能体词命中、新静态路由与穿越 404。
+- 全量 `1282 passed`（上版 1270）；ruff 139 → 138 errors、mypy 17 errors 不变，
+  与 HEAD 基线逐条比对**零新增**。
+
+---
+
 ## [0.7.3] - 2026-11-26
 
 ### 新增 / Added

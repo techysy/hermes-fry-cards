@@ -621,11 +621,39 @@ class TestPreviewModelRendering:
         assert "/assets/vendor-logos/hunyuan.png" in raw  # 面板 header custom_icon / footer 内联
         assert "custom_icon" in raw
 
-    def test_unmatched_family_falls_back_to_brand(self, server: str, model_home: Path) -> None:
+    def test_unmatched_family_falls_back_to_host_agent_logo(self, server: str, model_home: Path) -> None:
+        """未命中厂商 → 智能体兜底图（本仓宿主 Hermes），不再空着 / 不再叠 🍟.
+
+        模型名仍是默认形态（别名解析 / ⇲ 截断）——兜底图不改写模型名，
+        否则用户的 model_aliases 自定义别名会被官方名分支吞掉。
+        """
         data = _post_ok(server, "/api/preview", {"scenario": "workflow", "model": "qdc/qfmodel"})
         raw = json.dumps(data["card"], ensure_ascii=False)
         assert "/assets/vendor-logos/" not in raw
-        assert "🍟 ⇲qfmodel" in raw  # 回落 🍟 品牌位 + ⇲ 截断
+        assert "/assets/agent-logos/hermes.png" in raw
+        assert "custom_icon" in raw
+        assert "⇲qfmodel" in raw  # 默认截断形态保留
+        assert "🍟" not in raw  # 图标已承载品牌，不再叠 🍟
+
+    def test_agent_word_model_shows_agent_logo(self, server: str, model_home: Path) -> None:
+        """模型名里带智能体词（combo/Hermes）→ 对应智能体图，且模型名不被改写."""
+        data = _post_ok(server, "/api/preview", {"scenario": "workflow", "model": "combo/Hermes"})
+        raw = json.dumps(data["card"], ensure_ascii=False)
+        assert "/assets/agent-logos/hermes.png" in raw
+        assert "⇲Hermes" in raw
+
+    def test_preview_agent_logo_served_and_traversal_blocked(self, server: str) -> None:
+        code, body, headers = _req(server, "/assets/agent-logos/openclaw.png")
+        assert code == 200
+        assert headers["Content-Type"] == "image/png"
+        assert body[:8] == b"\x89PNG\r\n\x1a\n"
+        for bad in (
+            "/assets/agent-logos/../../config.yaml",
+            "/assets/agent-logos/nope.png",
+            "/assets/agent-logos/hunyuan.png",  # 厂商目录的文件名不串到兜底目录
+        ):
+            code, _body, _ = _req(server, bad)
+            assert code == 404, bad
 
     def test_default_model_used_when_omitted(self, server: str, model_home: Path) -> None:
         data = _post_ok(server, "/api/preview", {"scenario": "workflow"})

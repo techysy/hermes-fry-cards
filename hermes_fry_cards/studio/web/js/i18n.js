@@ -64,7 +64,7 @@ window.FryI18n = (function () {
     "lbl.max-panels": ["最多独立推理面板数（1~50）", "Max separate reasoning panels (1~50)"],
     "lbl.unified-min": ["面板最小耗时阈值（秒，短回复不显示）", "Min panel duration threshold (s, hidden for short replies)"],
     "lbl.truncate-model": ["面板 header 截断长模型名", "Truncate long model names in panel header"],
-    "lbl.vendor-logo": ["统一面板厂商 logo（命中模型家族时）", "Vendor logo in unified panel (on model-family match)"],
+    "lbl.vendor-logo": ["统一面板 logo（厂商图 + 未识别时智能体兜底）", "Panel logo (vendor art, agent fallback for unknown models)"],
     "lbl.panel-fields": ["面板 header 字段", "Panel header fields"],
     "lbl.panel-text-size": ["面板 header 字体", "Panel header text size"],
     "hint.panel-fields": ["ℹ️ 思考数/工具数为面板专属计数；上下文跟随上方「显示上下文」开关与显示格式；无数据的字段自动隐藏。", "ℹ️ Reasoning/tool counts are panel-exclusive; context follows the “show context” switch and format above; fields without data are hidden automatically."],

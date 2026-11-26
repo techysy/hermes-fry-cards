@@ -29,9 +29,10 @@
     s = s.replace(/`([^`\n]+)`/g, "<code>$1</code>");
     s = s.replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>");
     s = s.replace(/!\[([^\]]*)\]\(([^)]*)\)/g, function (m, alt, url) {
-      // 预览用厂商 logo（Studio 本地静态 PNG）直接出图，其余图片仍按占位芯片显示
+      // 预览用 logo（Studio 本地静态 PNG：厂商图 / 智能体兜底图）直接出图，
+      // 其余图片仍按占位芯片显示
       var src = String(url || "");
-      if (/^\/assets\/vendor-logos\/[\w.-]+$/.test(src)) {
+      if (/^\/assets\/(vendor-logos|agent-logos)\/[\w.-]+$/.test(src)) {
         return '<img class="vlogo" src="' + src + '" alt="' + (alt || "") + '" title="' + src + '">';
       }
       return '<span class="mdimg">🖼 ' + (alt || "image") + "</span>";
@@ -150,9 +151,9 @@
         d.className = "cp" + (el.border && el.border.color ? " border-" + el.border.color : "");
         if (el.expanded) d.open = true;
         var sum = document.createElement("summary");
-        // 面板 header 前缀图标槽位：命中厂商时是 custom_icon（预览为 Studio 本地 PNG）
+        // 面板 header 前缀图标槽位：厂商命中或智能体兜底时是 custom_icon（预览为 Studio 本地 PNG）
         var ic = el.header && el.header.icon;
-        if (ic && ic.tag === "custom_icon" && /^\/assets\/vendor-logos\/[\w.-]+$/.test(String(ic.img_key || ""))) {
+        if (ic && ic.tag === "custom_icon" && /^\/assets\/(vendor-logos|agent-logos)\/[\w.-]+$/.test(String(ic.img_key || ""))) {
           var im = document.createElement("img");
           im.className = "vlogo";
           im.src = ic.img_key;
