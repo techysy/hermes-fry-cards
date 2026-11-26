@@ -1,64 +1,38 @@
-## 🍟 hermes-fry-cards v0.7.3
+## 🍟 hermes-fry-cards v0.7.4
 
-> Studio 新增「工具箱」页签（AI 摘要 / 文字翻译），完结卡可选自动 AI 摘要——都复用 `config.yaml` 里现成的模型端点，零新增依赖。
+> 认不出模型不再等于没有图标：厂商未命中时回退智能体图标，连智能体也认不出就用本宿主品牌图兜底；同时修掉 7 张在白底卡片上等于隐形的厂商 Logo。
 
-### 🧰 Studio 工具箱页签
+### 🎯 未识别模型兜底智能体图标
 
-第四个独立页签，纯旁路工具，不碰卡片链路、也不写任何配置：
+面板头左侧原来只在命中厂商家族时才有图标。代理池 / 自建网关的模型名（`qd/qfmodel`、`10router/10r-free`、`space-bunny-free` 一类）名字里没有厂商词，左侧就一片空白——用户看到的「模型那头空着」有一半是这个原因。
 
-- **摘要 / 翻译双模式**：目标语言默认「自动（中英互译）」，另备 12 种常用语言；「↕ 结果搬到输入」可把
-  摘要结果直接送去翻译
-- **模型下拉**复用预览页同一口径（已配置模型 + 端点清单 + 家族样本），默认自动挑 `flash` / `lite` /
-  `turbo` 档小模型；超时可调（1~120 秒）
-- **结果元数据**一眼看清花了多少：`本次调用：cbcn/glm-5.3-flash · 2.0s · ↑37 ↓21 tok`
-- **输入有上限**（20000 字，带 `36 / 20000` 计数）：超限直接拒、不发请求，避免误粘整份日志白烧 token
-- **凭据只在服务端**：`POST /api/tools` 现读 `config.yaml` 的 `model` / `custom_providers` /
-  `providers`（`base_url` + `api_key`），不回传浏览器、不写进仓库、不进日志（`repr` 与异常消息统一掩码）
-- 端点侧失败（无凭据 / 超时 / 401 / 上游风控 403·503）统一 200 + `ok:false` + **人话错误**，
-  入参非法仍是 400；Host 门（防 DNS rebinding）对本路由同样生效
-- **零新增运行时依赖**：`hermes_fry_cards/llm.py` 用标准库 `urllib` 自实现 OpenAI 兼容
-  `/chat/completions`，`pyproject` 依赖仍是 `lark-oapi` + `PyYAML`
+- **三级取图**：厂商命中优先（口径不变，厂商图 + 官方模型名）→ 模型串里的智能体词（Hermes / OpenClaw / Claude Code / Codex / ZCode / kimi-code / Antigravity）→ **本宿主品牌图**兜到最后一档
+- **新增 7 张 `assets/agent-logos/`**，640×640 / 8 位调色板，与厂商资产同规格，随包分发
+- **兜底图不改写模型名**：新增 footer 字段 `logo_kind`，官方名映射只跟随厂商命中；兜底档仍走 `model_aliases` 自定义别名与 `⇲` 截断，不会把你给路由名起的人设别名吞掉
+- **开关语义不变**：`display.vendor_logo` 关掉时厂商图与兜底图**都**不出，模型名回落 🍟 品牌位
 
-### 🔍 完结卡自动 AI 摘要（默认关闭）
+### 🐛 7 张厂商 Logo 白底上看不见
 
-开启 `streaming.ai_summary.enabled` 后，卡片**正常完成并确认封口**，插件会用同一份端点配置调小模型，
-往同一张卡补一段「🔍 AI 摘要」：
+`openai` / `moonshot` / `grok` / `dotsstudio` / `upstage` / `xiaomimimo` / `kimi` 取的是 lobehub 的 **dark 变体**（纯白或近纯白），画在浅色面板头上等于没画。全部换成白底可见版本，并加测试锁住「每张资产都必须有足够深色像素」——此前的资产守卫只验 PNG 文件头，这正是白图能一路绿灯发到 v0.7.3 的根因。
 
-```yaml
-streaming:
-  ai_summary:
-    enabled: true
-    min_chars: 1200      # 正文不足 1200 字不调模型（短回复一个 token 都不花）
-    model: ""            # 留空 = 自动挑 flash 档
-    timeout_sec: 20
-    max_output_chars: 160
-```
+- **上传缓存改按内容失效**：进程内 memo 的键原来只有裸文件名，换过像素仍命中旧 `image_key`，修好的图在早已发过卡的进程里永远显不出来。键改为 `app|目录/文件名|sha256[:12]`，换图即重传
+- **打包漏带资产**：`pyproject.toml` 的 package-data 此前只登记 `assets/vendor-logos/*.png`。新增兜底目录已登记，实测 wheel 内 **vendor-logos 20 张 + agent-logos 7 张**齐全（不登记的话 editable 安装能跑、一发版就瞎）
+- `logo_asset_bytes` 只接受纯文件名与两个固定目录，`../` 与路径分隔符一律拒绝
 
-- **只补一个元素，绝不整卡重发**：arch 真机 CardKit 探针证实封口后的卡仍接受 `add_elements`，
-  优先插在统一面板之前（面板被 #53 剥离时回落卡片末尾）；整卡重发会把面板子元素重复计数，
-  正是 #53 撞 300305 的老路，因此弃用
-- **不拖慢收尾**：摘要在封卡成功之后异步排队（线程池 + 硬超时双保险），不碰 `already_sent`、
-  不碰文本回退、不改卡片状态机；无凭据 / 超时 / 端点报错 / 落卡失败都只是「没有摘要」，
-  卡片保持原样完成，不会停在「处理中」也不会丢面板
-- **不打扰残缺卡**：出错或被 `/stop` 掐断的卡片一律不摘要（判定用重建前捕获的 `is_error` / `is_aborted`，
-  因为落卡成功会把 state 覆写成 COMPLETED）
-- **不白烧**：卡片元素数（递归计数）逼近飞书 200 硬上限时直接跳过、连模型都不调
-- **重启不丢**：已生成但未确认落卡的摘要写进独立登记表 `state/fry-cards-ai-summary.json`，
-  下次启动补投（≤3 次、序号跳号避让 300317；重复 `element_id` 会被 300301 拒，所以不会画出两行）。
-  该表与网关重启封卡用的 `fry-cards-live.json` **完全分离**，不会把一张已完成的卡扫成「已中断」
-- **实测成本**（10R 端点 flash 档）：1.2KB 正文 → 160 字摘要，约 **850~900 token、1.7~3.7 秒**
+### 🖥 Studio 预览同口径
 
-### ⚙️ 其他
+- 预览与线上**共用 `resolve_logo_asset`**，不会各说一套
+- 新增 `/assets/agent-logos/` 静态路由，与厂商目录同等做纯文件名校验：`../`、跨目录取厂商文件名一律 404
+- 模型速选补 `10router/10r-free` / `combo/Hermes` / `chat-mode-pool` 三档，兜底效果可直接目视验收
+- 英文 README 的版本徽章是静态的、停在 `v0.4.1`（落后 3 个小版本），改为与中文 README 同源的动态 shields
+- `docs/CONFIGURATION.md` 的 display 段补上一直缺失的 `vendor_logo` 说明
 
-- Studio 配置页新增「🔍 完结卡 AI 摘要」折叠区（开关 / 触发字数 / 目标字数 / 指定模型 / 硬超时），
-  纳入 `/api/config` 白名单校验与深合并；`GET /api/state` 增 `tools` 段（端点可用性 + 来源标签 +
-  候选模型，不含任何凭据）
-- 修复 `llm._error_detail` 的 JSON `error.message` 分支未截断：上游渠道风控说明单条可达数百字，
-  会一路带进结果区与日志，现统一按 300 字收口
-- 摘要登记表加 `RLock`（口径同 `_live_cards_lock`）：多个会话并发写同一份文件时不再丢写
-- `pyproject.toml` 增加 `[tool.ruff.lint.per-file-ignores]`：中文文案模块及其测试里的全角标点按文件
-  放行 `RUF001`，与仓内既有文案口径一致，不动全局规则
-- 全量 **1270 passed**（新增 113 例），ruff 139 条 / mypy 17 条逐条等于 v0.7.2 基线（零新增）
+### ✅ 验证
+
+- 全量 **1282 passed**（上版 1270，新增 12 例）：兜底解析 / 厂商优先 / 宿主品牌兜底 / 空模型不出图 / 资产白底可见性（纯标准库解 PLTE + IDAT 判亮度，**不引入 Pillow**）/ 两目录文件名零交集 / 路径穿越拒绝 / 缓存按内容失效 / 开关关闭时无任何图标
+- ruff **139 → 138** errors、mypy **17** errors 不变，与 HEAD 基线**逐条比对零新增**
+- 真浏览器实测：15 张图标在 **16px 面板头缩略图**下浅底 / 深底均清晰可辨（此前 7 张在该尺寸下完全空白）
+- Studio 实测五档：`qd/qfmodel`、`combo/Hermes`、`10router/10r-free` → 兜底图；`tencent/hy4-flash:free`、`kimi-k5` → 厂商图 + 官方名；开关关掉 → 零 logo + 🍟 回落
 
 ### 📦 升级
 
@@ -66,275 +40,24 @@ streaming:
 HERMES_PYTHON=~/.hermes/hermes-agent/venv/bin/python3
 $HERMES_PYTHON -m pip install -U hermes-fry-cards
 $HERMES_PYTHON -m hermes_fry_cards verify
-$HERMES_PYTHON -m hermes_fry_cards studio   # 「工具箱」页签试用摘要 / 翻译
+hermes gateway restart          # 卡片链路改动需重启网关生效
 ```
 
-> 摘要**默认关闭**，升级即装即安全。只想玩 Studio 工具箱：重启 studio 服务即可，**无需重启网关**。
-> 若要启用线上完结卡摘要：本次改动了 `controller.py` / `streaming/controller.py`（不涉及 AST 注入锚点，
-> **无需 uninstall/install 重打补丁**），但需要 `hermes gateway restart` 让新代码生效。
+源码安装（editable）：
+
+```bash
+git clone https://github.com/techysy/hermes-fry-cards.git
+cd hermes-fry-cards
+$HERMES_PYTHON -m pip install -e . --no-deps
+hermes gateway restart
+systemctl --user restart hermes-fry-cards-studio   # Studio 侧（8765）
+```
+
+> 本次改了 `streaming/controller.py` 与 `cardkit/`（**不涉及 AST 注入锚点，无需 uninstall/install 重打补丁**），
+> 但需要 `hermes gateway restart` 让新代码生效。已经发过卡的机器无需清缓存——缓存键含内容摘要，换图自动重传。
 
 ---
 
 完整明细见 [CHANGELOG.md](https://github.com/techysy/hermes-fry-cards/blob/main/CHANGELOG.md)。
 
-**Full Changelog**: [v0.7.2...v0.7.3](https://github.com/techysy/hermes-fry-cards/compare/v0.7.2...v0.7.3)
-
----
-
-## 🍟 hermes-fry-cards v0.7.2
-
-> Studio 渲染预览新增「模型」选择——按指定模型看卡片，logo 与官方名口径与线上一致。
-
-### 👁️ 预览可按模型渲染
-
-预览页在「场景 / 状态 / 结果」旁多一个**模型**下拉，此前卡片上的模型名是写死的样本值：
-
-- **候选来源**：已配置模型（`config.yaml` 的 `model.default` / `model.model`，与 Hermes
-  `_resolve_gateway_model` 同口径）→ 配置里出现过的模型（`custom_providers` / `providers` /
-  `fallback_*`，list 与 `{slug: {...}}` 两种写法都认）→ 内置厂商家族样本池（覆盖随包分发的
-  20 家 logo 家族，没配 model 的机器下拉也不会是空的）；保序去重，总量有界
-- **默认项**「已配置模型」value 留空，渲染时服务端现读 `config.yaml`——改完配置不必重启 Studio
-- **判定链路复用真实 builder**：命中厂商家族 → 官方模型名（`tencent/hy4-flash:free` → `Hy4 flash`）
-  + 家族 logo；未命中 → 回落 🍟 品牌位 + 别名 / `⇲` 截断；`display.vendor_logo` 关闭时同样回落
-  （预览 override 也生效）
-- **Studio 不碰飞书凭据**：预览 logo 走新增的本地静态路由 `/assets/vendor-logos/<file>`，文件名按
-  厂商家族规则表白名单取（不接任意路径，穿越与未知名一律 404），出的是随包分发的同一份 PNG
-- 流式占位卡不含 model 字段（footer / 统一面板在完成态才生成），故「状态 = 流式中」时下拉置灰
-
-### ⚙️ 其他
-
-- `Config.raw_section()` 新增只读顶层段访问（热重载口径同 `_reload`），供 Studio 旁路读取
-  Hermes 自有的 `model` / `custom_providers` 段；结构异常只跳过该段，绝不打死预览页
-- 全量 **1157 passed**，ruff / mypy 零新增；另以 headless Chrome 实机目视三态（混元 logo +
-  `Hy4 flash`、未知家族回落 🍟、流式中下拉置灰）
-
-### 📦 升级
-
-```bash
-HERMES_PYTHON=~/.hermes/hermes-agent/venv/bin/python3
-$HERMES_PYTHON -m pip install -U hermes-fry-cards
-$HERMES_PYTHON -m hermes_fry_cards studio   # 预览页试用「模型」下拉
-```
-
-> 纯 Studio 预览改动，不涉及网关 hook，**无需 uninstall/install 重打补丁、无需重启网关**。
-
----
-
-完整明细见 [CHANGELOG.md](https://github.com/techysy/hermes-fry-cards/blob/main/CHANGELOG.md)。
-
-**Full Changelog**: [v0.7.1...v0.7.2](https://github.com/techysy/hermes-fry-cards/compare/v0.7.1...v0.7.2)
-
----
-
-## 🍟 hermes-fry-cards v0.7.0
-
-> 统一面板厂商 logo（PNG）+ 官方模型名显示——原生体验，无 emoji。
-
-### 🏷️ 厂商 logo 上卡
-
-命中模型家族时，统一面板 header 的**前缀图标槽位**（原 🍟 品牌位）渲染厂商 PNG logo：
-
-- `icon_position: "left"`（header 层级字段，原 🍟 位置，logo 在文字前面）
-- `icon_expanded_angle: 0`——不随面板展开旋转，展开/收起箭头让位于 logo
-- 16px 尺寸（默认 10px 过小）
-- footer 的 model 字段行首内联同款 PNG
-- 未命中 / 上传失败 / 开关关闭：header 回落默认箭头，footer 回落 🍟 + 原样模型名
-
-logo 资产来自 [@lobehub/icons-static-png](https://github.com/lobehub/lobe-icons)，随包分发 20 家：
-DeepSeek / Qwen / Zhipu / Claude / Gemini / Kimi / Moonshot / MiniMax / Doubao / **Hunyuan** /
-StepFun / OpenAI / Grok / LongCat / MiMo / dots / Muse / Ling / Upstage / CodeBuddy。
-首次渲染懒上传换取 img_key（进程内缓存 + 并发去重），失败静默降级，不影响出卡。
-
-### 🪪 官方模型名
-
-logo 命中家族时，model 字段显示厂商官网口径名（剥渠道前缀与 `:tag`，官方家族拼写 + 变体尾巴）：
-
-```
-tencent/hy4-flash:free  →  Hy4 flash      （腾讯混元官网口径）
-deepseek-v4.1-flash     →  DeepSeek v4.1 flash
-qwen4-max               →  Qwen 4-max
-```
-
-未命中家族时维持 v0.6.7 起的实际服务模型直显。家族映射修正：`hy4` → 腾讯混元 Hunyuan
-（hy = Hy 家族，CodeBuddy 只是分发渠道——此前误挂 CodeBuddy logo）。
-
-### ⚙️ 其他
-
-- `img.alt` 必须是 PlainText 对象（裸字符串 CardKit 报 10002，API 实测定位修复）
-- `display.vendor_logo` 开关（默认开启），Studio 统一面板区已接线
-- 全量 **1134 passed**
-
-### 📦 升级
-
-纯运行时改动，注入体不变——`git pull` / `pip install -U` 后重启服务即可：
-
-```bash
-HERMES_PYTHON=~/.hermes/hermes-agent/venv/bin/python3
-$HERMES_PYTHON -m pip install -U hermes-fry-cards
-systemctl --user restart hermes-gateway hermes-fry-cards-studio
-```
-
-（从 0.6.8 之前的版本升级，或 `status` 提示 hook 过期时，仍需 `uninstall + install`。）
-
----
-
-## 🍟 hermes-fry-cards v0.6.8
-
-> v0.6.7 路由可见性实机回归修复：捕获在真实 OpenAI SDK 上从未生效，现已修复。
-
-### 🔧 修复（v0.6.7 回归）
-
-实机验证发现 v0.6.7 的 body 模型捕获在真实环境**全程未生效**（卡片仍显示组合名），
-两个独立根因：
-
-1. **SDK 包装器误判**：OpenAI SDK 的 `chat.completions.create` 被 `required_args`
-   同步包装器包过（`__wrapped__` 存在、`iscoroutinefunction` 返回 False），安装器
-   把这个检测当门控，真实客户端被整只跳过。改为双模式包装——按「返回值是否
-   awaitable」分流，不再依赖协程检测。
-2. **START 安装点缓存键不匹配**：START 注入点处 locals 只有 `_quick_key`，
-   与 `_agent_cache` 的键不匹配，查找落空。新增 `ensure_served_model_capture_ctx`：
-   经 `turn_ctx.agent_holder` 直通本轮 agent，接入 tool / answer 钩子——首个
-   delta 回调即安装，多步回合从第二次 API 调用起全部捕获（含最终响应）。
-
-### ⚙️ 其他
-
-- 全量 **1119 passed**，新增 3 项回归测试
-
-### 📦 升级
-
-**注入体有改动，必须重跑 `uninstall + install`**：
-
-```bash
-HERMES_PYTHON=~/.hermes/hermes-agent/venv/bin/python3
-$HERMES_PYTHON -m pip install -U hermes-fry-cards
-$HERMES_PYTHON -m hermes_fry_cards uninstall
-$HERMES_PYTHON -m hermes_fry_cards install
-systemctl --user restart hermes-gateway
-```
-
----
-
-## 🍟 hermes-fry-cards v0.6.7
-
-> 路由可见性：卡片直接显示本轮实际服务的模型——纯插件侧实现，10R/LiteLLM 式代理零改动。
-
-### 🛰️ 卡片显示实际路由模型
-
-10Router 等路由代理会把**实际服务的模型名**回写进响应体 / 流式 chunk 的 `model` 字段
-（实测：请求 `cbcn/hy4-preview`，回来 `model: hy4-preview`——渠道前缀剥掉露出实际模型），
-但响应头里没有路由信息，此前卡片上的 🍟 model 字段只能看到配置名。
-
-本版在插件侧补齐捕获链（利用 Hermes 自带的 `agent.last_served_model` 槽位，#54864）：
-
-- **双面包裹**：非流式主路径（`agent.client.chat.completions.create`）与流式每请求客户端
-  （`_create_request_openai_client` 工厂）全部覆盖，create 返回 / 首 chunk 到达时捕获；
-- **与 Hermes 头捕获共存**：头捕获每响应先跑（无头置 None），body 捕获后写获胜；
-- **START 钩子回合开始即装**（幂等），暖缓存会话从本轮第一次 API 调用起就覆盖；
-- **完成态渲染**：footer 与统一面板的 model 字段在实际模型与配置名不同时显示
-  `🍟 配置名 → 实际模型`；相同 / 缺失与旧版渲染逐字一致；
-- **全程 fail-open**：同步面、anthropic api_mode、旧版 Hermes、会话冷启动首次回复
-  ——一律无值不加箭头，不影响任何现有行为。
-
-**路由代理无需任何改动**；Hermes 核心无需改动。
-
-### ⚙️ 其他
-
-- 全量 **1116 passed**，新增 8 项专项测试，ruff / mypy 零新增
-
-### 📦 升级
-
-**本版改动了 START 钩子注入体，必须重跑 `uninstall + install`**：
-
-```bash
-HERMES_PYTHON=~/.hermes/hermes-agent/venv/bin/python3
-$HERMES_PYTHON -m pip install -U hermes-fry-cards
-$HERMES_PYTHON -m hermes_fry_cards uninstall
-$HERMES_PYTHON -m hermes_fry_cards install
-systemctl --user restart hermes-gateway               # 或 hermes gateway restart
-```
-
-### 🔍 升级后自查
-
-| 检查项 | 正常表现 |
-| --- | --- |
-| `$HERMES_PYTHON -m hermes_fry_cards status` | 所有钩子 installed |
-| 带工具调用的多步回复（会话第二轮起） | 完成态卡片 model 字段显示 `🍟 配置名 → 实际模型` |
-| 单轮单次调用且会话冷启动的首次回复 | 无箭头（agent 未进缓存，预期 fail-open），之后恢复 |
-
----
-
-## 🍟 hermes-fry-cards v0.6.6
-
-> 健壮性复查专项：修复 v0.6.5 热重载在生产上失效的回归，加固配置重载与流式降级边缘。
-
-### 🚀 重点修复
-
-1. **热重载生产回归修复（P1）**：
-   - v0.6.5 的 `_reload()` 无条件短路返回 `_raw`，而生产中 `_platform_cfg()` 读凭据会经
-     `_load()` 把磁盘配置固化进 `_raw`，导致样式热重载（#71）与 `show_reasoning` 热重载（#17）
-     在生产上永久失效。
-   - 修复后 `_load()` 落盘时标记 `_raw_is_disk`，生产一律走 `(mtime_ns, size)` 热重载；
-     `_raw` 短路仅保留给测试注入。
-2. **`_reload` 边缘加固**：
-   - 顶层非 dict YAML（列表/标量）回落 `{}`，不再把 `None` 抛给调用方；
-   - 坏 YAML 解析失败记录 key，防逐 delta 重解析刷日志；用户保存完成后自动恢复；
-   - `stat` 失败（编辑器原子替换窗口）回落上次有效配置。
-3. **换卡重置流式降级标记**：拆卡 / 切卡 / 重定向建新卡时重置 `stream_closed`，
-   新卡是新的 CardKit 流式会话，不继承旧卡的 300309 降级状态。
-4. **`_interrupted_tails` 容量上限**：打断尾巴记录 FIFO 64 条，防长期运行无界增长。
-5. **合并重复的 `panel_expanded` 定义**（v0.6.5 引入的重名覆盖）。
-
-### ⚙️ 其他
-
-- `test_studio` 对代理环境免疫（loopback 无代理 opener）
-- 全量 **1103 passed**，新增 7 项健壮性回归测试，ruff / mypy 零新增
-
-### 📦 升级
-
-本版注入点无变化，常规升级即可（无需重跑 `uninstall + install`）：
-
-```bash
-HERMES_PYTHON=~/.hermes/hermes-agent/venv/bin/python3
-$HERMES_PYTHON -m pip install -U hermes-fry-cards
-systemctl --user restart hermes-gateway               # 或 hermes gateway restart
-```
-
----
-
-## 🍟 hermes-fry-cards v0.6.5
-
-> 体验与热重载升级：消灭 Hermes 核心独立 reasoning 补发重复消息；支持样式配置免重启热重载与无色带清爽标题栏（#71）。
-
-### 🚀 重点修复与改进
-
-1. **消除 Hermes 核心补发的重复独立 reasoning post 消息**：
-   - Hermes 0.23+（commit `67664e2`，#7251）在流式结束后会自动将 reasoning 作为独立 post 消息补发到聊天。
-   - 由于卡片内已完整流式渲染 💭 思考折叠面板，此补发会导致同一份思考双显且卡外多一条消息。
-   - 补丁器在卡片完成收尾时自动清除 `agent_result["last_reasoning"]`，彻底杜绝卡外多余的独立思考消息。
-2. **卡片样式配置热重载（#71）**：
-   - `_streaming_sec` 全面接入 `_reload()` 结合 `(mtime_ns, size)` 动态重载体系，在 `config.yaml` 中修改任何 `streaming.*` 样式配置后，**无需重启网关进程**，下一张新建的卡片立刻按新配置渲染。
-   - 正在运行的卡片在生命周期内使用自己的配置快照，流式更新到封卡始终保持风格一致，杜绝跑一半突变。
-3. **无色带标题栏支持（#71）**：
-   - 支持配置 `streaming.header.template: default`，关掉彩色彩条标题栏（blue/green/red），仅保留状态图标与文字，视觉清爽高级。
-4. **过程框默认展开控制（#71）**：
-   - 支持通过 `streaming.process_expanded: true/false` 自由指定思考/工具过程框默认是展开还是收起。
-
-### ⚙️ 其他
-
-- 全量 **1096 passed**，ruff / mypy 零新增
-
-### 📦 升级
-
-```bash
-HERMES_PYTHON=~/.hermes/hermes-agent/venv/bin/python3
-$HERMES_PYTHON -m pip install -U hermes-fry-cards
-$HERMES_PYTHON -m hermes_fry_cards uninstall
-$HERMES_PYTHON -m hermes_fry_cards install
-systemctl --user restart hermes-gateway
-```
-
----
-
-完整明细见 [CHANGELOG.md](https://github.com/techysy/hermes-fry-cards/blob/main/CHANGELOG.md)。
-
-**Full Changelog**: [v0.6.4...v0.6.5](https://github.com/techysy/hermes-fry-cards/compare/v0.6.4...v0.6.5)
+**Full Changelog**: [v0.7.3...v0.7.4](https://github.com/techysy/hermes-fry-cards/compare/v0.7.3...v0.7.4)
