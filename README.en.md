@@ -98,6 +98,8 @@ hermes gateway restart
 streaming:
   enabled: true
   chat_types: [dm, group]  # Allowed chat types for cards; default = all types (omit to keep old behavior)
+  # show_reasoning: true   # Card-level reasoning override (highest priority). Local models with native
+                           # reasoning_content: platform-level false stops out-of-card leaks, this true keeps 💭
   header_enabled: true
   footer:
     enabled: true
@@ -116,6 +118,7 @@ display:
 | `header.min_duration` | Quick-reply trim threshold (seconds, 0 = always show) | `0` |
 | `footer.enabled` | Footer metadata bar | `false` |
 | `panel_expanded` | Keep completion panels expanded | `false` |
+| `streaming.show_reasoning` | Card-level reasoning override, highest priority: `streaming.show_reasoning` → `display.platforms.feishu.show_reasoning` → `display.show_reasoning` → `true`. Local models (native `reasoning_content`): set platform-level `false` to stop out-of-card leaks, card-level `true` to keep the 💭 panel | unset (follow platform chain) |
 | `chat_types` | Allowed chat types for cards (`dm`/`group`...); omit = all types. Types outside the list fall back to plain text | all (omit) |
 | `content_lang` | Language for in-content notices (table compaction / truncation): `zh` / `en` | `zh` |
 | `width_mode` | Card width (`default` / `compact` / `fill`) | `default` |
@@ -125,7 +128,7 @@ display:
 | `ai_summary.timeout_sec` | Hard timeout for the summary call — a timeout only means "no summary", never a delayed or stuck card | `20` |
 | `ai_summary.max_output_chars` | Target summary length (40–600), also enforced as an output-token cap | `160` |
 | `show_tool_use` | Show tool-use panels | `true` |
-| `show_reasoning` | Show reasoning process | `false` |
+| `show_reasoning` | Show reasoning process (overridable per-card via `streaming.show_reasoning`) | `true` |
 | `model_aliases_enabled` | Master switch for model aliases; `false` falls back to truncation (config kept) | `true` |
 | `gateway.group_security_boundary.enabled` | Group security boundary master switch (output boundary on group replies; DMs unaffected) | `false` |
 | `gateway.group_security_boundary.allow_chats` | Exempt-group whitelist (`oc_xxx`, one per line; listed groups skip the boundary) | `[]` |

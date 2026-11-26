@@ -274,6 +274,9 @@
     setVal("f-ais-timeout", ais.timeout_sec == null ? 20 : ais.timeout_sec);
     if (ais.model) setVal("f-ais-model", ais.model);
     setCheck("f-show-reasoning", d.show_reasoning);
+    // 卡片级推理覆盖：null=未设（跟随平台链）；与平台开关互不覆盖
+    var csr = d.show_reasoning_override;
+    setVal("f-card-show-reasoning", csr === null || csr === undefined ? "inherit" : (csr ? "on" : "off"));
     setCheck("f-show-tool-use", d.show_tool_use);
     setCheck("f-show-context", d.show_context);
     setCheck("f-truncate-model", d.truncate_model_name);
@@ -334,12 +337,16 @@
     });
     var panelFields = pickedPanel;
 
+    var csrSel = $("#f-card-show-reasoning").value;
+    var cardShowReasoning = csrSel === "inherit" ? null : csrSel === "on";
+
     return {
       streaming: {
         enabled: $("#f-enabled").checked,
         content_lang: $("#f-content-lang").value,
         chat_types: chatTypes,
         panel_expanded: $("#f-panel-expanded").checked,
+        show_reasoning: cardShowReasoning,
         completion_notice: $("#f-completion-notice").checked,
         completion_notice_text: $("#f-completion-notice-text").value,
         width_mode: $("#f-width").value,

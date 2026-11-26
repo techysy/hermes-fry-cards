@@ -2408,6 +2408,122 @@ class TestOnThinking:
         assert session.segment_state.segments[0].type == "reasoning"
 
 
+class TestCardShowReasoningOverride:
+    """卡片级 streaming.show_reasoning 覆盖（外部反馈：本地模型防泄漏与 💭 面板解耦）."""
+
+    def test_on_reasoning_card_true_platform_false(self) -> None:
+        """核心场景：平台级 false（防卡外泄漏）+ 卡片级 true → 原生推理照常入卡."""
+        ctrl = _setup_ctrl()
+        ctrl._cfg._reload = lambda: {  # type: ignore[assignment]
+            "streaming": {"show_reasoning": True},
+            "display": {"platforms": {"feishu": {"show_reasoning": False}}},
+        }
+        session = _make_session("msg_card_on")
+        ctrl._sessions["msg_card_on"] = session
+
+        with patch.object(ctrl, "_schedule_flush"):
+            assert ctrl.on_reasoning(message_id="msg_card_on", text="native thought") is True
+
+        assert session.segment_state.segments[0].type == "reasoning"
+        assert session.segment_state.segments[0].text == "native thought"
+
+    def test_on_reasoning_card_false_platform_true(self) -> None:
+        ctrl = _setup_ctrl()
+        ctrl._cfg._reload = lambda: {  # type: ignore[assignment]
+            "streaming": {"show_reasoning": False},
+            "display": {"platforms": {"feishu": {"show_reasoning": True}}},
+        }
+        session = _make_session("msg_card_off")
+        ctrl._sessions["msg_card_off"] = session
+
+        with patch.object(ctrl, "_schedule_flush"):
+            assert ctrl.on_reasoning(message_id="msg_card_off", text="hidden") is False
+
+        assert session.segment_state.segments == []
+
+    def test_gate_early_exit_keeps_answer_flowing(self) -> None:
+        """门控只丢推理增量：答案增量不受影响，照常入卡."""
+        ctrl = _setup_ctrl()
+        ctrl._cfg._reload = lambda: {  # type: ignore[assignment]
+            "streaming": {"show_reasoning": False},
+            "display": {"platforms": {"feishu": {"show_reasoning": True}}},
+        }
+        session = _make_session("msg_gate_ans")
+        ctrl._sessions["msg_gate_ans"] = session
+
+        with patch.object(ctrl, "_schedule_flush"):
+            assert ctrl.on_reasoning(message_id="msg_gate_ans", text="drop me") is False
+            assert ctrl.on_answer(message_id="msg_gate_ans", text="real answer") is True
+
+        types = [s.type for s in session.segment_state.segments]
+        assert types == ["answer"]
+        assert session.segment_state.segments[0].text == "real answer"
+
+    def test_thinking_tag_respects_card_override(self) -> None:
+        """<thinking> 标签路径与原生增量共用同一开关：卡片级 true 时推理入卡."""
+        ctrl = _setup_ctrl()
+        ctrl._cfg._reload = lambda: {  # type: ignore[assignment]
+            "streaming": {"show_reasoning": True},
+            "display": {"platforms": {"feishu": {"show_reasoning": False}}},
+        }
+        session = _make_session("msg_card_think")
+        ctrl._sessions["msg_card_think"] = session
+
+        with patch.object(ctrl, "_schedule_flush"):
+            ctrl._on_thinking_segment(session, "<thinking>thoughts</thinking>\nanswer")
+
+        types = [s.type for s in session.segment_state.segments]
+        assert types == ["reasoning", "answer"]
+
+    def test_gate_drop_logs_source_once(self, caplog: pytest.LogCaptureFixture) -> None:
+        """早退带 debug 日志说清是哪一级配置关掉的；同一来源只记一条，不逐 delta 刷屏."""
+        ctrl = _setup_ctrl()
+        ctrl._cfg._reload = lambda: {  # type: ignore[assignment]
+            "display": {"platforms": {"feishu": {"show_reasoning": False}}},
+        }
+        session = _make_session("msg_gate_log")
+        ctrl._sessions["msg_gate_log"] = session
+
+        with caplog.at_level(logging.DEBUG, logger="hermes_fry_cards"):
+            assert ctrl.on_reasoning(message_id="msg_gate_log", text="a") is False
+            assert ctrl.on_reasoning(message_id="msg_gate_log", text="b") is False
+
+        records = [r for r in caplog.records if "on_reasoning" in r.getMessage()]
+        assert len(records) == 1
+        assert "display.platforms.feishu.show_reasoning" in records[0].getMessage()
+
+    def test_gate_log_names_card_level_source(self, caplog: pytest.LogCaptureFixture) -> None:
+        ctrl = _setup_ctrl()
+        ctrl._cfg._reload = lambda: {"streaming": {"show_reasoning": False}}  # type: ignore[assignment]
+        session = _make_session("msg_gate_card")
+        ctrl._sessions["msg_gate_card"] = session
+
+        with caplog.at_level(logging.DEBUG, logger="hermes_fry_cards"):
+            assert ctrl.on_reasoning(message_id="msg_gate_card", text="a") is False
+
+        records = [r for r in caplog.records if "on_reasoning" in r.getMessage()]
+        assert len(records) == 1
+        assert "streaming.show_reasoning" in records[0].getMessage()
+
+    def test_gate_reenabled_then_disabled_logs_again(self, caplog: pytest.LogCaptureFixture) -> None:
+        """开→关切换后再次早退要重新记日志（/reasoning 运行时切换可观测）."""
+        ctrl = _setup_ctrl()
+        state = {"on": False}
+        ctrl._cfg._reload = lambda: {"streaming": {"show_reasoning": state["on"]}}  # type: ignore[assignment]
+        session = _make_session("msg_gate_toggle")
+        ctrl._sessions["msg_gate_toggle"] = session
+
+        with caplog.at_level(logging.DEBUG, logger="hermes_fry_cards"), patch.object(ctrl, "_schedule_flush"):
+            assert ctrl.on_reasoning(message_id="msg_gate_toggle", text="a") is False
+            state["on"] = True
+            assert ctrl.on_reasoning(message_id="msg_gate_toggle", text="b") is True
+            state["on"] = False
+            assert ctrl.on_reasoning(message_id="msg_gate_toggle", text="c") is False
+
+        records = [r for r in caplog.records if "on_reasoning" in r.getMessage()]
+        assert len(records) == 2
+
+
 class TestCronDeliver:
     @pytest.mark.parametrize(
         ("enabled", "content"),

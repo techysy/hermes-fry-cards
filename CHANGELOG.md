@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### 新增 / Added
+
+- **卡片级推理面板开关 `streaming.show_reasoning`（外部网友反馈，本地部署模型场景）**：
+  此前卡片 💭 面板与 Hermes 核心 `_reasoning_leads`（💭 前置块 / 卡外 interim 泄漏门控）
+  共用同一条 `display.platforms.feishu.show_reasoning → display.show_reasoning` 链——
+  本地模型（vLLM + Qwen3 thinking 等原生 `reasoning_content` 输出）用户防卡外泄漏必须
+  平台级设 false，但这同时把卡片的 💭 面板/计数彻底关掉，两个语义相反的需求无法解耦。
+  现新增卡片级覆盖，优先级最高：`streaming.show_reasoning` →
+  `display.platforms.feishu.show_reasoning` → `display.show_reasoning` → 默认 true
+  （与 `streaming.process_expanded` 覆盖 `panel_expanded` 同一模式）。平台级语义不变，
+  核心门控行为不动；未设卡片级键时行为与旧版完全一致。热更新生效（走 `_reload`）。
+- **`on_reasoning` 门控早退可观测**：原生推理增量被配置关掉时记一条 `logger.debug`，
+  说明是哪一级配置键关掉的（`Config.show_reasoning_value()` 返回生效值+来源）；
+  同一来源只记一次、开→关切换后重记，不逐 delta 刷屏。
+- **Studio 三态控件**：「统一面板」区新增「卡片推理面板覆盖」下拉（跟随平台 / 强制开 /
+  强制关）；`/api/config` 白名单接受 `streaming.show_reasoning`（bool 或 null=清除覆盖
+  回落平台链），`/api/state.display.show_reasoning_override` 单独暴露显式覆盖值，
+  预览（流式占位卡 💭 面板 + 完成态 💭 段渲染）按卡片级优先的生效值渲染。
+- **测试**：三级优先级解析（卡片 true/平台 false、卡片 false/平台 true、缺省回落）、
+  热重载改键/删键、门控早退不影响答案入卡、早退日志来源与去重、Studio 校验/合并/
+  null 清除/端到端 roundtrip/预览覆盖/UI 接线，共 20+ 用例。
+- **文档**：docs/CONFIGURATION.md 新增「本地模型防泄漏 + 保留 💭」场景节与配置表行；
+  README.md / README.en.md / hermes-fry-cards-skill.md / AGENTS.md 同步。
+
 ## [0.7.5] - 2026-11-26
 
 ### 变更 / Changed

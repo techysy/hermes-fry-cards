@@ -99,8 +99,9 @@ $HERMES_PYTHON -m hermes_fry_cards uninstall
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
 | `streaming.enabled` | 启用流式卡片 | `true` |
+| `streaming.show_reasoning` | 卡片级推理面板覆盖（优先级最高，未设回落平台链）。本地模型防卡外泄漏：平台级 false + 这里 true 单独保留 💭 | 未设（跟随平台链） |
 | `show_tool_use` | 展示工具调用面板 | `true` |
-| `show_reasoning` | 展示推理过程 | `true`（2026-08-24 起默认开启，commit ca5a74c） |
+| `show_reasoning` | 展示推理过程（可被 `streaming.show_reasoning` 覆盖） | `true`（2026-08-24 起默认开启，commit ca5a74c） |
 | `show_context` | 统一面板 header 显示上下文窗口 | `true` |
 | `context_display_mode` | `text`/`bar`/`text_bar`（block 已废弃） | `text`（2026-08-21 起，commit 9c76473） |
 | `max_reasoning_panels` | 最多保留独立推理面板数，超出合并防溢出 | `3` |
@@ -134,7 +135,7 @@ $HERMES_PYTHON -m hermes_fry_cards uninstall
 
 | 类型 | 配置项 |
 |------|--------|
-| **热更新**（改 config.yaml 下一条消息生效） | show_reasoning / show_tool_use / show_context / context_display_mode / max_reasoning_panels / unified_panel_min_duration / truncate_model_name |
+| **热更新**（改 config.yaml 下一条消息生效） | show_reasoning（含卡片级 streaming.show_reasoning 覆盖）/ show_tool_use / show_context / context_display_mode / max_reasoning_panels / unified_panel_min_duration / truncate_model_name |
 | **需重启网关** | 插件代码、streaming.enabled、header/footer/body/width_mode 结构类配置、飞书凭据 |
 
 ## 发布流程

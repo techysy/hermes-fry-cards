@@ -273,6 +273,7 @@ _STREAMING_SCALARS: dict[str, str] = {
     "content_lang": "lang",
     "chat_types": "chat_types",
     "panel_expanded": "bool",
+    "show_reasoning": "bool",
     "width_mode": "width",
     "flush_interval_ms": "flushms",
 }
@@ -397,7 +398,22 @@ def validate_payload(payload: Any) -> dict[str, Any]:
     )
 
     result: dict[str, Any] = {}
+    # 卡片级推理覆盖：null = 清除覆盖（回落平台链），与 bool 一样是合法显式值；
+    # 先摘出再走 bool 校验，避免 _expect_bool 拒掉 None
+    raw_streaming = payload.get("streaming")
+    clear_reasoning = (
+        isinstance(raw_streaming, dict)
+        and "show_reasoning" in raw_streaming
+        and raw_streaming["show_reasoning"] is None
+    )
+    if clear_reasoning:
+        payload = dict(payload)
+        sec_copy = dict(raw_streaming)
+        sec_copy.pop("show_reasoning")
+        payload["streaming"] = sec_copy
     streaming = _validate_section(payload, "streaming", streaming_spec)
+    if clear_reasoning:
+        streaming["show_reasoning"] = None
     if streaming:
         result["streaming"] = streaming
     display = _validate_section(payload, "display", _DISPLAY_KEYS)
@@ -493,6 +509,12 @@ def merge_managed(base: dict[str, Any], validated: dict[str, Any]) -> tuple[dict
                         sub[k2] = v2
             else:
                 path = f"streaming.{key}"
+                if value is None:
+                    # 显式 null = 删除该受管键（卡片级推理覆盖「跟随平台」态）
+                    if key in sec:
+                        del sec[key]
+                        changed.append(path)
+                    continue
                 if _track(path, sec.get(key, _MISSING), key in sec, value):
                     sec[key] = value
 
@@ -810,6 +832,21 @@ def _collect_status(home: Path) -> dict[str, Any]:
     return st
 
 
+def _card_show_reasoning_override(cfg: Config) -> bool | None:
+    """卡片级推理覆盖的显式值（streaming.show_reasoning）；未设 → None（跟随平台链）."""
+    sec = cfg._streaming_sec()
+    if "show_reasoning" in sec:
+        return bool(sec["show_reasoning"])
+    return None
+
+
+def _effective_show_reasoning(sv: dict[str, Any], dv: dict[str, Any]) -> bool:
+    """预览用生效值：卡片级覆盖优先，回落 display 链（与 Config.show_reasoning 同序）."""
+    if "show_reasoning" in sv:
+        return bool(sv["show_reasoning"])
+    return bool(dv.get("show_reasoning", True))
+
+
 def collect_state(home: Path | None = None) -> dict[str, Any]:
     """GET /api/state — 当前受管配置值（经 Config 属性，含平台覆盖优先级）+ 状态诊断."""
     home = home or hermes_home()
@@ -843,6 +880,8 @@ def collect_state(home: Path | None = None) -> dict[str, Any]:
     }
     display = {
         "show_reasoning": cfg.show_reasoning,
+        # 卡片级覆盖是否显式存在（null=未设跟随平台链）；show_reasoning 已是合并后的生效值
+        "show_reasoning_override": _card_show_reasoning_override(cfg),
         "show_tool_use": cfg.show_tool_use,
         "show_context": cfg.show_context,
         "truncate_model_name": cfg.truncate_model_name,
@@ -1196,13 +1235,18 @@ def build_preview(payload: Any, home: Path | None = None) -> dict[str, Any]:
             tool_steps=(steps or None) if common["show_tool_use"] else None,
             elapsed_ms=elapsed_ms,
             show_tool_use=common["show_tool_use"],
-            show_reasoning=dv.get("show_reasoning", False),
+            show_reasoning=_effective_show_reasoning(sv, dv),
             show_streaming_element=True,
             header_enabled=common["header_enabled"],
             text_size=common["body_text_size"],
             width_mode=common["width_mode"],
         )
     else:
+        if not _effective_show_reasoning(sv, dv):
+            # 卡片级关推理时完成态也不渲染 💭 段（对齐线上：增量早退，段根本不会存在）
+            from ..streaming.segments import SegmentType
+
+            segments = [s for s in segments if s.type != SegmentType.REASONING]
         card = build_complete_card(
             segments=segments,
             all_tool_steps=steps,

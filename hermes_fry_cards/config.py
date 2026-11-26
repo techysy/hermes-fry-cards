@@ -196,21 +196,40 @@ class Config:
         lang = str(sec.get("content_lang", "zh")).strip().lower()
         return lang if lang in ("zh", "en") else "zh"
 
+    def show_reasoning_value(self) -> tuple[bool, str]:
+        """卡片推理开关的 (生效值, 来源键) — 供门控早退日志说明是哪一级配置关掉的.
+
+        来源键：``streaming.show_reasoning`` / ``display.platforms.feishu.show_reasoning``
+        / ``display.show_reasoning`` / ``default``.
+        """
+        raw = self._reload()
+        sec = raw.get("streaming")
+        if isinstance(sec, dict) and "show_reasoning" in sec:
+            return bool(sec["show_reasoning"]), "streaming.show_reasoning"
+        display = raw.get("display")
+        if isinstance(display, dict):
+            platforms = display.get("platforms")
+            if isinstance(platforms, dict):
+                feishu = platforms.get("feishu")
+                if isinstance(feishu, dict) and "show_reasoning" in feishu:
+                    return bool(feishu["show_reasoning"]), "display.platforms.feishu.show_reasoning"
+            if "show_reasoning" in display:
+                return bool(display["show_reasoning"]), "display.show_reasoning"
+        return True, "default"
+
     @property
     def show_reasoning(self) -> bool:
-        """是否展示推理过程（display.platforms.feishu.show_reasoning → display.show_reasoning）.
+        """卡片是否展示推理过程（卡片级开关优先，外部反馈）.
+
+        优先级：streaming.show_reasoning → display.platforms.feishu.show_reasoning
+        → display.show_reasoning → 默认 True（与 streaming.process_expanded 覆盖
+        panel_expanded 同一模式）。平台级链同时被 Hermes 核心 _reasoning_leads
+        读取（💭 前置块 / 卡外 interim 门控）；本地模型（原生 reasoning_content）
+        用户可平台级设 false 防卡外泄漏，再用卡片级 true 单独保留 💭 面板。
 
         经 ``_reload`` 按文件 mtime 读取，因为 /reasoning 命令会在运行时修改配置文件.
         """
-        display = self._reload().get("display")
-        if not isinstance(display, dict):
-            return True
-        platforms = display.get("platforms")
-        if isinstance(platforms, dict):
-            feishu = platforms.get("feishu")
-            if isinstance(feishu, dict) and "show_reasoning" in feishu:
-                return bool(feishu["show_reasoning"])
-        return bool(display.get("show_reasoning", True))
+        return self.show_reasoning_value()[0]
 
     @property
     def show_tool_use(self) -> bool:

@@ -116,6 +116,9 @@ hermes gateway restart
 streaming:
   enabled: true
   chat_types: [dm, group]    # 允许发流式卡片的会话类型（如仅私聊发卡片则配置为 [dm]）
+  # show_reasoning: true     # 卡片级推理面板覆盖（优先级最高）。本地模型（原生 reasoning_content）
+                             # 推荐：平台级 show_reasoning: false 防卡外泄漏 + 这里 true 单独保留 💭 面板；
+                             # 未设则回落 display.platforms.feishu.show_reasoning → display.show_reasoning
   header:
     enabled: true
     min_duration: 0          # 快捷回复去标题阈值（秒）。无工具且耗时低于此值隐藏状态栏，0=不启用
@@ -243,7 +246,7 @@ $HERMES_PYTHON -m hermes_fry_cards studio     # 调起可视化工作坊（默�
 
 ## 🔄 热更新 & 网关重启说明
 
-- **免重启热生效**：修改 `display.*`（推理显示、工具显示、上下文样式等）以及 `model_aliases.json` 别名配置，保存后**下一条消息立即生效**。
+- **免重启热生效**：修改 `display.*`（推理显示、工具显示、上下文样式等）、卡片级 `streaming.show_reasoning` 覆盖以及 `model_aliases.json` 别名配置，保存后**下一条消息立即生效**。
 - **需重启网关**：修改插件底层源码、`streaming.enabled`、聊天范围 `chat_types`、群安全边界等，须执行：
   ```bash
   hermes gateway restart

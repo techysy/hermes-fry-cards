@@ -89,6 +89,7 @@ display:
 |----|------|------|
 | `enabled` | `true` | 插件总开关 |
 | `panel_expanded` | `false` | 完成后工具/推理面板是否展开（false=收起更干净） |
+| `show_reasoning` | 未设 | **卡片级推理面板覆盖**，优先级最高：设了就用它，未设回落 `display.platforms.feishu.show_reasoning` → `display.show_reasoning` → `true`（见下「本地模型防泄漏 + 保留 💭」） |
 | `card_ttl_sec` | `600` | 卡片存活检测超时 |
 | `width_mode` | `default` | `compact`=紧凑 / `fill`=撑满 |
 | `header.enabled` | `true` | 顶部状态色条 |
@@ -141,11 +142,32 @@ streaming:
 - **成本参考**（10R 端点实测）：1.2KB 正文 → 160 字摘要约 850~900 token、1.7~3.7 秒。
 - **凭据安全**：key 只在服务端读取使用，不回传浏览器、不写进仓库、不进日志（异常消息统一掩码）。
 
+### 本地模型防泄漏 + 保留 💭（卡片级推理覆盖）
+
+Hermes 核心的 `_reasoning_leads` 路径与卡片读**同一条** `display.*.show_reasoning` 链：
+平台级 `true` 会把 💭 块前置合并进最终回复并在分段边界触发卡外 interim 重发（引用消息刷屏）；
+平台级 `false` 防住了泄漏，但原生 `reasoning_content`（vLLM + Qwen3 thinking 一类本地模型）
+的卡片 💭 面板也被一起关掉。两个语义相反的需求现在可以解耦：
+
+```yaml
+streaming:
+  show_reasoning: true       # 卡片级覆盖：💭 面板照常入卡（优先级最高）
+display:
+  platforms:
+    feishu:
+      show_reasoning: false  # 平台级：核心 💭 前置块/卡外泄漏门控保持关闭
+```
+
+- 优先级：`streaming.show_reasoning` → `display.platforms.feishu.show_reasoning` → `display.show_reasoning` → `true`
+- 未设 `streaming.show_reasoning` 时行为与旧版完全一致（平台链原样生效）
+- 热更新：改完 config.yaml 下一条消息生效；Studio「统一面板」区有对应三态下拉（跟随平台 / 强制开 / 强制关）
+- 推理增量被门控丢弃时会记一条 `logger.debug`（说明是哪一级配置关掉的，同一来源只记一次），排障开 debug 日志即可看到
+
 ### display 段
 
 | 键 | 默认 | 说明 |
 |----|------|------|
-| `show_reasoning` | `true` | 思考过程面板；运行时可用 `/reasoning` 命令切换 |
+| `show_reasoning` | `true` | 思考过程面板；运行时可用 `/reasoning` 命令切换。可被卡片级 `streaming.show_reasoning` 覆盖（见上） |
 | `show_tool_use` | `true` | 工具调用合并进底部统一面板 |
 | `show_context` | `true` | 面板 header 显示上下文用量 |
 | `max_reasoning_panels` | `3` | 超出后推理片段合并进最后一个面板（防飞书 200 元素上限） |

@@ -180,6 +180,13 @@ try {
             <select id="f-panel-text-size"><option value="notation" data-i18n="opt.notation">notation（小）</option><option value="normal">normal</option><option value="normal_v2">normal_v2</option><option value="heading" data-i18n="opt.heading">heading（大）</option></select>
           </label>
           <label class="row"><span class="lbl" data-i18n="lbl.show-reasoning">展示推理过程</span><input type="checkbox" id="f-show-reasoning"></label>
+          <label class="row"><span class="lbl" data-i18n="lbl.card-show-reasoning">卡片推理面板覆盖（本地模型防卡外泄漏时单独开 💭）</span>
+            <select id="f-card-show-reasoning">
+              <option value="inherit" data-i18n="opt.inherit-platform">跟随平台设置</option>
+              <option value="on" data-i18n="opt.force-on">强制开启</option>
+              <option value="off" data-i18n="opt.force-off">强制关闭</option>
+            </select>
+          </label>
           <label class="row"><span class="lbl" data-i18n="lbl.show-tool-use">展示工具调用面板</span><input type="checkbox" id="f-show-tool-use"></label>
           <label class="row"><span class="lbl" data-i18n="lbl.show-context">面板 header 显示上下文</span><input type="checkbox" id="f-show-context"></label>
           <label class="row"><span class="lbl" data-i18n="lbl.context-mode">上下文显示格式</span>

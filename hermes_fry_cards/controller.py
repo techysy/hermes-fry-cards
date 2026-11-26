@@ -249,6 +249,8 @@ class StreamCardController(StreamingController):
         self._text_fallback_needed: set[str] = set()
         self._text_fallback_aliases: dict[str, set[str]] = {}
         self._unscoped_enabled: bool | None = None
+        # on_reasoning 门控早退日志去重：上次记录的来源配置键（""=当前未门控）
+        self._reasoning_gate_src: str = ""
         # #43 网关重启封卡：活跃卡登记 + 启动清扫
         self._live_cards_lock = threading.RLock()
         self._swept_stale_cards = False
@@ -856,8 +858,19 @@ class StreamCardController(StreamingController):
         session = self._resolve_session(message_id, session_key)
         if session is None or session.guard.should_skip("on_reasoning"):
             return False
-        if not self._cfg.show_reasoning:
+        enabled, source = self._cfg.show_reasoning_value()
+        if not enabled:
+            # 早退可观测（外部反馈附带项）：说清是哪一级配置关掉的，便于排障。
+            # 只在该来源键真变化时记一条（/reasoning 或手改配置），不逐 delta 刷屏。
+            if getattr(self, "_reasoning_gate_src", "") != source:
+                self._reasoning_gate_src = source
+                _logger.debug(
+                    "on_reasoning: native reasoning delta dropped — disabled by %s "
+                    "(card-level streaming.show_reasoning overrides the platform chain)",
+                    source,
+                )
             return False
+        self._reasoning_gate_src = ""
 
         if session.segment_state is None:
             return False

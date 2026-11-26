@@ -284,6 +284,84 @@ class TestShowReasoning:
         cfg = self._make_reasoning_config({"streaming": {"enabled": True}})
         assert cfg.show_reasoning is True
 
+    # ── 卡片级覆盖 streaming.show_reasoning（外部反馈：与平台级链解耦） ──
+
+    def test_card_level_true_overrides_platform_false(self) -> None:
+        """本地模型场景：平台级 false 防卡外泄漏，卡片级 true 单独保留 💭 面板."""
+        cfg = self._make_reasoning_config({
+            "streaming": {"show_reasoning": True},
+            "display": {"platforms": {"feishu": {"show_reasoning": False}}},
+        })
+        assert cfg.show_reasoning is True
+
+    def test_card_level_false_overrides_platform_true(self) -> None:
+        cfg = self._make_reasoning_config({
+            "streaming": {"show_reasoning": False},
+            "display": {"platforms": {"feishu": {"show_reasoning": True}}},
+        })
+        assert cfg.show_reasoning is False
+
+    def test_card_level_overrides_global_display(self) -> None:
+        cfg = self._make_reasoning_config({
+            "streaming": {"show_reasoning": True},
+            "display": {"show_reasoning": False},
+        })
+        assert cfg.show_reasoning is True
+
+    def test_card_level_works_without_display_section(self) -> None:
+        cfg = self._make_reasoning_config({"streaming": {"show_reasoning": False}})
+        assert cfg.show_reasoning is False
+
+    def test_unset_card_level_falls_back_to_chain(self) -> None:
+        """未设卡片级 → 平台链语义原样保留（默认 True）."""
+        cfg = self._make_reasoning_config({"streaming": {"enabled": True}})
+        assert cfg.show_reasoning is True
+
+    def test_streaming_not_dict_falls_back(self) -> None:
+        cfg = self._make_reasoning_config({
+            "streaming": "invalid",
+            "display": {"platforms": {"feishu": {"show_reasoning": False}}},
+        })
+        assert cfg.show_reasoning is False
+
+    def test_value_source_card_level(self) -> None:
+        cfg = self._make_reasoning_config({"streaming": {"show_reasoning": False}})
+        assert cfg.show_reasoning_value() == (False, "streaming.show_reasoning")
+
+    def test_value_source_platform_level(self) -> None:
+        cfg = self._make_reasoning_config({"display": {"platforms": {"feishu": {"show_reasoning": False}}}})
+        assert cfg.show_reasoning_value() == (False, "display.platforms.feishu.show_reasoning")
+
+    def test_value_source_global_level(self) -> None:
+        cfg = self._make_reasoning_config({"display": {"show_reasoning": False}})
+        assert cfg.show_reasoning_value() == (False, "display.show_reasoning")
+
+    def test_value_source_default(self) -> None:
+        cfg = self._make_reasoning_config({})
+        assert cfg.show_reasoning_value() == (True, "default")
+
+
+def test_card_show_reasoning_hot_reload(tmp_path: Path) -> None:
+    """卡片级覆盖走 _reload 热重载：改文件即生效，无需重启（同 process_expanded 模式）."""
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        "streaming:\n  show_reasoning: true\ndisplay:\n  platforms:\n    feishu:\n      show_reasoning: false\n",
+        encoding="utf-8",
+    )
+    cfg = Config(home=tmp_path)
+    assert cfg.show_reasoning is True
+    path.write_text(
+        "streaming:\n  show_reasoning: false\ndisplay:\n  platforms:\n    feishu:\n      show_reasoning: false\n",
+        encoding="utf-8",
+    )
+    assert cfg.show_reasoning is False
+    # 删除卡片级键 → 回落平台链 false
+    path.write_text(
+        "streaming:\n  enabled: true\ndisplay:\n  platforms:\n    feishu:\n      show_reasoning: false\n",
+        encoding="utf-8",
+    )
+    assert cfg.show_reasoning is False
+
 
 class TestShowToolUse:
     def _make_config(self, raw: dict[str, Any]) -> Config:

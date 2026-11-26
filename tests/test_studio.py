@@ -167,6 +167,34 @@ class TestValidation:
         assert "streaming" not in out
         assert out["display"]["show_reasoning"] is False
 
+    def test_card_show_reasoning_validate_and_merge(self) -> None:
+        """卡片级推理覆盖：bool 合法、null=清除覆盖、其余类型拒绝."""
+        out = srv.validate_payload({"streaming": {"show_reasoning": True}})
+        merged, changed = srv.merge_managed({}, out)
+        assert merged["streaming"]["show_reasoning"] is True
+        assert changed == ["streaming.show_reasoning"]
+        # null → 删除键（回落平台链），其余键存活
+        out = srv.validate_payload({"streaming": {"show_reasoning": None}})
+        assert out["streaming"]["show_reasoning"] is None
+        merged, changed = srv.merge_managed(
+            {"streaming": {"show_reasoning": True, "enabled": True}}, out
+        )
+        assert "show_reasoning" not in merged["streaming"]
+        assert merged["streaming"]["enabled"] is True
+        assert changed == ["streaming.show_reasoning"]
+        # 键本就不存在 → null 无变更
+        _, changed = srv.merge_managed({"streaming": {"enabled": True}}, out)
+        assert changed == []
+        with pytest.raises(ValueError, match="show_reasoning"):
+            srv.validate_payload({"streaming": {"show_reasoning": "yes"}})
+
+    def test_effective_show_reasoning_priority(self) -> None:
+        """预览生效值与 Config.show_reasoning 同序：卡片级 > display 链 > True."""
+        assert srv._effective_show_reasoning({"show_reasoning": True}, {"show_reasoning": False}) is True
+        assert srv._effective_show_reasoning({"show_reasoning": False}, {"show_reasoning": True}) is False
+        assert srv._effective_show_reasoning({}, {"show_reasoning": False}) is False
+        assert srv._effective_show_reasoning({}, {}) is True
+
     @pytest.mark.parametrize("size", ["normal_v2", "normal", "heading", "notation"])
     def test_textsize_accepts_supported_values(self, size: str) -> None:
         out = srv.validate_payload({"streaming": {"body": {"text_size": size}}})
@@ -198,6 +226,61 @@ class TestValidation:
         cfg = yaml.safe_load((home / "config.yaml").read_text(encoding="utf-8"))
         assert cfg["streaming"]["completion_notice"] is True
         assert cfg["streaming"]["completion_notice_text"] == "答复完成"
+
+    def test_card_show_reasoning_state_roundtrip(self, server: str, home: Path) -> None:
+        """卡片级覆盖端到端：写盘 → state 生效值/override 各自正确 → null 清除回落平台链."""
+        # 平台级 false + 卡片级 true：state.show_reasoning 为生效值 true，override 单独可见
+        _post_ok(server, "/api/config", {
+            "streaming": {"show_reasoning": True},
+            "display": {"show_reasoning": False},
+        })
+        state = _get_json(server, "/api/state")
+        assert state["display"]["show_reasoning"] is True
+        assert state["display"]["show_reasoning_override"] is True
+        cfg = yaml.safe_load((home / "config.yaml").read_text(encoding="utf-8"))
+        assert cfg["streaming"]["show_reasoning"] is True
+        assert cfg["display"]["platforms"]["feishu"]["show_reasoning"] is False
+        # null → 键删除，生效值回落平台链 false
+        _post_ok(server, "/api/config", {"streaming": {"show_reasoning": None}})
+        state = _get_json(server, "/api/state")
+        assert state["display"]["show_reasoning"] is False
+        assert state["display"]["show_reasoning_override"] is None
+        cfg = yaml.safe_load((home / "config.yaml").read_text(encoding="utf-8"))
+        assert "show_reasoning" not in cfg["streaming"]
+
+    def test_preview_card_override_beats_platform(self, server: str) -> None:
+        """预览：平台 false + 卡片 true → 流式占位卡带 💭 面板；反向覆盖则完成态无 💭."""
+        data = _post_ok(server, "/api/preview", {
+            "scenario": "workflow", "state": "streaming",
+            "overrides": {
+                "streaming": {"show_reasoning": True},
+                "display": {"show_reasoning": False},
+            },
+        })
+        raw = json.dumps(data["card"], ensure_ascii=False)
+        assert "reasoning_content" in raw
+        data = _post_ok(server, "/api/preview", {
+            "scenario": "workflow", "state": "completed",
+            "overrides": {
+                "streaming": {"show_reasoning": False},
+                "display": {"show_reasoning": True},
+            },
+        })
+        raw = json.dumps(data["card"], ensure_ascii=False)
+        # 💭 段全部剔除（面板 header 的 💭0 计数字段仍在，与线上「增量早退→计数为 0」一致）
+        assert "reasoning_1_text" not in raw
+        assert "💭0" in raw
+
+    def test_studio_ui_exposes_card_show_reasoning(self) -> None:
+        """三态控件在 HTML / 读写两端 / i18n 都接通."""
+        html = (srv._WEB_ROOT / "index.html").read_text(encoding="utf-8")
+        assert 'id="f-card-show-reasoning"' in html
+        js = (srv._WEB_ROOT / "js" / "app.js").read_text(encoding="utf-8")
+        assert '"f-card-show-reasoning"' in js
+        assert "show_reasoning: cardShowReasoning" in js
+        assert "show_reasoning_override" in js
+        i18n = (srv._WEB_ROOT / "js" / "i18n.js").read_text(encoding="utf-8")
+        assert '"lbl.card-show-reasoning"' in i18n
 
     def test_preview_uses_heading_text_size(self, server: str) -> None:
         data = _post_ok(server, "/api/preview", {
