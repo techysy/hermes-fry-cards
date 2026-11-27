@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.6] - 2026-11-27
+
 ### 新增 / Added
 
 - **卡片级推理面板开关 `streaming.show_reasoning`（外部网友反馈，本地部署模型场景）**：
@@ -33,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **文档**：docs/CONFIGURATION.md 新增「本地模型防泄漏 + 保留 💭」场景节与配置表行；
   README.md / README.en.md / hermes-fry-cards-skill.md / AGENTS.md 同步。
 
-## [0.7.5] - 2026-11-26
+## [0.7.5] - 2026-11-27
 
 ### 变更 / Changed
 
