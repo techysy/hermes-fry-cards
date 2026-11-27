@@ -1,38 +1,60 @@
-## 🍟 hermes-fry-cards v0.7.4
+## 🍟 hermes-fry-cards v0.7.6
 
-> 认不出模型不再等于没有图标：厂商未命中时回退智能体图标，连智能体也认不出就用本宿主品牌图兜底；同时修掉 7 张在白底卡片上等于隐形的厂商 Logo。
+> 本地模型「防卡外泄漏」与「保留 💭 面板」不再二选一：新增卡片级 `streaming.show_reasoning` 覆盖（优先级最高），平台级开关语义与 Hermes 核心门控行为一律不动。顺带把 27 张图标源图从 640×640 降到 256×256，上传体积近乎减半。
 
-### 🎯 未识别模型兜底智能体图标
+### 🎯 卡片级推理面板开关（外部网友反馈）
 
-面板头左侧原来只在命中厂商家族时才有图标。代理池 / 自建网关的模型名（`qd/qfmodel`、`10router/10r-free`、`space-bunny-free` 一类）名字里没有厂商词，左侧就一片空白——用户看到的「模型那头空着」有一半是这个原因。
+此前卡片 💭 面板与 Hermes 核心的 💭 前置块 / 卡外 interim 泄漏门控**共用同一条** `display.platforms.feishu.show_reasoning → display.show_reasoning` 链。本地部署模型（vLLM + Qwen3 thinking 一类原生 `reasoning_content` 输出）的用户为了防卡外泄漏必须把平台级设成 `false`，可这同时把卡片的 💭 面板与计数一起关掉了——两个语义相反的需求没法解耦。
 
-- **三级取图**：厂商命中优先（口径不变，厂商图 + 官方模型名）→ 模型串里的智能体词（Hermes / OpenClaw / Claude Code / Codex / ZCode / kimi-code / Antigravity）→ **本宿主品牌图**兜到最后一档
-- **新增 7 张 `assets/agent-logos/`**，640×640 / 8 位调色板，与厂商资产同规格，随包分发
-- **兜底图不改写模型名**：新增 footer 字段 `logo_kind`，官方名映射只跟随厂商命中；兜底档仍走 `model_aliases` 自定义别名与 `⇲` 截断，不会把你给路由名起的人设别名吞掉
-- **开关语义不变**：`display.vendor_logo` 关掉时厂商图与兜底图**都**不出，模型名回落 🍟 品牌位
+现在多了一级**卡片级覆盖**，优先级最高：
 
-### 🐛 7 张厂商 Logo 白底上看不见
+```yaml
+streaming:
+  show_reasoning: true       # 卡片级覆盖：💭 面板照常入卡（优先级最高）
+display:
+  platforms:
+    feishu:
+      show_reasoning: false  # 平台级：核心 💭 前置块 / 卡外泄漏门控保持关闭
+```
 
-`openai` / `moonshot` / `grok` / `dotsstudio` / `upstage` / `xiaomimimo` / `kimi` 取的是 lobehub 的 **dark 变体**（纯白或近纯白），画在浅色面板头上等于没画。全部换成白底可见版本，并加测试锁住「每张资产都必须有足够深色像素」——此前的资产守卫只验 PNG 文件头，这正是白图能一路绿灯发到 v0.7.3 的根因。
+- **解析顺序**：`streaming.show_reasoning` → `display.platforms.feishu.show_reasoning` → `display.show_reasoning` → 默认 `true`（与 `streaming.process_expanded` 覆盖 `panel_expanded` 同一模式）
+- **零行为变更**：未设卡片级键时与旧版完全一致；平台级语义不动，Hermes 核心门控代码一行没改
+- **免重启热生效**：走 `_reload`（mtime + size 守卫），改完 config.yaml 下一条消息即生效，进行中的卡保持创建时的样式
+- 配置说明见 [docs/CONFIGURATION.md](https://github.com/techysy/hermes-fry-cards/blob/main/docs/CONFIGURATION.md) 的「本地模型防泄漏 + 保留 💭」节
 
-- **上传缓存改按内容失效**：进程内 memo 的键原来只有裸文件名，换过像素仍命中旧 `image_key`，修好的图在早已发过卡的进程里永远显不出来。键改为 `app|目录/文件名|sha256[:12]`，换图即重传
-- **打包漏带资产**：`pyproject.toml` 的 package-data 此前只登记 `assets/vendor-logos/*.png`。新增兜底目录已登记，实测 wheel 内 **vendor-logos 20 张 + agent-logos 7 张**齐全（不登记的话 editable 安装能跑、一发版就瞎）
-- `logo_asset_bytes` 只接受纯文件名与两个固定目录，`../` 与路径分隔符一律拒绝
+### 🔍 门控早退可观测
 
-### 🖥 Studio 预览同口径
+原生推理增量被配置丢掉时，记一条 `logger.debug` 说清**是哪一级配置键关掉的**（新增 `Config.show_reasoning_value()` 返回「生效值 + 来源键」）。同一来源只记一次、开→关切换后重记，不逐 delta 刷屏：
 
-- 预览与线上**共用 `resolve_logo_asset`**，不会各说一套
-- 新增 `/assets/agent-logos/` 静态路由，与厂商目录同等做纯文件名校验：`../`、跨目录取厂商文件名一律 404
-- 模型速选补 `10router/10r-free` / `combo/Hermes` / `chat-mode-pool` 三档，兜底效果可直接目视验收
-- 英文 README 的版本徽章是静态的、停在 `v0.4.1`（落后 3 个小版本），改为与中文 README 同源的动态 shields
-- `docs/CONFIGURATION.md` 的 display 段补上一直缺失的 `vendor_logo` 说明
+```
+on_reasoning: native reasoning delta dropped — disabled by display.platforms.feishu.show_reasoning
+(card-level streaming.show_reasoning overrides the platform chain)
+```
+
+排障时把日志级别开到 debug 就能看到，不必再靠猜哪一层开关生效。
+
+### 🖥 Studio 三态控件
+
+- 「统一面板」区新增「卡片推理面板覆盖」下拉：**跟随平台 / 强制开 / 强制关**
+- `/api/config` 白名单接受 `streaming.show_reasoning`（`bool`，或 `null` = 清除覆盖回落平台链）；`merge_managed` 支持显式 null 删键
+- `/api/state.display.show_reasoning_override` 单独暴露显式覆盖值（`null` = 未设），与合并后的生效值分开，避免 UI 把「跟随平台且平台为开」误显示成「强制开」
+- 预览（流式占位卡 💭 面板 + 完成态 💭 段）按卡片级优先的生效值渲染，与线上同点收口
+
+### 🪶 图标源图 640 → 256（v0.7.5 内容，随本次一并发出）
+
+`assets/vendor-logos` 20 张 + `assets/agent-logos` 7 张全部由 640×640 等比重采样为 **256×256**。卡片上图标最大渲染尺寸远小于 640，源图分辨率纯属上传负担。
+
+- 预乘 alpha Lanczos 高质量重采样，仍是 8 位调色板 PNG（行滤波 0 + `tRNS` 透明索引）
+- **配色与图源一律不动**：瓦片家族中性底 `(72,75,84)` 与圆角 / inset 几何按 0.4× 等比缩放，Claude Code 品牌橙 `#D97757`、gemini 四色渐变按「误差达标里最小」的色数档位保留
+- 27 张合计 **269.2 KB → 135.1 KB（−49.8%）**
+- 逐张像素复核（纯标准库读 `PLTE` + `IDAT`，**不引入 Pillow**）：尺寸、主色、白字形在浅色面板上的深色像素占比守卫（agent >0.5 / vendor >0.2）、两目录零重名全部照旧；与未量化 Lanczos 参照物比对，可见像素平均 RGB 误差 ≤0.6（gemini 渐变 1.48 为全库最大）
+- 上传缓存键结构不变（`app|目录/文件名|sha256[:12]`）：像素换了摘要就变，每张用过的 logo 重传一次，之后照旧命中缓存
 
 ### ✅ 验证
 
-- 全量 **1282 passed**（上版 1270，新增 12 例）：兜底解析 / 厂商优先 / 宿主品牌兜底 / 空模型不出图 / 资产白底可见性（纯标准库解 PLTE + IDAT 判亮度，**不引入 Pillow**）/ 两目录文件名零交集 / 路径穿越拒绝 / 缓存按内容失效 / 开关关闭时无任何图标
-- ruff **139 → 138** errors、mypy **17** errors 不变，与 HEAD 基线**逐条比对零新增**
-- 真浏览器实测：15 张图标在 **16px 面板头缩略图**下浅底 / 深底均清晰可辨（此前 7 张在该尺寸下完全空白）
-- Studio 实测五档：`qd/qfmodel`、`combo/Hermes`、`10router/10r-free` → 兜底图；`tencent/hy4-flash:free`、`kimi-k5` → 厂商图 + 官方名；开关关掉 → 零 logo + 🍟 回落
+- 全量 **1306 passed**（上版 1282，新增 24 例）：三级优先级解析（卡片 true / 平台 false、卡片 false / 平台 true、缺省回落）、热重载改键 / 删键、门控早退不影响答案入卡、早退日志来源与去重、Studio 校验 / 合并 / null 清除 / 端到端 roundtrip / 预览覆盖 / UI 接线
+- ruff **139** errors、mypy **18** errors，与 HEAD 基线**逐条比对零新增**
+- 新增 `test_all_logos_are_256_square` 锁住尺寸口径，避免以后混进大图把上传体积悄悄涨回去
 
 ### 📦 升级
 
@@ -53,11 +75,11 @@ hermes gateway restart
 systemctl --user restart hermes-fry-cards-studio   # Studio 侧（8765）
 ```
 
-> 本次改了 `streaming/controller.py` 与 `cardkit/`（**不涉及 AST 注入锚点，无需 uninstall/install 重打补丁**），
-> 但需要 `hermes gateway restart` 让新代码生效。已经发过卡的机器无需清缓存——缓存键含内容摘要，换图自动重传。
+> 本次改了 `config.py` / `controller.py` / `studio/`（**不涉及 AST 注入锚点，无需 uninstall/install 重打补丁**），
+> 需要 `hermes gateway restart` 让新代码生效。默认配置零改动即可保持旧行为；想用新能力再加 `streaming.show_reasoning` 一行。
 
 ---
 
 完整明细见 [CHANGELOG.md](https://github.com/techysy/hermes-fry-cards/blob/main/CHANGELOG.md)。
 
-**Full Changelog**: [v0.7.3...v0.7.4](https://github.com/techysy/hermes-fry-cards/compare/v0.7.3...v0.7.4)
+**Full Changelog**: [v0.7.4...v0.7.6](https://github.com/techysy/hermes-fry-cards/compare/v0.7.4...v0.7.6)
